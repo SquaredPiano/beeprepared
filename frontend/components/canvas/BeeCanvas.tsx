@@ -75,10 +75,12 @@ function BeeCanvasInner() {
   
   // Preview Modals State
   const [previewAsset, setPreviewAsset] = useState<any>(null);
-  const [previewProcess, setPreviewProcess] = useState<any>(null);
-  const [previewArtifact, setPreviewArtifact] = useState<any>(null);
+    const [previewProcess, setPreviewProcess] = useState<any>(null);
+    const [previewArtifact, setPreviewArtifact] = useState<any>(null);
+    const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number } | null>(null);
 
-  // Sounds
+    // Sounds
+
   const [playConnect] = useSound("/sounds/connect.mp3", { volume: 0.5 });
   const [playClick] = useSound("/sounds/click.mp3", { volume: 0.3 });
   const [playComplete] = useSound("/sounds/complete.mp3", { volume: 0.6 });
@@ -236,14 +238,19 @@ function BeeCanvasInner() {
   };
 
   // Node interaction handlers
-  const onNodeClick = useCallback((_: any, node: Node) => {
-    if (node.type === 'asset') setPreviewAsset(node.data);
-    else if (node.type === 'process') setPreviewProcess(node.data);
-    else if (node.type === 'result') setPreviewArtifact({ ...node.data, id: node.id });
-  }, []);
+    const onNodeClick = useCallback((_: any, node: Node) => {
+      if (node.type === 'asset') setPreviewAsset(node.data);
+      else if (node.type === 'process') setPreviewProcess(node.data);
+      else if (node.type === 'result') setPreviewArtifact({ ...node.data, id: node.id });
+    }, []);
 
-  // Edge styling logic
-  const styledEdges = useMemo(() => {
+    const onViewportChange = useCallback((viewport: Viewport) => {
+      useCanvasStore.getState().setViewport(viewport);
+    }, []);
+
+    // Edge styling logic
+    const styledEdges = useMemo(() => {
+
     return edges.map(edge => {
       const sourceNode = nodes.find(n => n.id === edge.source);
       const color = sourceNode?.type === 'asset' ? "#3B82F6" : "#FCD34F";

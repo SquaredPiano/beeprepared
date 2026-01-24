@@ -181,12 +181,13 @@ export default function HomePage() {
                 The hive is <br />
                 <span className="font-serif italic lowercase opacity-50">waiting for you</span>
               </h2>
-            <Link 
-              href="/auth/login" 
-              className="inline-block bg-bee-black text-white px-16 py-8 rounded-full font-display text-sm uppercase tracking-widest font-bold hover:bg-honey-500 transition-all shadow-[0_20px_50px_rgba(0,0,0,0.2)] hover:shadow-honey-500/20 cursor-pointer"
-            >
-              Begin Ingestion
-            </Link>
+              <Link 
+                href="/auth/signup" 
+                className="inline-block bg-bee-black text-white px-16 py-8 rounded-full font-display text-sm uppercase tracking-[0.2em] font-bold hover:bg-honey-500 transition-all duration-500 shadow-[0_20px_80px_rgba(0,0,0,0.3)] hover:shadow-honey-500/40 cursor-pointer border border-white/5"
+              >
+                Begin Ingestion
+              </Link>
+
           </div>
         </ScrollReveal>
 
