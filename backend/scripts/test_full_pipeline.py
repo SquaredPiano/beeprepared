@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from extraction import ExtractionService
-from text_cleaning import TextCleaner
+from text_cleaning import TextCleaningService
 from knowledge_core import KnowledgeCoreService
 
 
@@ -51,7 +51,7 @@ def test_full_pipeline(file_path: str):
         print("STAGE 2: CLEANING (Raw Text → Clean Text)")
         print(f"{'─'*70}")
         
-        cleaner = TextCleaner()
+        cleaner = TextCleaningService()
         
         # Test with and without LLM
         cleaned_text_regex = cleaner.clean_regex(raw_text)
