@@ -1,7 +1,7 @@
 import re
 import os
 import logging
-from google import genai
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Configure logging
@@ -15,18 +15,14 @@ class TextCleaner:
         self._setup_gemini()
 
     def _setup_gemini(self):
-        """Initialize Gemini client using google-genai SDK."""
+        """Initialize Gemini client."""
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
-            try:
-                self.client = genai.Client(api_key=api_key)
-                self.model_name = 'gemini-2.0-flash' # Using stable/latest flash model
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini client: {e}")
-                self.client = None
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
         else:
             logger.warning("GEMINI_API_KEY not found. LLM cleaning will be skipped.")
-            self.client = None
+            self.model = None
 
     def clean_regex(self, text: str) -> str:
         """
@@ -71,8 +67,8 @@ class TextCleaner:
         """
         Uses Gemini to fix transcription errors and standardize terminology.
         """
-        if not self.client:
-            logger.warning("Gemini client not initialized. Skipping LLM cleaning.")
+        if not self.model:
+            logger.warning("Gemini model not initialized. Skipping LLM cleaning.")
             return text
 
         logger.info("Sending text to Gemini for refinement...")
@@ -94,10 +90,7 @@ class TextCleaner:
         """
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
+            response = self.model.generate_content(prompt)
             if response.text:
                 return response.text.strip()
             return text
@@ -115,7 +108,7 @@ class TextCleaner:
         cleaned_text = self.clean_regex(text)
         
         # 2. LLM Pass (Smart)
-        if use_llm and self.client:
+        if use_llm and self.model:
             cleaned_text = self.clean_with_gemini(cleaned_text)
             
         logger.info("Text cleaning completed.")
