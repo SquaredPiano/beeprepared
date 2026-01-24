@@ -149,6 +149,8 @@ class IngestionService:
                 )
             except Exception as e:
                 logger.error(f"Audio processing failed: {e}")
+                import traceback
+                traceback.print_exc()
                 return self._generate_metadata(file_id, user_id, "", original_name, "AUDIO", status="FAILED")
 
     def _delete_from_r2(self, object_key: str):
@@ -239,14 +241,19 @@ if __name__ == "__main__":
     ingestor = IngestionService()
     
     # 1. Test YouTube
-    # print(ingestor.process_youtube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "user_123"))
+    # print(ingestor.process_youtube("https://www.youtube.com/watch?v=MEUh_y1IFZY", "user_123"))
 
     # 2. Test Local Audio
     # print(ingestor.process_audio_upload("/Users/vishnu/Downloads/Maroon 5 - One More Night (Lyric Video).mp3", "user_123", "Maroon 5 - One More Night (Lyric Video).mp3"))
     
-    # 3. Test Doc
+    # 3. Test Markdown
     # print(ingestor.process_document("/Users/vishnu/Documents/Lumen/lumen/BACKEND_IMPLEMENTATION_PLAN.md", "user_123", "BACKEND_IMPLEMENTATION_PLAN.md", "MD"))
 
     # 4. Test Video Upload
-    print(ingestor.process_video_upload("/Users/vishnu/Movies/VersatileMageOpening.mp4", "user_123", "VersatileMageOpening.mp4"))
-    pass
+    # print(ingestor.process_video_upload("/Users/vishnu/Movies/VersatileMageOpening.mp4", "user_123", "VersatileMageOpening.mp4"))
+
+    # 5. Test PPTX
+    # print(ingestor.process_document("/Users/vishnu/Documents/Google Takeout/Takeout/Drive/95942_Vishnu_Sai_Aleksandar_Srnec_1419951_12367456.pptx", "user_123", "95942_Vishnu_Sai_Aleksandar_Srnec_1419951_12367456.pptx", "pptx"))
+    
+    # 6. Test PDF
+    # print(ingestor.process_document("/Users/vishnu/Documents/_CSResumesInspo/Shayan_Syed_Resume.pdf", "user_123", "Shayan_Syed_Resume.pdf", "pdf"))
