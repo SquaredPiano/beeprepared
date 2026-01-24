@@ -9,7 +9,8 @@ import {
   Save, 
   Hexagon,
   Share2,
-  MoreVertical
+  MoreVertical,
+  Play
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "@/store/useCanvasStore";
@@ -22,6 +23,7 @@ export function CanvasHeader() {
     projectName, 
     setProjectName, 
     save, 
+    runFlow,
     isSaving, 
     isHeaderCollapsed, 
     setIsHeaderCollapsed 
@@ -90,6 +92,14 @@ export function CanvasHeader() {
           </>
         )}
         
+        <Button 
+          onClick={runFlow}
+          className="h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg bg-bee-black hover:bg-bee-black/90 text-honey group"
+        >
+          <Play size={14} className="mr-2 fill-honey group-hover:scale-110 transition-transform" />
+          Activate Pipeline
+        </Button>
+
         <Button 
           onClick={save}
           disabled={isSaving}

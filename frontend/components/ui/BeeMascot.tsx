@@ -78,7 +78,7 @@ export const BeeMascot = () => {
           <div className="absolute -bottom-4 left-1/4 w-1/2 h-2 bg-black/20 blur-md rounded-full" />
           
           <Image 
-            src="/assets/bee-grad.png"
+            src="/logo.png"
             alt="BeePrepared Mascot"
             width={128}
             height={128}
