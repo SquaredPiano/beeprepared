@@ -1,0 +1,464 @@
+\documentclass[11pt]{article}%
+\usepackage[T1]{fontenc}%
+\usepackage[utf8]{inputenc}%
+\usepackage{lmodern}%
+\usepackage{textcomp}%
+\usepackage{lastpage}%
+\usepackage[margin=1in]{geometry}%
+\usepackage{amsmath}%
+\usepackage{amssymb}%
+\usepackage{titlesec}%
+\usepackage{fancyhdr}%
+%
+%
+%
+\begin{document}%
+\normalsize%
+\begin{titlepage}%
+\centering%
+\vspace*{1cm}%
+{\Huge \textbf{ONTARIO TECH UNIVERSITY} \par}%
+\vspace{1.5cm}%
+{\Large \textbf{Final Exam: Introductory Calculus Lecture 1} \par}%
+\vspace{0.5cm}%
+{\large \today \par}%
+\vspace{2cm}%
+\textbf{INSTRUCTIONS TO CANDIDATES} \par%
+\vspace{0.5cm}%
+\textit{(Formal and precise. Instructions will emphasize the necessity of showing all steps clearly, defining any variables used in applied problems, and maintaining rigorous mathematical notation throughout the solutions. Tone) Structured Problem-Solving Exam. The assessment will consist of mandatory calculation problems requiring the application of specific techniques (e.g., Integration by Parts, solving separable ODEs) and conceptual questions requiring the formulation of differential equations based on physical descriptions (e.g., RLC circuits, mechanics). Exam. Please answer all questions.}%
+\vspace{3cm}%
+\textbf{DO NOT OPEN THIS BOOKLET UNTIL TOLD TO DO SO} \par%
+\vfill%
+{\large Total Points: 100 \par}%
+\end{titlepage}%
+\newpage%
+\section*{Questions}%
+\label{sec:Questions}%
+\begin{enumerate}%
+\item%
+What is the order of the differential equation that models the charge $Q(t)$ in a series RLC circuit, given by $$L\frac{d^2Q}{dt^2} + R\frac{dQ}{dt} + \frac{1}{C}Q = V(t)$$? (3 points)%
+\begin{itemize}%
+\item%
+A. Zero order%
+\item%
+B. First order%
+\item%
+C. Second order%
+\item%
+D. Third order%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Which characteristic fundamentally distinguishes an Ordinary Differential Equation (ODE) from a Partial Differential Equation (PDE)? (3 points)%
+\begin{itemize}%
+\item%
+A. The presence of non-linear terms.%
+\item%
+B. The order of the highest derivative.%
+\item%
+C. The number of independent variables involved.%
+\item%
+D. Whether the equation is homogeneous or non-homogeneous.%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+To evaluate the integral $$\int x^2 \sin(x) dx$$ using Integration by Parts ($\int u dv = uv - \int v du$), which is the most effective choice for $u$ and $dv$? (3 points)%
+\begin{itemize}%
+\item%
+A. $u = \sin(x)$, $dv = x^2 dx$%
+\item%
+B. $u = x^2$, $dv = \sin(x) dx$%
+\item%
+C. $u = x \sin(x)$, $dv = x dx$%
+\item%
+D. $u = x$, $dv = x \sin(x) dx$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Evaluate the indefinite integral $$\int x e^{2x} dx$$. (3 points)%
+\begin{itemize}%
+\item%
+A. $x e^{2x} - \frac{1}{2} e^{2x} + C$%
+\item%
+B. $\frac{1}{2}x e^{2x} - \frac{1}{4} e^{2x} + C$%
+\item%
+C. $2x e^{2x} - 4 e^{2x} + C$%
+\item%
+D. $\frac{1}{2}x e^{2x} - \frac{1}{2} e^{2x} + C$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+A first-order differential equation $\frac{dy}{dx} = f(x, y)$ is defined as separable if it can be written in which of the following forms? (3 points)%
+\begin{itemize}%
+\item%
+A. $\frac{dy}{dx} = f(x) + g(y)$%
+\item%
+B. $\frac{dy}{dx} = a(x)b(y)$%
+\item%
+C. $\frac{dy}{dx} = y/x$%
+\item%
+D. $\frac{dy}{dx} = P(x)y + Q(x)$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Find the general solution to the separable differential equation $$\frac{dy}{dx} = \frac{x}{y}$$. (3 points)%
+\begin{itemize}%
+\item%
+A. $y = x + C$%
+\item%
+B. $y^2 = x^2 + C$%
+\item%
+C. $y = C e^{x^2}$%
+\item%
+D. $\ln|y| = x + C$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+If $N(t)$ represents the number of radioactive atoms remaining at time $t$, and the rate of decay is proportional to the number of atoms present, which differential equation models this process (where $k > 0$)? (3 points)%
+\begin{itemize}%
+\item%
+A. $\frac{dN}{dt} = k N^2$%
+\item%
+B. $\frac{dN}{dt} = k t$%
+\item%
+C. $\frac{dN}{dt} = -k N$%
+\item%
+D. $\frac{d^2N}{dt^2} = -k N$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+When applying Newton's Second Law ($F=ma$) to model the motion of a particle, where $a = d^2r/dt^2$, the resulting differential equation for the position $r(t)$ is typically of what order? (3 points)%
+\begin{itemize}%
+\item%
+A. Zero order%
+\item%
+B. First order%
+\item%
+C. Second order%
+\item%
+D. Third order%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+The reduction formula for $I_n = \int \cos^n(x) dx$ relates $I_n$ to $I_{n-2}$. This technique is primarily useful because it: (3 points)%
+\begin{itemize}%
+\item%
+A. Converts the integral into a linear first-order ODE.%
+\item%
+B. Allows the integral to be solved by simple substitution.%
+\item%
+C. Reduces the power of the trigonometric function in the integrand, simplifying the problem recursively.%
+\item%
+D. Eliminates the need for the constant of integration.%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Which of the following is the correct statement of the Integration by Parts formula? (3 points)%
+\begin{itemize}%
+\item%
+A. $\int u dv = \int v du - uv$%
+\item%
+B. $\int u dv = uv - \int v du$%
+\item%
+C. $\int u dv = u'v + uv'$%
+\item%
+D. $\int u dv = \frac{u}{v} - \int \frac{u'}{v} dv$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+The lecture notes provided the general solution to the separable equation $$x(y^2-1) + y(x^2-1)\frac{dy}{dx} = 0$$. Which equation represents this general solution? (3 points)%
+\begin{itemize}%
+\item%
+A. $(1+y^2)(1+x^2) = C$%
+\item%
+B. $\ln|y^2-1| + \ln|x^2-1| = C$%
+\item%
+C. $(1-y^2)(1-x^2) = C$%
+\item%
+D. $y^2 + x^2 = C$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Evaluate the indefinite integral $$\int \ln(x) dx$$. (3 points)%
+\begin{itemize}%
+\item%
+A. $\frac{1}{x} + C$%
+\item%
+B. $x \ln(x) - x + C$%
+\item%
+C. $\frac{1}{2} (\ln(x))^2 + C$%
+\item%
+D. $x \ln(x) + x + C$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Consider the separable ODE $\frac{dy}{dx} = 2xy$. If $y(0)=1$, what is the value of the integration constant $C$ in the general solution $y = C e^{x^2}$? (3 points)%
+\begin{itemize}%
+\item%
+A. $C=0$%
+\item%
+B. $C=1$%
+\item%
+C. $C=2$%
+\item%
+D. $C=e$%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+If the RLC circuit equation (Question 1) is rewritten entirely in terms of the current $I(t)$, where $I = dQ/dt$, what is the order of the resulting differential equation for $I(t)$? (3 points)%
+\begin{itemize}%
+\item%
+A. Zero order%
+\item%
+B. First order%
+\item%
+C. Second order%
+\item%
+D. Third order%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+To evaluate the integral $$\int x^2 e^x dx$$, Integration by Parts must be applied: (3 points)%
+\begin{itemize}%
+\item%
+A. Exactly once.%
+\item%
+B. Exactly twice.%
+\item%
+C. Exactly three times.%
+\item%
+D. Cyclically until the original integral reappears.%
+\end{itemize}%
+\vspace{0.5cm}%
+\item%
+Evaluate the indefinite integral $\int x e^{3x} dx$ using the method of Integration by Parts. Clearly state your choices for $u$ and $dv$. (5 points)%
+\vspace{4cm}%
+\vspace{0.5cm}%
+\item%
+Find the general solution to the first-order differential equation $\frac{dy}{dx} = \frac{x^2}{y^3}$. (5 points)%
+\vspace{4cm}%
+\vspace{0.5cm}%
+\item%
+An RLC circuit contains a resistor $R$, an inductor $L$, and a capacitor $C$, connected in series with a voltage source $V(t)$. Using Kirchhoff's Voltage Law, derive the second-order ordinary differential equation that describes the charge $Q(t)$ on the capacitor. Assume the current $I = dQ/dt$. (5 points)%
+\vspace{4cm}%
+\vspace{0.5cm}%
+\item%
+Evaluate the indefinite integral $\int \ln(x^2+1) dx$ using the method of Integration by Parts. (5 points)%
+\vspace{4cm}%
+\vspace{0.5cm}%
+\item%
+Consider the differential equation $t^2 \frac{d^2y}{dt^2} + 5 \frac{dy}{dt} + \sin(t) y = t^3$. State the order of this differential equation and determine if it is an Ordinary Differential Equation (ODE) or a Partial Differential Equation (PDE). (5 points)%
+\vspace{4cm}%
+\vspace{0.5cm}%
+\item%
+Evaluate the indefinite integral using the technique of Integration by Parts. Show all steps clearly, including the choice of $u$ and $dv$ in each application.
+$$\int x^2 e^{3x} dx$$ (10 points)%
+\vspace{8cm}%
+\vspace{0.5cm}%
+\item%
+Find the particular solution $y(x)$ to the following first-order differential equation, given the initial condition $y(0)=2$.
+$$\frac{dy}{dx} = \frac{x^2}{y^3}$$ (10 points)%
+\vspace{8cm}%
+\vspace{0.5cm}%
+\item%
+A series RLC circuit consists of a Resistor ($R$), an Inductor ($L$), and a Capacitor ($C$) connected to a time-varying voltage source $V(t)$. Kirchhoff's Voltage Law states that the sum of the voltage drops equals the applied voltage $V(t)$. The voltage drops are given by $V_R = RI$, $V_L = L \frac{dI}{dt}$, and $V_C = \frac{Q}{C}$, where $I = \frac{dQ}{dt}$ is the current and $Q$ is the charge.
+
+a) Formulate the differential equation governing the charge $Q(t)$ on the capacitor.
+b) State the order of the resulting differential equation.
+c) If $V(t) = 0$ (no external source), what type of differential equation (Homogeneous/Non-homogeneous) is the resulting equation? (10 points)%
+\vspace{8cm}%
+\vspace{0.5cm}%
+\end{enumerate}
+
+%
+\newpage%
+\section*{Solution Key & Grading Rubric}%
+\label{sec:SolutionKeyGradingRubric}%
+\textbf{Confidential - Instructor Use Only}%
+\vspace{0.5cm}%
+\begin{enumerate}%
+\item%
+\textbf{M-1}%
+ \ \ \textbf{Model Answer:} C. Second order%
+ \\ \textit{Grading Notes:} 3 pts for identifying the order based on the highest derivative ($d^2Q/dt^2$). 1 pt for recognizing it is a differential equation.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-2}%
+ \ \ \textbf{Model Answer:} C. The number of independent variables involved.%
+ \\ \textit{Grading Notes:} 3 pts for correctly identifying that ODEs involve derivatives with respect to only one independent variable, while PDEs involve multiple. 1 pt for recognizing the difference relates to the type of differentiation.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-3}%
+ \ \ \textbf{Model Answer:} B. $u = x^2$, $dv = \sin(x) dx$%
+ \\ \textit{Grading Notes:} 3 pts for selecting $u=x^2$ (the polynomial) to simplify the integral upon repeated differentiation. 1 pt for knowing the general IBP formula.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-4}%
+ \ \ \textbf{Model Answer:} B. $\frac{1}{2}x e^{2x} - \frac{1}{4} e^{2x} + C$%
+ \\ \textit{Grading Notes:} 3 pts for correct application of IBP ($u=x, dv=e^{2x}dx$) and correct final integration. 2 pts for correct setup and finding $uv$, but making an error in the final integral $\int v du$.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-5}%
+ \ \ \textbf{Model Answer:} B. $\frac{dy}{dx} = a(x)b(y)$%
+ \\ \textit{Grading Notes:} 3 pts for correct conceptual recall of the definition of a separable ODE.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-6}%
+ \ \ \textbf{Model Answer:} B. $y^2 = x^2 + C$%
+ \\ \textit{Grading Notes:} 3 pts for correctly separating variables ($\int y dy = \int x dx$) and integrating both sides. 2 pts for correct separation but minor error in integration (e.g., missing the factor of $1/2$ or algebraic simplification).%
+\vspace{0.3cm}%
+\item%
+\textbf{M-7}%
+ \ \ \textbf{Model Answer:} C. $\frac{dN}{dt} = -k N$%
+ \\ \textit{Grading Notes:} 3 pts for correctly translating 'rate of decay is proportional to N' into $\frac{dN}{dt} = -kN$. 1 pt for recognizing the proportionality relationship.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-8}%
+ \ \ \textbf{Model Answer:} C. Second order%
+ \\ \textit{Grading Notes:} 3 pts for recognizing that acceleration is the second derivative of position, defining the order of the resulting ODE.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-9}%
+ \ \ \textbf{Model Answer:} C. Reduces the power of the trigonometric function in the integrand, simplifying the problem recursively.%
+ \\ \textit{Grading Notes:} 3 pts for understanding the purpose of reduction formulas in integration techniques.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-10}%
+ \ \ \textbf{Model Answer:} B. $\int u dv = uv - \int v du$%
+ \\ \textit{Grading Notes:} 3 pts for accurate recall of the fundamental Integration by Parts formula.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-11}%
+ \ \ \textbf{Model Answer:} C. $(1-y^2)(1-x^2) = C$%
+ \\ \textit{Grading Notes:} 3 pts for recognizing the correct form of the solution derived from separating variables: $\int \frac{y}{y^2-1} dy = -\int \frac{x}{x^2-1} dx$. 2 pts for correct separation and integration resulting in logarithmic terms, but failing the final algebraic simplification.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-12}%
+ \ \ \textbf{Model Answer:} B. $x \ln(x) - x + C$%
+ \\ \textit{Grading Notes:} 3 pts for correct application of IBP ($u=\ln(x), dv=dx$) and correct final result. 2 pts for correct setup but minor error in the final integration step.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-13}%
+ \ \ \textbf{Model Answer:} B. $C=1$%
+ \\ \textit{Grading Notes:} 3 pts for correctly applying the initial condition $y(0)=1$ to the general solution $y=Ce^{x^2}$. 2 pts for correctly solving the ODE but failing to substitute the initial condition correctly.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-14}%
+ \ \ \textbf{Model Answer:} B. First order%
+ \\ \textit{Grading Notes:} 3 pts for recognizing that substituting $I=dQ/dt$ reduces the highest derivative from $d^2Q/dt^2$ to $dI/dt$. 1 pt for knowing the relationship $I=dQ/dt$.%
+\vspace{0.3cm}%
+\item%
+\textbf{M-15}%
+ \ \ \textbf{Model Answer:} B. Exactly twice.%
+ \\ \textit{Grading Notes:} 3 pts for understanding that the power of the polynomial ($x^2$) dictates the number of IBP applications required to eliminate the polynomial term. 1 pt for knowing that IBP is required.%
+\vspace{0.3cm}%
+\item%
+\textbf{S-1}%
+ \ \ \textbf{Model Answer:} We choose $u = x$ and $dv = e^{3x} dx$. 
+This yields $du = dx$ and $v = \frac{1}{3} e^{3x}$.
+Applying the Integration by Parts formula $\int u dv = uv - \int v du$:
+$$\int x e^{3x} dx = x \left(\frac{1}{3} e^{3x}\right) - \int \frac{1}{3} e^{3x} dx$$
+$$\int x e^{3x} dx = \frac{1}{3} x e^{3x} - \frac{1}{3} \left(\frac{1}{3} e^{3x}\right) + C$$
+$$\int x e^{3x} dx = \frac{1}{3} x e^{3x} - \frac{1}{9} e^{3x} + C$$%
+ \\ \textit{Grading Notes:} 1 pt for correct choice of $u$ and $dv$. 2 pts for correct application of the IBP formula and setup of the new integral. 1 pt for correctly evaluating the remaining integral $\int v du$. 1 pt for the final correct answer including $+C$.%
+\vspace{0.3cm}%
+\item%
+\textbf{S-2}%
+ \ \ \textbf{Model Answer:} The equation is separable. Separating variables yields:
+$$y^3 dy = x^2 dx$$
+Integrating both sides:
+$$\int y^3 dy = \int x^2 dx$$
+$$\frac{y^4}{4} = \frac{x^3}{3} + C_1$$
+Multiplying by 12 to clear fractions and defining $K=12C_1$:
+$$3y^4 = 4x^3 + K$$ or $y = \pm \left(\frac{4}{3}x^3 + K'\right)^{1/4}$%
+ \\ \textit{Grading Notes:} 1 pt for correctly identifying the equation as separable and separating the variables ($y^3 dy = x^2 dx$). 2 pts for correctly integrating both sides (1 pt for each integral). 1 pt for including the constant of integration. 1 pt for the final implicit or explicit solution form.%
+\vspace{0.3cm}%
+\item%
+\textbf{S-3}%
+ \ \ \textbf{Model Answer:} Kirchhoff's Voltage Law states that the sum of voltage drops equals the source voltage: $V_R + V_L + V_C = V(t)$.
+The voltage drops are:
+1. Resistor: $V_R = RI = R \frac{dQ}{dt}$
+2. Inductor: $V_L = L \frac{dI}{dt} = L \frac{d}{dt}\left(\frac{dQ}{dt}\right) = L \frac{d^2Q}{dt^2}$
+3. Capacitor: $V_C = \frac{Q}{C}$
+Substituting these into the KVL equation yields the ODE:
+$$L \frac{d^2Q}{dt^2} + R \frac{dQ}{dt} + \frac{1}{C} Q = V(t)$$%
+ \\ \textit{Grading Notes:} 1 pt for stating Kirchhoff's Voltage Law setup ($V_R + V_L + V_C = V(t)$). 2 pts for correctly expressing the voltage drops across the inductor ($L \frac{d^2Q}{dt^2}$) and resistor ($R \frac{dQ}{dt}$) in terms of $Q$. 2 pts for the final, correctly assembled second-order ODE.%
+\vspace{0.3cm}%
+\item%
+\textbf{S-4}%
+ \ \ \textbf{Model Answer:} We choose $u = \ln(x^2+1)$ and $dv = dx$. 
+This yields $du = \frac{2x}{x^2+1} dx$ and $v = x$.
+Applying the Integration by Parts formula:
+$$\int \ln(x^2+1) dx = x \ln(x^2+1) - \int x \left(\frac{2x}{x^2+1}\right) dx$$
+$$\int \ln(x^2+1) dx = x \ln(x^2+1) - 2 \int \frac{x^2}{x^2+1} dx$$
+We use the identity $\frac{x^2}{x^2+1} = 1 - \frac{1}{x^2+1}$.
+$$= x \ln(x^2+1) - 2 \int \left(1 - \frac{1}{x^2+1}\right) dx$$
+$$= x \ln(x^2+1) - 2 \left(x - \arctan(x)\right) + C$$
+$$= x \ln(x^2+1) - 2x + 2 \arctan(x) + C$$%
+ \\ \textit{Grading Notes:} 1 pt for correct choice of $u$ and $dv$. 1 pt for correct application of the IBP formula. 1 pt for correctly manipulating the resulting integral $\int \frac{x^2}{x^2+1} dx$ (e.g., using polynomial division). 1 pt for correctly integrating $\int \frac{1}{x^2+1} dx = \arctan(x)$. 1 pt for the final correct answer including $+C$.%
+\vspace{0.3cm}%
+\item%
+\textbf{S-5}%
+ \ \ \textbf{Model Answer:} 1. **Order:** The highest derivative present is $\frac{d^2y}{dt^2}$. Therefore, the order of the differential equation is 2 (Second Order).
+2. **Type:** Since the equation involves derivatives with respect to only one independent variable ($t$), it is an Ordinary Differential Equation (ODE).%
+ \\ \textit{Grading Notes:} 2 pts for correctly identifying the order as 2. 3 pts for correctly identifying the equation as an Ordinary Differential Equation (ODE), justifying based on having only one independent variable.%
+\vspace{0.3cm}%
+\item%
+\textbf{P-1}%
+ \ \ \textbf{Model Answer:} We use the integration by parts formula: $\int u dv = uv - \int v du$.
+
+**First Application:**
+Let $u = x^2$ and $dv = e^{3x} dx$.
+Then $du = 2x dx$ and $v = \frac{1}{3}e^{3x}$.
+$$\int x^2 e^{3x} dx = x^2 \left(\frac{1}{3}e^{3x}\right) - \int \left(\frac{1}{3}e^{3x}\right) (2x dx)$$
+$$= \frac{1}{3}x^2 e^{3x} - \frac{2}{3} \int x e^{3x} dx$$
+
+**Second Application (on $\int x e^{3x} dx$):**
+Let $u_2 = x$ and $dv_2 = e^{3x} dx$.
+Then $du_2 = dx$ and $v_2 = \frac{1}{3}e^{3x}$.
+$$\int x e^{3x} dx = x \left(\frac{1}{3}e^{3x}\right) - \int \left(\frac{1}{3}e^{3x}\right) dx$$
+$$= \frac{1}{3}x e^{3x} - \frac{1}{9}e^{3x} + C'$$
+
+**Final Substitution:**
+$$\int x^2 e^{3x} dx = \frac{1}{3}x^2 e^{3x} - \frac{2}{3} \left[ \frac{1}{3}x e^{3x} - \frac{1}{9}e^{3x} \right] + C$$
+$$= \frac{1}{3}x^2 e^{3x} - \frac{2}{9}x e^{3x} + \frac{2}{27}e^{3x} + C$$
+$$= \frac{e^{3x}}{27} (9x^2 - 6x + 2) + C$$%
+ \\ \textit{Grading Notes:} 2 pts: Correct initial choice of $u$ and $dv$. 3 pts: Correct application of IBP leading to the second integral $\int x e^{3x} dx$. 3 pts: Correct application of IBP on the resulting integral. 2 pts: Correct final algebraic assembly and inclusion of the constant of integration $C$. Significant partial credit for correct methodology even with minor algebraic errors.%
+\vspace{0.3cm}%
+\item%
+\textbf{P-2}%
+ \ \ \textbf{Model Answer:} The equation is separable:
+$$y^3 dy = x^2 dx$$
+Integrate both sides:
+$$\int y^3 dy = \int x^2 dx$$
+$$\frac{y^4}{4} = \frac{x^3}{3} + C$$
+Apply the initial condition $y(0)=2$. Substitute $x=0$ and $y=2$:
+$$\frac{(2)^4}{4} = \frac{(0)^3}{3} + C$$
+$$\frac{16}{4} = C \implies C = 4$$
+Substitute $C=4$ back into the general solution:
+$$\frac{y^4}{4} = \frac{x^3}{3} + 4$$
+Solving for $y$ (explicit particular solution):
+$$y^4 = \frac{4x^3}{3} + 16$$
+$$y(x) = \left( \frac{4x^3}{3} + 16 \right)^{1/4}$$%
+ \\ \textit{Grading Notes:} 2 pts: Correctly separating the variables ($y^3 dy = x^2 dx$). 3 pts: Correct integration of both sides, including the constant $C$. 3 pts: Correctly applying the initial condition $y(0)=2$ to find $C=4$. 2 pts: Correctly stating the final particular solution $y(x)$.%
+\vspace{0.3cm}%
+\item%
+\textbf{P-3}%
+ \ \ \textbf{Model Answer:} a) Formulation:
+Kirchhoff's Law: $V_R + V_L + V_C = V(t)$.
+Substitute $I = \frac{dQ}{dt}$ and $\frac{dI}{dt} = \frac{d^2Q}{dt^2}$:
+$$R\left(\frac{dQ}{dt}\right) + L\left(\frac{d^2Q}{dt^2}\right) + \frac{1}{C}Q = V(t)$$
+Standard form:
+$$L \frac{d^2Q}{dt^2} + R \frac{dQ}{dt} + \frac{1}{C}Q = V(t)$$
+
+b) Order:
+The highest derivative is $\frac{d^2Q}{dt^2}$. The order is **2 (Second Order)**.
+
+c) Type (for $V(t)=0$):
+If $V(t)=0$, the equation is $L \frac{d^2Q}{dt^2} + R \frac{dQ}{dt} + \frac{1}{C}Q = 0$. Since the right-hand side is zero, the equation is **Homogeneous**.%
+ \\ \textit{Grading Notes:} 4 pts: Correctly formulating the second-order ODE in terms of $Q(t)$ (Part a). 3 pts: Correctly identifying the order as Second Order (Part b). 3 pts: Correctly classifying the equation as Homogeneous when $V(t)=0$ (Part c).%
+\vspace{0.3cm}%
+\end{enumerate}
+
+%
+\end{document}

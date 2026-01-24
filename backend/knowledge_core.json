@@ -1,0 +1,183 @@
+{
+  "title": "Introductory Calculus Lecture 1",
+  "summary": "This lecture introduces the syllabus for Introductory Calculus, covering differential equations, line and double integrals, and calculus of functions in two variables. It also reviews practical information like lecture times, problem sheets, and recommended reading. The lecture includes examples of differential equations from physics and engineering, as well as a review of integration techniques such as integration by parts and separable equations.",
+  "concepts": [
+    {
+      "name": "Differential Equations",
+      "description": "Equations involving an independent variable, a function of that variable, and the derivatives of that function. They can be ordinary (ODEs) or partial (PDEs).",
+      "importance_score": 10
+    },
+    {
+      "name": "Integration Techniques",
+      "description": "Methods for finding the integral of a function, including integration by parts, substitution, and using reduction formulas.",
+      "importance_score": 9
+    },
+    {
+      "name": "Separable Equations",
+      "description": "A type of differential equation that can be solved by separating the variables and integrating each side independently.",
+      "importance_score": 7
+    },
+    {
+      "name": "Integration by Parts",
+      "description": "A technique used to integrate the product of two functions, based on the product rule of differentiation.",
+      "importance_score": 8
+    }
+  ],
+  "section_hierarchy": [
+    {
+      "title": "Practical Information",
+      "summary": "Details about the course structure, including lectures, problem sheets, tutorials, and the recommended reading list.",
+      "subsections": []
+    },
+    {
+      "title": "Syllabus",
+      "summary": "Outline of the topics to be covered in the course: differential equations, line and double integrals, and calculus of functions in two variables.",
+      "subsections": []
+    },
+    {
+      "title": "Examples of Differential Equations",
+      "summary": "Illustrations of how differential equations appear in physical sciences, such as mechanics (Newton's second law) and electrical circuits (RLC circuit).",
+      "subsections": []
+    },
+    {
+      "title": "Review of Integration",
+      "summary": "A refresher on integration techniques, focusing on integration by parts and separable equations, with examples.",
+      "subsections": []
+    }
+  ],
+  "notes": [
+    {
+      "heading": "Practical Information",
+      "bullets": [
+        "16 lectures in total.",
+        "Lecture notes are available online; written by Cath Wilkins.",
+        "Lecturer: Dan Ciubotaru (call him Dan).",
+        "Lectures on Mondays and Wednesdays at 10 AM.",
+        "8 problem sheets; the first two are online.",
+        "4 tutorials in college to cover problem sheets.",
+        "Reading list is online.",
+        "Recommended book: *Mathematical Methods in the Physical Sciences* by Mary Boas."
+      ]
+    },
+    {
+      "heading": "Syllabus",
+      "bullets": [
+        "First half (7-8 lectures): Differential Equations (ODEs and PDEs).",
+        "Second part: Line and double integrals (3 lectures).",
+        "Final part: Calculus of functions in two variables (gentle introduction to multivariable calculus).",
+        "Topics include: surfaces, gradient normal vectors, Taylor's theorem, critical points, Lagrange multipliers.",
+        "Course interacts with Multivariable Calculus, Dynamics, PDEs (Fourier Series), and Analysis 2.",
+        "Useful and mandatory course."
+      ]
+    },
+    {
+      "heading": "Examples of Differential Equations",
+      "bullets": [
+        "ODE: Equation involving an independent variable (x), a function of x (y), and derivatives of y with respect to x.",
+        "Order of ODE: The order of the highest derivative.",
+        "Simplest ODE: dy/dx = f(x). Solved by direct integration.",
+        "Mechanics: Newton's second law (F=ma). Acceleration is a derivative (a = dv/dt = d^2r/dt^2).",
+        "Electrical Circuit (RLC): Resistor (R), Inductor (L), Capacitor (C), Voltage Source (V).",
+        "Kirchhoff's Law: V(t) = RI + Q/C + L(dI/dt).",
+        "Differential equation for RLC circuit: L(d^2Q/dt^2) + R(dQ/dt) + (1/C)Q = V.",
+        "Radioactive Decay: Rate of decay is proportional to the remaining number of atoms (exercise)."
+      ]
+    },
+    {
+      "heading": "Review of Integration",
+      "bullets": [
+        "Integration by Parts: Based on the product rule: (fg)' = f'g + fg'.",
+        "Integration by parts formula: ∫fg' dx = fg - ∫f'g dx.",
+        "Example: ∫x^2 sin(x) dx. Choose f = x^2, g' = sin(x). Result: -x^2 cos(x) + 2 ∫x cos(x) dx.",
+        "Example: ∫(2x-1) ln(x^2+1) dx. Choose f = ln(x^2+1), g' = 2x-1.",
+        "Example: Reduction formula for  I_n = ∫cos^n(x) dx. Result: I_n = (1/n)cos^(n-1)(x)sin(x) + ((n-1)/n)I_(n-2).",
+        "Separable Equations: dy/dx = a(x)b(y).",
+        "Separate and integrate: ∫(1/b(y)) dy = ∫a(x) dx.",
+        "Example: x(y^2-1) + y(x^2-1)(dy/dx) = 0. General solution: (1-y^2)(1-x^2) = C, where C >= 0."
+      ]
+    }
+  ],
+  "definitions": [
+    {
+      "term": "Ordinary Differential Equation (ODE)",
+      "definition": "An equation involving an independent variable, a function of that variable, and the derivatives of that function.",
+      "context": "Introduction to differential equations"
+    },
+    {
+      "term": "Partial Differential Equation (PDE)",
+      "definition": "A differential equation involving partial derivatives of a function of several variables.",
+      "context": "Introduction to differential equations"
+    },
+    {
+      "term": "Order of a Differential Equation",
+      "definition": "The order of the highest derivative that occurs in the differential equation.",
+      "context": "Definition of ODE properties"
+    },
+    {
+      "term": "Integration by Parts",
+      "definition": "A technique for integrating the product of two functions using the formula ∫ u dv = uv - ∫ v du.",
+      "context": "Review of integration techniques"
+    },
+    {
+      "term": "Separable Equation",
+      "definition": "A differential equation that can be written in the form dy/dx = a(x)b(y), allowing separation of variables for integration.",
+      "context": "Types of ODEs"
+    }
+  ],
+  "examples": [
+    {
+      "description": "Newton's Second Law (F=ma) as a Differential Equation",
+      "relevance": "Illustrates how differential equations arise in mechanics, with acceleration being the second derivative of displacement with respect to time."
+    },
+    {
+      "description": "RLC Circuit Differential Equation",
+      "relevance": "Demonstrates how differential equations model electrical circuits, relating voltage, current, charge, resistance, inductance, and capacitance."
+    },
+    {
+      "description": "Radioactive Decay Problem",
+      "relevance": "Example that the rate at which a radioactive substance decays is proportional to the remaining number of atoms; provides an exercise for the student."
+    },
+    {
+      "description": "Integration by parts examples with polynomials, trigonometric, and logarithmic functions.",
+      "relevance": "Demonstrates the application of the integration by parts formula with various types of functions."
+    },
+    {
+      "description": "Recursive formula for integral of cos^n(x).",
+      "relevance": "Illustrates how to generate a recursive formula to reduce integrals of cos^n(x) to lower powers."
+    }
+  ],
+  "key_facts": [
+    {
+      "fact": "The course consists of 16 lectures.",
+      "category": "Course Structure"
+    },
+    {
+      "fact": "Lectures are on Mondays and Wednesdays at 10 AM.",
+      "category": "Course Schedule"
+    },
+    {
+      "fact": "There are 8 problem sheets.",
+      "category": "Assignments"
+    },
+    {
+      "fact": "The recommended book is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
+      "category": "Resources"
+    },
+    {
+      "fact": "The first half of the course focuses on differential equations.",
+      "category": "Syllabus"
+    },
+    {
+      "fact": "Newton's Second Law (F=ma) can be expressed as a second-order differential equation.",
+      "category": "Physics"
+    },
+    {
+      "fact": "The voltage across an inductor is given by L(dI/dt).",
+      "category": "Electrical Engineering"
+    },
+    {
+      "fact": "The integration by parts formula is ∫fg' dx = fg - ∫f'g dx.",
+      "category": "Mathematics"
+    }
+  ]
+}
