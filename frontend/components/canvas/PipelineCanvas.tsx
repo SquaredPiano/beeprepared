@@ -206,7 +206,7 @@ function PipelineCanvasContent() {
       {/* Context Menu */}
       {menu && (
         <div 
-          style={{ top: menu.y - 100, left: menu.x - 300 }}
+          style={{ top: menu.y + 5, left: menu.x + 5 }}
           className="fixed z-[100] w-56 glass border border-border/40 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in duration-200"
         >
           <button 

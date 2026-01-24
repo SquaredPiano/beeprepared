@@ -49,8 +49,9 @@ export function Sidebar() {
               exit={{ opacity: 0, x: -10 }}
               className="flex items-center gap-2"
             >
-              <Logo size={24} />
-              <span className="font-display font-bold text-xs uppercase tracking-[0.2em] whitespace-nowrap">BeePrepared</span>
+                <Logo size={24} showText={false} />
+                <span className="font-display font-bold text-xs uppercase tracking-[0.2em] whitespace-nowrap">BeePrepared</span>
+
             </motion.div>
           )}
           {isCollapsed && (

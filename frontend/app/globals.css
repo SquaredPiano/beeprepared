@@ -94,23 +94,25 @@
     cursor: default;
   }
   
-  a, 
-  button, 
-  [role="button"], 
-  input[type="submit"], 
-  input[type="button"], 
-  .cursor-pointer,
-  .react-flow__node,
-  .react-flow__handle,
-  .react-flow__edge,
-  .react-flow__edge-path,
-  .react-flow__pane,
-  select,
-  summary,
-  label,
-  [draggable="true"] {
-    cursor: pointer !important;
-  }
+    a, 
+    button, 
+    [role="button"], 
+    input[type="submit"], 
+    input[type="button"], 
+    .cursor-pointer,
+    .react-flow__node,
+    .react-flow__handle,
+    .react-flow__edge,
+    .react-flow__edge-path,
+    .react-flow__pane,
+    select,
+    summary,
+    label,
+    .honey-dropzone,
+    [draggable="true"] {
+      cursor: pointer !important;
+    }
+
 
   [draggable="true"]:active {
     cursor: grabbing !important;
