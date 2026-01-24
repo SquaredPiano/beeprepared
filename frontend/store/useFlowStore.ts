@@ -11,10 +11,15 @@ import {
   Connection,
   MarkerType
 } from "@xyflow/react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 interface FlowState {
   nodes: Node[];
   edges: Edge[];
+  currentProjectId: string | null;
+  projectName: string;
+  isSaving: boolean;
   history: { nodes: Node[]; edges: Edge[] }[];
   historyIndex: number;
   onNodesChange: OnNodesChange;
@@ -24,7 +29,9 @@ interface FlowState {
   setEdges: (edges: Edge[]) => void;
   undo: () => void;
   redo: () => void;
-  save: () => void;
+  save: () => Promise<void>;
+  loadProject: (id: string) => Promise<void>;
+  createNewProject: () => void;
   resetView: () => void;
   takeSnapshot: () => void;
 }
@@ -32,6 +39,9 @@ interface FlowState {
 export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: [],
   edges: [],
+  currentProjectId: null,
+  projectName: "Untitled Pipeline",
+  isSaving: false,
   history: [],
   historyIndex: -1,
 
@@ -43,8 +53,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(edges)) 
     });
     
-    // Limit history to 50 steps
-    if (newHistory.length > 50) newHistory.shift();
+    // Limit history to 200 steps
+    if (newHistory.length > 200) newHistory.shift();
     
     set({ 
       history: newHistory, 
@@ -103,19 +113,88 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
   },
 
-  save: () => {
-    const { nodes, edges } = get();
-    const data = JSON.stringify({ nodes, edges }, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `beeprepared-flow-${new Date().toISOString()}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+  save: async () => {
+    const { nodes, edges, currentProjectId, projectName } = get();
+    set({ isSaving: true });
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      const projectData = {
+        name: projectName,
+        nodes,
+        edges,
+        user_id: userData.user?.id || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let result;
+      if (currentProjectId) {
+        result = await supabase
+          .from("projects")
+          .update(projectData)
+          .eq("id", currentProjectId)
+          .select()
+          .single();
+      } else {
+        result = await supabase
+          .from("projects")
+          .insert({ ...projectData, name: projectName || "Untitled Pipeline" })
+          .select()
+          .single();
+      }
+
+      if (result.error) throw result.error;
+
+      set({ currentProjectId: result.data.id });
+      toast.success("Pipeline saved successfully");
+    } catch (error: any) {
+      console.error("Save error:", error);
+      toast.error(`Failed to save: ${error.message}`);
+    } finally {
+      set({ isSaving: false });
+    }
+  },
+
+  loadProject: async (id: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      set({
+        nodes: data.nodes,
+        edges: data.edges,
+        currentProjectId: data.id,
+        projectName: data.name,
+        history: [],
+        historyIndex: -1,
+      });
+      
+      get().takeSnapshot();
+      toast.success("Project loaded");
+    } catch (error: any) {
+      toast.error(`Failed to load project: ${error.message}`);
+    }
+  },
+
+  createNewProject: () => {
+    set({
+      nodes: [],
+      edges: [],
+      currentProjectId: null,
+      projectName: "Untitled Pipeline",
+      history: [],
+      historyIndex: -1,
+    });
+    get().takeSnapshot();
   },
 
   resetView: () => {
-    // This is handled by useReactFlow in the component
+    // Handled by component
   },
 }));

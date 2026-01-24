@@ -27,9 +27,12 @@ export default function ProcessingPage() {
   const containerRef = useRef(null);
 
   useGSAP(() => {
-    gsap.from(".reveal", {
-      y: 30,
-      opacity: 0,
+    // Set initial state to avoid flicker now that CSS is visible by default
+    gsap.set(".reveal", { opacity: 0, y: 30 });
+    
+    gsap.to(".reveal", {
+      y: 0,
+      opacity: 1,
       duration: 1,
       stagger: 0.1,
       ease: "power3.out"
