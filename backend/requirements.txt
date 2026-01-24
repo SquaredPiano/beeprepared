@@ -4,3 +4,4 @@ google-generativeai
 python-dotenv
 boto3
 azure-cognitiveservices-speech
+pylatex
