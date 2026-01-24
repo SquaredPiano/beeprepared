@@ -11,10 +11,15 @@ pymupdf
 python-pptx
 python-docx
 
-# AI Services (from origin/main)
+# AI Services
 google-generativeai
+google-genai
 azure-cognitiveservices-speech
 
 # Database
 supabase
 psycopg2-binary
+
+# PDF Generation
+pylatex
+pydantic
