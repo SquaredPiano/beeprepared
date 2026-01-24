@@ -2,10 +2,25 @@ import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import pptxgen from "pptxgenjs";
 import 'katex/dist/katex.min.css';
-import Latex from 'react-katex';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import './App.css'
+
+// Helper to render mixed text and LaTeX safely
+const RenderText = ({ text }) => {
+  if (!text) return null;
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        p: ({ node, ...props }) => <span {...props} />
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  )
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('quiz')
@@ -13,8 +28,9 @@ function App() {
   const [flashcards, setFlashcards] = useState(null)
   const [notes, setNotes] = useState(null)
   const [slides, setSlides] = useState(null)
+  const [examUrl, setExamUrl] = useState(null)
 
-  // Quiz State: { [questionId]: selectedOptionIndex }
+  // Quiz State
   const [quizAnswers, setQuizAnswers] = useState({})
 
   useEffect(() => {
@@ -22,10 +38,43 @@ function App() {
     fetch('/data/flashcards.json').then(res => res.json()).then(setFlashcards).catch(console.error)
     fetch('/data/notes.json').then(res => res.json()).then(setNotes).catch(console.error)
     fetch('/data/slides.json').then(res => res.json()).then(setSlides).catch(console.error)
+    // Check if exam exists
+    fetch('/data/final_exam.pdf').then(res => {
+      if (res.ok) setExamUrl('/data/final_exam.pdf')
+    }).catch(console.error)
   }, [])
 
+  // --- TRANSFORMS ---
+  const convertQuizToFlashcards = () => {
+    if (!quizData) return;
+    const newCards = quizData.questions.map(q => ({
+      front: q.text,
+      back: q.options && q.correct_answer_index !== undefined ? q.options[q.correct_answer_index] : "Answer Check Notes",
+      hint: "From Quiz Recalled",
+      source_reference: "Quiz Conversion"
+    }));
+    setFlashcards({ cards: newCards });
+    setActiveTab('flashcards');
+  }
+
+  const convertNotesToSlides = () => {
+    if (!notes) return;
+    const newSlides = notes.sections.map(sec => ({
+      heading: sec.heading,
+      main_idea: sec.key_points ? sec.key_points[0] : "Key Concept",
+      bullet_points: sec.key_points || ["See notes for details"],
+      speaker_notes: sec.content_block ? sec.content_block.substring(0, 200) : ""
+    }));
+    setSlides({
+      title: notes.title,
+      audience_level: "Converted from Notes",
+      slides: newSlides
+    });
+    setActiveTab('slides');
+  }
+
   const handleQuizSelect = (qId, optionIdx) => {
-    if (quizAnswers[qId] !== undefined) return; // Prevent changing after selection
+    if (quizAnswers[qId] !== undefined) return;
     setQuizAnswers(prev => ({ ...prev, [qId]: optionIdx }))
   }
 
@@ -34,63 +83,56 @@ function App() {
     let pres = new pptxgen();
     pres.layout = "LAYOUT_16x9";
 
-    // Theme Colors
-    const COLOR_PRIMARY = "1e1b4b"; // Dark Blue
-    const COLOR_ACCENT = "6366f1"; // Indigo
+    const COLOR_PRIMARY = "1e1b4b";
+    const COLOR_ACCENT = "6366f1";
     const COLOR_TEXT = "363636";
     const COLOR_BG_TITLE = "F1F5F9";
 
-    // Title Slide
     let slide = pres.addSlide();
     slide.background = { color: COLOR_PRIMARY };
-    slide.addText(slides.title, { x: 0.5, y: 2.5, w: '90%', fontSize: 44, align: 'center', color: 'FFFFFF', bold: true });
-    slide.addText(`Audience: ${slides.audience_level}`, { x: 0.5, y: 4, w: '90%', fontSize: 20, align: 'center', color: 'CBD5E1' });
-
-    // Decorative Element (Facet Theme style)
+    slide.addText(slides.title, { x: 0.5, y: '30%', w: '90%', h: '20%', fontSize: 44, align: 'center', valign: 'middle', color: 'FFFFFF', bold: true });
+    slide.addText(`Audience: ${slides.audience_level}`, { x: 0.5, y: '55%', w: '90%', h: '10%', fontSize: 20, align: 'center', valign: 'top', color: 'CBD5E1' });
     slide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: COLOR_ACCENT });
 
-    // Content Slides
     slides.slides.forEach(sItem => {
       let s = pres.addSlide();
-
-      // Header Bar
       s.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 1.2, fill: COLOR_BG_TITLE });
-      s.addText(sItem.heading, { x: 0.5, y: 0.3, w: '90%', fontSize: 28, bold: true, color: COLOR_PRIMARY });
+      s.addText(sItem.heading, { x: 0.5, y: 0.3, w: '90%', fontSize: 28, bold: true, color: COLOR_PRIMARY, align: 'center' });
 
-      // Main Idea Box
-      s.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.5, w: 9, h: 0.8, fill: "EEF2FF", line: { color: COLOR_ACCENT, width: 1 } });
-      s.addText(sItem.main_idea, { x: 0.7, y: 1.6, w: 8.6, fontSize: 16, color: "4338CA", italic: true });
+      // Main Content Box - Centered
+      s.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.5, w: 9, h: 4.5, fill: "FFFFFF", line: { color: COLOR_ACCENT, width: 0 } }); // Invisible box for layout? No, use text box.
 
-      // Bullets
+      // Main Idea
+      s.addText(sItem.main_idea, { x: 1, y: 2.0, w: 8, h: 1, fontSize: 20, color: "4338CA", italic: true, align: 'center', valign: 'middle' });
+
+      // Bullets - Centered list
       if (sItem.bullet_points) {
         let bullets = sItem.bullet_points.map(bp => ({
           text: bp,
           options: { fontSize: 18, indentLevel: 0, bullet: { type: 'number', color: COLOR_ACCENT } }
         }));
-        s.addText(bullets, { x: 0.5, y: 2.6, w: '90%', h: 4, color: COLOR_TEXT });
+        s.addText(bullets, { x: 1.5, y: 3.2, w: 7, h: 3, color: COLOR_TEXT, align: 'left', valign: 'top' });
       }
-
       s.addNotes(sItem.speaker_notes);
     });
-
     pres.writeFile({ fileName: "Lecture_Slides.pptx" });
   }
 
   return (
     <div className="app-container">
       <header>
-        <h1>BeePrepared Artifacts</h1>
-        <p style={{ color: '#94a3b8' }}>Interactive Learning Content Generator</p>
+        <h1>BeePrepared Learning Hub</h1>
+        <p style={{ color: '#94a3b8' }}>Unified Content Generation System</p>
       </header>
 
       <div className="nav-tabs">
-        {['quiz', 'flashcards', 'notes', 'slides'].map(tab => (
+        {['quiz', 'flashcards', 'notes', 'slides', 'exam'].map(tab => (
           <button
             key={tab}
             className={`nav-btn ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'exam' ? 'Final Exam' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
@@ -99,16 +141,19 @@ function App() {
         {/* --- QUIZ VIEW --- */}
         {activeTab === 'quiz' && quizData && (
           <div className="quiz-view">
-            <h2>{quizData.title}</h2>
+            <div className="view-header">
+              <h2>{quizData.title}</h2>
+              <button className="action-btn" onClick={convertQuizToFlashcards}>Practice as Flashcards →</button>
+            </div>
             {quizData.questions.map((q, idx) => {
               const isAnswered = quizAnswers[q.id] !== undefined;
               const selectedIdx = quizAnswers[q.id];
               const isCorrect = selectedIdx === q.correct_answer_index;
-
               return (
                 <div key={q.id} className="quiz-item">
                   <div className="question-text">
-                    <span style={{ color: '#818cf8', fontWeight: 'bold' }}>{idx + 1}.</span> <Latex>{q.text}</Latex>
+                    <span style={{ color: '#818cf8', fontWeight: 'bold', marginRight: '0.5rem' }}>{idx + 1}.</span>
+                    <RenderText text={q.text} />
                   </div>
                   <div className="options-grid">
                     {q.options.map((opt, i) => {
@@ -120,7 +165,7 @@ function App() {
                       }
                       return (
                         <div key={i} className={btnClass} onClick={() => handleQuizSelect(q.id, i)}>
-                          <Latex>{opt}</Latex>
+                          <RenderText text={opt} />
                         </div>
                       )
                     })}
@@ -128,7 +173,7 @@ function App() {
                   {isAnswered && (
                     <div className={`feedback-box ${isCorrect ? 'success' : 'info'}`}>
                       <strong>{isCorrect ? "Correct!" : "Incorrect."}</strong>
-                      <div style={{ marginTop: '0.5rem' }}><Latex>{q.explanation}</Latex></div>
+                      <div style={{ marginTop: '0.5rem' }}><RenderText text={q.explanation} /></div>
                     </div>
                   )}
                 </div>
@@ -145,21 +190,19 @@ function App() {
         {/* --- NOTES VIEW --- */}
         {activeTab === 'notes' && notes && (
           <div className="notes-view markdown-body">
-            <h1>{notes.title}</h1>
+            <div className="view-header">
+              <h1>{notes.title}</h1>
+              <button className="action-btn" onClick={convertNotesToSlides}>Generate Slides →</button>
+            </div>
             {notes.sections.map((sec, i) => (
               <div key={i} style={{ marginBottom: '2rem' }}>
                 <h2 style={{ color: '#818cf8' }}>{sec.heading}</h2>
-                <ReactMarkdown
-                  remarkPlugins={[remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {sec.content_block}
-                </ReactMarkdown>
+                <RenderText text={sec.content_block} />
                 {sec.key_points && (
                   <ul className='key-points-list'>
                     {sec.key_points.map((kp, k) => (
                       <li key={k} style={{ color: '#cbd5e1' }}>
-                        <Latex>{kp}</Latex>
+                        <RenderText text={kp} />
                       </li>
                     ))}
                   </ul>
@@ -172,28 +215,48 @@ function App() {
         {/* --- SLIDES VIEW --- */}
         {activeTab === 'slides' && slides && (
           <div className="slides-view">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="view-header">
               <h2>{slides.title} Preview</h2>
-              <button onClick={handleExportPPTX} className="download-btn">
-                Download .PPTX (Facet Theme)
-              </button>
+              <button onClick={handleExportPPTX} className="download-btn">Download .PPTX</button>
             </div>
             <div className="slide-grid">
               {slides.slides.map((s, i) => (
                 <div key={i} className="slide-card">
-                  <h3 style={{ color: '#e2e8f0' }}>{i + 1}. {s.heading}</h3>
-                  <div style={{ fontSize: '0.9rem', color: '#818cf8', marginBottom: '1rem', fontStyle: 'italic' }}>
-                    {s.main_idea}
+                  <div className="slide-preview-content">
+                    <h3 style={{ color: '#1e1b4b', marginBottom: '0.5rem' }}>{s.heading}</h3>
+                    <div style={{ fontSize: '0.9rem', color: '#4338CA', marginBottom: '1rem', fontStyle: 'italic', borderLeft: '2px solid #6366f1', paddingLeft: '0.5rem' }}>
+                      {s.main_idea}
+                    </div>
+                    <ul style={{ paddingLeft: '1.2rem', color: '#334155' }}>
+                      {s.bullet_points.map((bp, b) => <li key={b}>{bp}</li>)}
+                    </ul>
                   </div>
-                  <ul style={{ paddingLeft: '1.2rem' }}>
-                    {s.bullet_points.map((bp, b) => <li key={b} style={{ color: '#94a3b8' }}>{bp}</li>)}
-                  </ul>
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '1rem', paddingTop: '0.5rem', fontSize: '0.85rem', color: '#64748b' }}>
+                  <div className="slide-notes-preview">
                     <strong>Speaker Notes:</strong> {s.speaker_notes.substring(0, 100)}...
                   </div>
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* --- EXAM VIEW --- */}
+        {activeTab === 'exam' && (
+          <div className="exam-view" style={{ height: '100%', minHeight: '80vh' }}>
+            {examUrl ? (
+              <>
+                <div className="view-header">
+                  <h2>Final Exam PDF</h2>
+                  <a href={examUrl} download="Final_Exam.pdf" className="download-btn">Download Exam PDF</a>
+                </div>
+                <iframe src={examUrl} width="100%" height="800px" style={{ border: 'none', borderRadius: '8px' }} />
+              </>
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>
+                <h2>No Exam PDF Generated</h2>
+                <p>Check the backend generation logs.</p>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -214,38 +277,34 @@ function FlashcardDeck({ cards }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space') {
-        e.preventDefault(); // prevent scroll
+        e.preventDefault();
         setFlipped(f => !f);
       }
-      if (e.code === 'ArrowRight') {
-        nextCard();
-      }
+      if (e.code === 'ArrowRight') nextCard();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [index]); // Dependency ensures nextCard uses correct index closure if needed.
+  }, [index]);
 
-  const card = cards[index]
+  if (!cards || cards.length === 0) return <div>No cards available.</div>;
+
+  const card = cards[index] || cards[0];
 
   return (
     <div className="flashcard-container">
       <div className={`flashcard ${flipped ? 'flipped' : ''}`} onClick={() => setFlipped(!flipped)}>
         <div className="card-face card-front">
-          <h3><Latex>{card.front}</Latex></h3>
+          <h3 style={{ fontSize: '1.5rem' }}><RenderText text={card.front} /></h3>
           {card.source_reference && <span style={{ position: 'absolute', bottom: '1rem', fontSize: '0.8rem', opacity: 0.6 }}>{card.source_reference}</span>}
         </div>
         <div className="card-face card-back">
-          <div style={{ fontSize: '1.2rem' }}><Latex>{card.back}</Latex></div>
-          {card.hint && <div style={{ marginTop: '1rem', color: '#f1f5f9', opacity: 0.8 }}>💡 <Latex>{card.hint}</Latex></div>}
+          <div style={{ fontSize: '1.3rem' }}><RenderText text={card.back} /></div>
+          {card.hint && <div style={{ marginTop: '1rem', color: '#f1f5f9', opacity: 0.8 }}>💡 <RenderText text={card.hint} /></div>}
         </div>
       </div>
       <div className="card-controls">
-        <button className="control-btn" onClick={() => setFlipped(!flipped)}>
-          Flip (Space)
-        </button>
-        <button className="control-btn" onClick={nextCard} style={{ background: '#818cf8', color: 'white' }}>
-          Next Card (→)
-        </button>
+        <button className="control-btn" onClick={() => setFlipped(!flipped)}>Flip (Space)</button>
+        <button className="control-btn" onClick={nextCard} style={{ background: '#818cf8', color: 'white' }}>Next Card (→)</button>
       </div>
       <p style={{ marginTop: '2rem', color: '#64748b' }}>{index + 1} / {cards.length}</p>
     </div>

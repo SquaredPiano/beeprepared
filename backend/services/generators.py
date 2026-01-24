@@ -340,14 +340,17 @@ class ArtifactGenerator:
             - "title": "Quiz Title"
             - "questions": List of objects:
                 - "id": "1"
-                - "text": "Question Text"
+                - "text": "Question Text (ENSURE SPACES BETWEEN WORDS)"
                 - "type": "MCQ" or "True/False"
                 - "options": ["A", "B", "C", "D"] (List of strings only!)
                 - "correct_answer_index": int (0-based index of correct option)
                 - "explanation": "Detailed explanation..."
                 - "topic_focus": "Concept being tested"
-        - Use strict LaTeX for math strings ($\int$).
-        - **CRITICAL JSON SYNTAX**: You MUST double-escape backslashes in JSON strings. Use "\\\\" for backslashes (e.g. "\\\\int", not "\\int").
+        - **Math Formatting (CRITICAL)**:
+            - **DELIMITERS**: Wrap ALL math in single dollar signs ($...$) for inline or double ($$...$$) for block.
+            - **BACKSLASHES**: You MUST double-escape backslashes in JSON strings. Use "\\\\" for backslashes (e.g. "\\\\int", "\\\\frac").
+            - **NO UNICODE**: Do not use unicode math symbols. Use LaTeX.
+            - **SPACING**: Ensure proper spacing between words (e.g. "The integral" not "Theintegral").
         - Return strictly valid JSON.
         """
         try:
@@ -378,8 +381,10 @@ class ArtifactGenerator:
                 - "back": "Definition or Answer" (Clear, formatted)
                 - "hint": "Optional hint" or null
                 - "source_reference": "Lecture timestamp or section name"
-        - Use strict LaTeX for math.
-        - **CRITICAL JSON SYNTAX**: You MUST double-escape backslashes in JSON strings. Use "\\\\" for backslashes (e.g. "\\\\int", not "\\int").
+        - **Math Formatting (CRITICAL)**:
+            - **DELIMITERS**: Wrap ALL math in $...$ (inline) or $$...$$ (block).
+            - **BACKSLASHES**: Double-escape backslashes: "\\\\sum", "\\\\alpha".
+            - **SPACING**: Ensure proper spacing between words.
         - Return strictly valid JSON.
         """
         try:
@@ -388,10 +393,7 @@ class ArtifactGenerator:
             if response.text:
                 data = json.loads(response.text)
                 if "cards" not in data and isinstance(data, list):
-                    data = {"cards": data} # FlashcardModel doesn't have title? Wait, checking schema.
-                # Schema: cards: List[Flashcard]. No title?
-                # Let's check schema. FlashcardModel has only cards?
-                # Previous view showed: class FlashcardModel(BaseModel): cards: List[Flashcard].
+                    data = {"cards": data}
                 return FlashcardModel(**data)
         except Exception as e:
             logger.error(f"Failed to generate Flashcards: {e}")
@@ -413,8 +415,10 @@ class ArtifactGenerator:
                 - "content_block": "Detailed markdown content..."
                 - "key_terms": ["Term 1", "Term 2"]
                 - "callouts": ["Important: ...", "Formula: ..."]
-        - Use strict LaTeX for math.
-        - **CRITICAL JSON SYNTAX**: You MUST double-escape backslashes in JSON strings. Use "\\\\" for backslashes (e.g. "\\\\int", not "\\int").
+        - **Math Formatting (CRITICAL)**:
+            - **DELIMITERS**: Wrap ALL math in $...$ (inline) or $$...$$ (block).
+            - **BACKSLASHES**: Double-escape backslashes: "\\\\int".
+            - **MARKDOWN**: Use standard Markdown headers and lists.
         - Return strictly valid JSON.
         """
         try:
@@ -446,7 +450,7 @@ class ArtifactGenerator:
                 - "bullet_points": ["Point 1", "Point 2", "Point 3"]
                 - "visual_cue": "Description of image/chart"
                 - "speaker_notes": "Script for speaker"
-        - **Math Formatting**: For Slides, DO NOT use LaTeX. Use Unicode characters for math where possible (e.g., use "∫" instead of "\\int", "∑" instead of "\\sum", "x²" instead of "x^2"). This is because the output target (PPTX) does not support LaTeX rendering.
+        - **Math Formatting**: For Slides, DO NOT use LaTeX. Use Unicode characters for math where possible (e.g., use "∫" instead of "\\int").
         - **CRITICAL JSON SYNTAX**: You MUST double-escape backslashes in JSON strings if any remain.
         - Return strictly valid JSON.
         """
