@@ -1,0 +1,336 @@
+{
+  "title": "Science Fiction and Fantasy Writing Lecture - Introductory Material",
+  "summary": "Brandon Sanderson's introductory lecture for his science fiction and fantasy writing class at BYU covers his teaching philosophy, the differences between discovery writers and outline writers, the importance of writing advice, the distinction between being a professional and non-professional writer, and the realities of making a living as a fiction writer. He emphasizes the importance of practicing writing, learning revision, and understanding survivorship bias. He also shares a personal story about facing rejection and choosing to continue writing regardless of external success.",
+  "concepts": [
+    {
+      "name": "Discovery Writer vs. Outline Writer",
+      "description": "The contrast between writers who discover their story as they write (discovery writers) and those who plan extensively beforehand (outline writers). Most writers fall somewhere in between.",
+      "importance_score": 10
+    },
+    {
+      "name": "Professional vs. Non-Professional Writer",
+      "description": "The distinction between writing as a hobby and writing as a full-time career, with the understanding that the advice given in the class is tailored toward aspiring professionals but can benefit all writers.",
+      "importance_score": 9
+    },
+    {
+      "name": "Survivorship Bias",
+      "description": "The tendency to overvalue the advice of successful individuals without considering the role of luck or randomness in their success.",
+      "importance_score": 8
+    },
+    {
+      "name": "Revision",
+      "description": "The process of reviewing and improving written work, emphasized as a critical skill for writers to develop.",
+      "importance_score": 9
+    },
+    {
+      "name": "Writing Groups",
+      "description": "Groups of writers who share and critique each other's work. Sanderson provides guidelines for effective participation in writing groups.",
+      "importance_score": 7
+    }
+  ],
+  "section_hierarchy": [
+    {
+      "title": "Introduction",
+      "summary": "Welcome to the 2025 lecture series on science fiction and fantasy writing.",
+      "subsections": [
+        {
+          "title": "Course Overview",
+          "summary": "The course will cover introductory material, the instructor's teaching philosophy, discovery writing vs. outline writing, and approaching writing with a professional mindset."
+        }
+      ]
+    },
+    {
+      "title": "Class Structure and Recording",
+      "summary": "The class is structured as a lecture series, with a separate application-only class following the lecture. The lectures are recorded and posted on YouTube.",
+      "subsections": [
+        {
+          "title": "Lecture Format",
+          "summary": "Brandon will lecture for about an hour and a half, and answer questions."
+        },
+        {
+          "title": "Application Class",
+          "summary": "A smaller, application-only class follows the lecture series."
+        },
+        {
+          "title": "Topics Covered",
+          "summary": "The course will cover plot, setting, character, and the business of writing, each for two weeks followed by a Q&A session."
+        }
+      ]
+    },
+    {
+      "title": "Philosophy of the Class",
+      "summary": "The core philosophy is to treat students as chefs rather than cooks, emphasizing understanding the tools and processes of writing to create desired effects.",
+      "subsections": [
+        {
+          "title": "Writing Advice",
+          "summary": "Writing advice is individual, what works for some may not work for others."
+        },
+        {
+          "title": "Gardener vs Architect",
+          "summary": "Some writers are architects, others are gardeners."
+        },
+        {
+          "title": "Chef vs Cook",
+          "summary": "The goal is to become a chef in writing, understanding the effects of different writing techniques."
+        }
+      ]
+    },
+    {
+      "title": "Being a Pro vs. Being a Non-Pro Writer",
+      "summary": "The class will approach writing from the perspective of someone wanting to make a living as a science fiction/fantasy novelist, though all are welcome.",
+      "subsections": [
+        {
+          "title": "Utilitarian Perspective",
+          "summary": "Society often approaches art from a utilitarian perspective, but the primary purpose of art is to enrich the artist's life."
+        },
+        {
+          "title": "Realities of Professional Writing",
+          "summary": "Making a living as a professional novelist is difficult but more attainable than commonly believed."
+        }
+      ]
+    },
+    {
+      "title": "Focus on Process, Not Sales (Early On)",
+      "summary": "New writers should focus on writing enough books to learn their process, rather than trying to sell their first books.",
+      "subsections": [
+        {
+          "title": "Learning Your Scales",
+          "summary": "Treat early writing like learning scales on a piano, focusing on practice and development."
+        },
+        {
+          "title": "Balancing Artist and Business",
+          "summary": "While writing, the artist should be in control. After finishing the book, a business-minded persona should take over to exploit the book for profit."
+        }
+      ]
+    },
+    {
+      "title": "Revision and Practice",
+      "summary": "Revision is a critical skill to learn. Writing multiple books helps develop this skill and allows for more practice.",
+      "subsections": [
+        {
+          "title": "Importance of Revision",
+          "summary": "Revision is a difficult skill to learn, as important as writing a book."
+        },
+        {
+          "title": "Over-Revising",
+          "summary": "Be aware that constantly revising early chapters leads to no progress."
+        }
+      ]
+    },
+    {
+      "title": "Motivation and Survivorship Bias",
+      "summary": "The instructor discusses his motivations for writing, emphasizing the importance of finding personal enjoyment in the process. He also addresses survivorship bias.",
+      "subsections": [
+        {
+          "title": "Finding Motivation",
+          "summary": "Identify personal reasons for writing and track progress."
+        },
+        {
+          "title": "Survivorship Bias",
+          "summary": "Be aware that success stories don't tell the full story. It is important to recognize that success might be random."
+        }
+      ]
+    },
+    {
+      "title": "Story of Almost Giving Up",
+      "summary": "The instructor shares a personal story about facing rejection from graduate schools and nearly giving up on writing.",
+      "subsections": [
+        {
+          "title": "Facing Rejection",
+          "summary": "Confronting the decision to keep writing even without external validation."
+        },
+        {
+          "title": "Embracing Personal Goals",
+          "summary": "Deciding to write for personal fulfillment regardless of professional success."
+        }
+      ]
+    },
+    {
+      "title": "Questions and Answers",
+      "summary": "The instructor answers questions about writing in the same world, rewriting stories and revision, and writing groups.",
+      "subsections": [
+        {
+          "title": "Writing in the Same World",
+          "summary": "Writing multiple books in the same world, but with different characters is a viable option."
+        },
+        {
+          "title": "Ideas Are Cheap",
+          "summary": "The execution is what really matters."
+        },
+        {
+          "title": "Rewriting Stories",
+          "summary": "Make small revisions."
+        },
+        {
+          "title": "Writing Groups",
+          "summary": "The writing group can ruin your writing."
+        }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "heading": "Course Introduction and Philosophy",
+      "bullets": [
+        "The class is a lecture series on science fiction and fantasy writing at BYU.",
+        "The class will cover plot, setting, character, and the business of writing.",
+        "The instructor's teaching philosophy is to treat students like chefs, understanding the tools of writing to create desired effects.",
+        "Writing advice is individual; what works for some may not work for others.",
+        "Most writers are a mix of 'gardener' (discovery writer) and 'architect' (outliner).",
+        "The goal is to learn all the tools and processes to create the desired effect in stories.",
+        "Writing can be approached as a hobby or as a profession.",
+        "The advice given is tailored toward aspiring professionals.",
+        "Making a living as a professional novelist is difficult but more attainable than commonly believed."
+      ]
+    },
+    {
+      "heading": "Focus on Process and Revision",
+      "bullets": [
+        "New writers should focus on writing enough books to learn their process.",
+        "Treat early writing like learning scales on a piano, focusing on practice and development.",
+        "While writing, the artist should be in control; after finishing, a business-minded persona should take over.",
+        "Revision is a critical skill to learn.",
+        "The instructor's slowness in selling Elantris was due to a lack of revision skills.",
+        "Over-revising early chapters can hinder progress.",
+        "The product of writing time is oneself; the time spent writing changes the writer."
+      ]
+    },
+    {
+      "heading": "Motivation and Realities",
+      "bullets": [
+        "Find personal enjoyment in writing; this is key motivation.",
+        "Track writing progress to stay motivated.",
+        "Be aware of survivorship bias; the success of others may not be replicable.",
+        "The instructor shares a personal story about facing rejection and choosing to continue writing.",
+        "It's a good idea to have a backup plan."
+      ]
+    },
+    {
+      "heading": "Questions and Answers",
+      "bullets": [
+        "Writing multiple books in the same world, but not as direct sequels, is a viable option.",
+        "Ideas are cheap; execution is what matters.",
+        "Mash ideas together to create practice stories.",
+        "To revise, figure out if carrots or sticks or other method works for motivating, bundle the habit with something already a habit.",
+        "Make a revision guide and a revision outline, as if working on debugging a program."
+      ]
+    },
+    {
+      "heading": "Writing Groups",
+      "bullets": [
+        "The writing group can ruin your writing.",
+        "If a discovery writer, be careful about taking too much advice until the book is finished.",
+        "Do not defend yourself, but listen to the feedback given. Try to be a fly on the wall.",
+        "Take the feedback on a book and set it aside for a few months while working on something else, then make a guide to revise it.",
+        "If giving feedback, be descriptive and not prescriptive."
+      ]
+    }
+  ],
+  "definitions": [
+    {
+      "term": "Discovery Writer",
+      "definition": "A writer who discovers the story as they write, without extensive pre-planning.",
+      "context": "Discussing different approaches to writing."
+    },
+    {
+      "term": "Outline Writer",
+      "definition": "A writer who plans the story extensively before writing, using detailed outlines.",
+      "context": "Discussing different approaches to writing."
+    },
+    {
+      "term": "Gardener",
+      "definition": "A metaphor for a writer who nurtures the story as it grows, discovering it along the way.",
+      "context": "Comparing writing styles to gardening."
+    },
+    {
+      "term": "Architect",
+      "definition": "A metaphor for a writer who builds a structured plan for the story before writing.",
+      "context": "Comparing writing styles to architecture."
+    },
+    {
+      "term": "Chef",
+      "definition": "Someone who understands the tools and processes of writing and can create desired effects.",
+      "context": "Comparing learning to write as learning to cook."
+    },
+    {
+      "term": "Cook",
+      "definition": "Someone who follows recipes (writing advice) without understanding the underlying principles.",
+      "context": "Comparing learning to write as learning to cook."
+    },
+    {
+      "term": "Survivorship Bias",
+      "definition": "The tendency to overvalue the advice of successful individuals without considering luck or randomness.",
+      "context": "Discussing the challenges of making a living as a writer."
+    },
+    {
+      "term": "Grimdark",
+      "definition": "A subgenre of fantasy known for its dark, morally ambiguous tone and often violent content.",
+      "context": "Discussing market trends and the instructor's writing style."
+    },
+    {
+      "term": "CV",
+      "definition": "Curriculum Vitae, similar to a resume, but used in academic contexts.",
+      "context": "The CV is used to help a student be accepted to a top-tier school."
+    }
+  ],
+  "examples": [
+    {
+      "description": "Orson Scott Card emphasizing outlines versus Stephen King claiming outlines ruin stories.",
+      "relevance": "Illustrates that writing advice is individual and what works for one writer may not work for another."
+    },
+    {
+      "description": "George R. R. Martin's description of writers as either 'gardeners' or 'architects'.",
+      "relevance": "Provides a metaphor for understanding different writing styles."
+    },
+    {
+      "description": "The instructor's metaphor of a 'cook' versus a 'chef' to describe different approaches to writing.",
+      "relevance": "Illustrates the importance of understanding the tools and processes of writing to create desired effects."
+    },
+    {
+      "description": "The instructor's mother wanting him to be a doctor.",
+      "relevance": "Shows how society tends to be utilitarian, and how art may not be the ideal profession in their eyes."
+    },
+    {
+      "description": "John Scalzi writing a book based on what was selling at the bookstore.",
+      "relevance": "Demonstrates the balance between artistic integrity and commercial viability."
+    },
+    {
+      "description": "Jim Butcher's 'Codex Alera', based on someone else's bad ideas.",
+      "relevance": "Demonstrates that execution is what really matters, and great writing makes the ideas pop."
+    },
+    {
+      "description": "Grimdark assassin finding love.",
+      "relevance": "Shows how he can't write grimdark."
+    }
+  ],
+  "key_facts": [
+    {
+      "fact": "The instructor teaches science fiction and fantasy writing at BYU.",
+      "category": "Biographical"
+    },
+    {
+      "fact": "The class covers plot, setting, character, and the business of writing.",
+      "category": "Course Content"
+    },
+    {
+      "fact": "The lectures are recorded and posted on YouTube.",
+      "category": "Logistical"
+    },
+    {
+      "fact": "Most writers are somewhere between discovery writers and outline writers.",
+      "category": "Writing Process"
+    },
+    {
+      "fact": "Writing advice is individual; what works for some may not work for others.",
+      "category": "Writing Advice"
+    },
+    {
+      "fact": "The instructor sold his sixth book, 'Elantris'.",
+      "category": "Biographical"
+    },
+    {
+      "fact": "A significant portion of making a living from writing is less than 1 in 20.",
+      "category": "Statistical"
+    }
+  ]
+}
