@@ -360,6 +360,6 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## Acknowledgments
 
-This project draws inspiration from several platforms. Eduflow demonstrated the power of visual learning path builders through drag-and-drop course creation. Architex showed how structured outputs can emerge from unstructured inputs. Duolingo proved gamification can enhance learning without manipulation. We adapted these concepts for AI-powered study material generation.
+This project draws inspiration from modern visual learning path builders and structured knowledge synthesis patterns. We also credit platforms like Duolingo for demonstrating how gamification can enhance the learning experience.
 
-Built with care by students who understand the challenge of exam preparation. We hope BeePrepared makes studying more effective and less stressful.
+Built with care for students who understand the challenge of exam preparation. We hope BeePrepared makes studying more effective and less stressful.

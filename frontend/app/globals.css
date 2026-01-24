@@ -104,8 +104,10 @@
   .react-flow__handle,
   .react-flow__edge,
   .react-flow__edge-path,
+  .react-flow__pane,
   select,
   summary,
+  label,
   [draggable="true"] {
     cursor: pointer !important;
   }

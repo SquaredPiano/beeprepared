@@ -134,10 +134,58 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Sidebar Controls */}
-        <aside className="space-y-12">
-          <div className="space-y-6 reveal">
-            <h2 className="font-display text-xs uppercase tracking-[0.2em] font-bold opacity-40">System Node</h2>
+          {/* Sidebar Controls */}
+          <aside className="space-y-12">
+            {/* Gamification Section */}
+            <div className="space-y-6 reveal">
+              <h2 className="font-display text-xs uppercase tracking-[0.2em] font-bold opacity-40">Bee Economy</h2>
+              <div className="p-8 glass rounded-[2.5rem] border border-border/40 space-y-8 relative overflow-hidden group">
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">Your Balance</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-display font-bold">450</span>
+                      <span className="text-honey-600 text-xs font-bold uppercase tracking-widest">Drops</span>
+                    </div>
+                  </div>
+                  <div className="w-16 h-16 bg-honey-500/10 rounded-full flex items-center justify-center border border-honey-500/20 group-hover:scale-110 transition-transform duration-500">
+                    <span className="text-3xl">🍯</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4 relative z-10">
+                  <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold">
+                    <span className="opacity-40">Worker Bee</span>
+                    <span className="text-honey-600">550 to next level</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden border border-border/20">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-honey-400 to-honey-600"
+                      initial={{ width: 0 }}
+                      animate={{ width: "45%" }}
+                      transition={{ duration: 1.5, ease: "expo.out" }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 grid grid-cols-2 gap-4 relative z-10">
+                  <div className="p-4 rounded-2xl bg-honey-50/50 border border-honey-100 flex flex-col gap-1">
+                    <span className="text-[8px] uppercase tracking-widest font-bold opacity-40">Contribution</span>
+                    <span className="text-sm font-bold text-honey-700">+12.4%</span>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-green-50/50 border border-green-100 flex flex-col gap-1">
+                    <span className="text-[8px] uppercase tracking-widest font-bold opacity-40">Status</span>
+                    <span className="text-sm font-bold text-green-700">Active</span>
+                  </div>
+                </div>
+
+                <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-48 h-48 bg-honey-500/5 rounded-full blur-3xl" />
+              </div>
+            </div>
+
+            <div className="space-y-6 reveal">
+              <h2 className="font-display text-xs uppercase tracking-[0.2em] font-bold opacity-40">System Node</h2>
+
             <div className="space-y-3">
               <Link href="/dashboard/canvas" className="w-full flex items-center justify-between p-4 rounded-xl border border-border/40 hover:bg-white transition-all group cursor-pointer">
                 <div className="flex items-center gap-3">
