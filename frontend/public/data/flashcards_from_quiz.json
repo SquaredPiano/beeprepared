@@ -1,0 +1,76 @@
+{
+  "cards": [
+    {
+      "front": "How many total lectures are scheduled for this Introductory Calculus course?",
+      "back": "**16**\n\nThe practical information section states there are 16 lectures in total for the course.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q1"
+    },
+    {
+      "front": "The integration by parts formula is derived from the product rule of differentiation.",
+      "back": "**True**\n\nIntegration by parts is based on reversing the product rule: $(\\text{fg})' = \\text{f}'\\text{g} + \\text{fg}'$, which leads to $\\int\\text{fg}' \\text{dx} = \\text{fg} - \\int\\text{f}'\\text{g} \\text{dx}$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q2"
+    },
+    {
+      "front": "What determines the 'order' of an Ordinary Differential Equation (ODE)?",
+      "back": "**The order of the highest derivative that occurs**\n\nThe order of an ODE is defined by the order of the highest derivative present in the equation.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q3"
+    },
+    {
+      "front": "According to the syllabus structure, the first half of the course (7-8 lectures) is primarily dedicated to the study of Line and Double Integrals.",
+      "back": "**False**\n\nThe syllabus states that the first half (7-8 lectures) focuses on Differential Equations (ODEs and PDEs). Line and double integrals constitute the 'Second part' (3 lectures).",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q4"
+    },
+    {
+      "front": "Which technique is used to solve the simplest type of ODE, defined as $\\frac{dy}{dx} = f(x)$?",
+      "back": "**Direct integration**\n\nThe note states that the simplest ODE, $\\frac{dy}{dx} = f(x)$, is solved by direct integration.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q5"
+    },
+    {
+      "front": "The differential equation modeling an RLC circuit is derived from Kirchhoff's Law and involves the second derivative of the charge $Q$ with respect to time $t$.",
+      "back": "**True**\n\nThe RLC equation is $L\\frac{d^2Q}{dt^2} + R\\frac{dQ}{dt} + (1/C)Q = V$, which is a second-order ODE in terms of charge Q.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q6"
+    },
+    {
+      "front": "A differential equation is considered 'separable' if it can be written in the form:",
+      "back": "**$$\\frac{dy}{dx} = a(x)b(y)$$**\n\nA separable equation has the form $\\frac{dy}{dx} = a(x)b(y)$, allowing variables to be separated: $\\int (1/b(y)) \\text{dy} = \\int a(x) \\text{dx}$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q7"
+    },
+    {
+      "front": "Newton's second law ($F=ma$) must always be expressed as a first-order differential equation because acceleration is the first derivative of velocity.",
+      "back": "**False**\n\nSince acceleration ($a$) is the second derivative of displacement ($r$) with respect to time ($t$), $F=m(d^2r/dt^2)$ results in a second-order differential equation when displacement is the dependent variable.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q8"
+    },
+    {
+      "front": "Which topic is associated with the final part of the course and includes concepts like surfaces and gradient normal vectors?",
+      "back": "**Calculus of functions in two variables**\n\nThe final part of the syllabus is 'Calculus of functions in two variables,' covering topics like surfaces, gradient, normal vectors, critical points, and Lagrange multipliers.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q9"
+    },
+    {
+      "front": "The recommended textbook for the course is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
+      "back": "**True**\n\nThe key facts and notes confirm that the recommended book is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q10"
+    },
+    {
+      "front": "When using the integration by parts formula $\\int \\text{fg}' \\text{dx} = \\text{fg} - \\int \\text{f}'\\text{g} \\text{dx}$ to solve $\\int x^2 \\sin(x) \\text{dx}$, the optimal choice is often $f = x^2$ and $g' = \\sin(x)$.",
+      "back": "**True**\n\nChoosing $f = x^2$ allows the polynomial term to reduce in complexity after taking the derivative ($f'$), while $\\sin(x)$ is easily integrable, making this choice optimal for reduction.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q11"
+    },
+    {
+      "front": "The reduction formula for $I_n = \\int \\cos^n(x) \\text{dx}$ provided in the review relates the integral $I_n$ to $I_{n-2}$.",
+      "back": "**True**\n\nThe reduction formula given is $I_n = (1/n)\\cos^{n-1}(x)\\sin(x) + ((n-1)/n)I_{n-2}$. It connects $I_n$ to the integral of $\\cos(x)$ raised to a power reduced by two.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q12"
+    }
+  ]
+}
