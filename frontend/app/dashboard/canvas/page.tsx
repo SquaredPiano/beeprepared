@@ -75,10 +75,6 @@ function CanvasHeader() {
 export default function CanvasPage() {
   return (
     <div className="flex flex-col h-screen bg-cream overflow-hidden font-sans">
-      <Suspense fallback={<div className="h-24 bg-white/50 animate-pulse" />}>
-        <CanvasHeader />
-      </Suspense>
-
       {/* Canvas Area */}
       <main className="flex-1 relative min-h-0">
         <motion.div 

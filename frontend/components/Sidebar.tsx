@@ -22,7 +22,7 @@ import { Logo } from "./Logo";
 import { useSidebarStore } from "@/store/useSidebarStore";
 
 export function Sidebar() {
-  const { isCollapsed, toggle, collapse } = useSidebarStore();
+  const { isCollapsed, toggle, collapse, expand } = useSidebarStore();
   const pathname = usePathname();
 
   // Auto-collapse on canvas view

@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
 import { useIngestionStore } from "@/store/ingestionStore";
+import { useMascotAI } from "@/hooks/useMascotAI";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const [progress, setProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const { addFile } = useIngestionStore();
+  const { triggerReaction } = useMascotAI();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -85,6 +87,18 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
       // For now we'll just simulate it
       console.log("Uploading file:", file.name);
     });
+
+    // Mascot reaction to upload complete
+    if (files.length > 0) {
+      triggerReaction({
+        event: 'upload_complete',
+        data: {
+          filename: files[0].name,
+          count: files.length,
+          type: files[0].type
+        }
+      });
+    }
 
     setUploading(false);
     setFiles([]);
