@@ -74,6 +74,7 @@ class KnowledgeCoreService:
             logger.warning("GEMINI_API_KEY not found. Knowledge Core generation will fail.")
             self.client = None
 
+
     def generate_knowledge_core(self, clean_text: str) -> Optional[KnowledgeCore]:
         """
         Generates the Knowledge Core JSON structure from cleaned text.

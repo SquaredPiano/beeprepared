@@ -14,9 +14,17 @@ import os
 import logging
 import tempfile
 import time
+import shutil
 from pathlib import Path
 from typing import Optional, Tuple
 from dotenv import load_dotenv
+
+import boto3
+import azure.cognitiveservices.speech as speechsdk
+import fitz
+from pptx import Presentation
+from docx import Document
+import ffmpeg
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,31 +43,68 @@ class ExtractionService:
     SUPPORTED_DOCS = {'.pdf', '.pptx', '.ppt', '.md', '.txt', '.docx'}
     
     def __init__(self):
-        self._setup_azure_speech()
+        # self._setup_azure_speech()
+        self._setup_deepgram()
+        self._setup_r2()
     
-    def _setup_azure_speech(self):
-        """Initialize Azure Speech SDK."""
-        self.azure_key = os.getenv("AZURE_SPEECH_KEY")
-        self.azure_region = os.getenv("AZURE_SPEECH_REGION", "eastus")
-        
-        if self.azure_key:
+    def _setup_deepgram(self):
+        """Initialize Deepgram SDK."""
+        self.dg_key = os.getenv("DEEPGRAM_API_KEY") or os.getenv("DEEPGRAM_KEY")
+        if self.dg_key:
             try:
-                import azure.cognitiveservices.speech as speechsdk
-                self.speech_config = speechsdk.SpeechConfig(
-                    subscription=self.azure_key,
-                    region=self.azure_region
-                )
-                # Configure for long-form transcription
-                self.speech_config.speech_recognition_language = "en-US"
-                self.speech_config.enable_dictation()
-                self.speech_config.request_word_level_timestamps()
-                logger.info("Azure Speech SDK initialized successfully")
+                from deepgram import DeepgramClient
+                self.deepgram = DeepgramClient(api_key=self.dg_key)
+                logger.info("Deepgram SDK initialized successfully.")
             except Exception as e:
-                logger.error(f"Failed to initialize Azure Speech: {e}")
-                self.speech_config = None
+                logger.error(f"Failed to initialize Deepgram: {e}")
+                self.deepgram = None
         else:
-            logger.warning("AZURE_SPEECH_KEY not found. Audio transcription will fail.")
-            self.speech_config = None
+            logger.warning("DEEPGRAM_API_KEY not found. Audio transcription will fail.")
+            self.deepgram = None
+
+    def _setup_r2(self):
+        """Initialize Cloudflare R2 client."""
+        self.r2_endpoint = os.getenv("R2_ENDPOINT_URL")
+        self.r2_key = os.getenv("R2_ACCESS_KEY_ID")
+        self.r2_secret = os.getenv("R2_SECRET_ACCESS_KEY")
+        self.r2_bucket = os.getenv("R2_BUCKET_NAME")
+
+        if self.r2_endpoint and self.r2_key and self.r2_secret:
+            try:
+                self.s3_client = boto3.client(
+                    service_name='s3',
+                    endpoint_url=self.r2_endpoint,
+                    aws_access_key_id=self.r2_key,
+                    aws_secret_access_key=self.r2_secret
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize R2 client: {e}")
+                self.s3_client = None
+        else:
+            logger.warning("R2 credentials missing. R2 download will fail.")
+            self.s3_client = None
+
+    def extract_from_r2(self, r2_key: str) -> Tuple[str, dict]:
+        """
+        Download file from R2 -> Temp File -> Extract -> Return.
+        """
+        if not self.s3_client:
+            raise RuntimeError("R2 client not initialized. Check credentials.")
+
+        logger.info(f"Downloading from R2: {r2_key}")
+        ext = os.path.splitext(r2_key)[1]
+        
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            self.s3_client.download_file(self.r2_bucket, r2_key, tmp_path)
+            logger.info(f"Downloaded to temp file: {tmp_path}")
+            return self.extract(tmp_path)
+            
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
     
     def detect_file_type(self, file_path: str) -> str:
         """Detect the type of file based on extension."""
@@ -98,7 +143,7 @@ class ExtractionService:
             "markdown": self._extract_text,
             "text": self._extract_text,
             "docx": self._extract_docx,
-            "audio": self._transcribe_audio,
+            "audio": self._transcribe_deepgram,
             "video": self._transcribe_video,
         }
         
@@ -124,11 +169,6 @@ class ExtractionService:
     
     def _extract_pdf(self, file_path: str) -> Tuple[str, dict]:
         """Extract text from PDF using PyMuPDF."""
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
-            raise ImportError("PyMuPDF not installed. Run: pip install pymupdf")
-        
         logger.info(f"Extracting PDF: {file_path}")
         
         doc = fitz.open(file_path)
@@ -151,11 +191,6 @@ class ExtractionService:
     
     def _extract_pptx(self, file_path: str) -> Tuple[str, dict]:
         """Extract text from PowerPoint presentations."""
-        try:
-            from pptx import Presentation
-        except ImportError:
-            raise ImportError("python-pptx not installed. Run: pip install python-pptx")
-        
         logger.info(f"Extracting PPTX: {file_path}")
         
         prs = Presentation(file_path)
@@ -208,11 +243,6 @@ class ExtractionService:
     
     def _extract_docx(self, file_path: str) -> Tuple[str, dict]:
         """Extract text from Word documents."""
-        try:
-            from docx import Document
-        except ImportError:
-            raise ImportError("python-docx not installed. Run: pip install python-docx")
-        
         logger.info(f"Extracting DOCX: {file_path}")
         
         doc = Document(file_path)
@@ -243,13 +273,7 @@ class ExtractionService:
     
     def _convert_to_wav(self, input_path: str, output_path: str) -> None:
         """Convert audio/video to Azure-compatible WAV format."""
-        try:
-            import ffmpeg
-        except ImportError:
-            raise ImportError("ffmpeg-python not installed. Run: pip install ffmpeg-python")
-        
         logger.info(f"Converting to WAV: {input_path} -> {output_path}")
-        
         try:
             (
                 ffmpeg
@@ -266,8 +290,6 @@ class ExtractionService:
         """Transcribe audio file using Azure Speech."""
         if not self.speech_config:
             raise RuntimeError("Azure Speech not configured. Check AZURE_SPEECH_KEY.")
-        
-        import azure.cognitiveservices.speech as speechsdk
         
         # Convert to WAV if needed
         ext = Path(file_path).suffix.lower()
@@ -287,79 +309,76 @@ class ExtractionService:
             if ext != ".wav" and os.path.exists(wav_path):
                 os.remove(wav_path)
     
+    def _transcribe_deepgram(self, file_path: str) -> Tuple[str, dict]:
+        """
+        Transcribe audio using Deepgram Nova-2 (Direct REST API).
+        Bypasses SDK version issues.
+        """
+        if not self.dg_key:
+            self.dg_key = os.getenv("DEEPGRAM_API_KEY") or os.getenv("DEEPGRAM_KEY")
+            
+        if not self.dg_key:
+            raise RuntimeError("Deepgram API Key not found.")
+
+        logger.info(f"Transcribing with Deepgram Nova-2 (REST): {file_path}")
+        
+        try:
+            import requests
+            
+            with open(file_path, "rb") as audio:
+                data = audio.read()
+            
+            # Determine content type (optional, but good practice)
+            ext = Path(file_path).suffix.lower()
+            content_type = "audio/wav"
+            if ext == ".mp3": content_type = "audio/mpeg"
+            elif ext == ".m4a": content_type = "audio/mp4" # approx
+            
+            url = "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&language=en"
+            headers = {
+                "Authorization": f"Token {self.dg_key}",
+                "Content-Type": content_type
+            }
+            
+            response = requests.post(url, headers=headers, data=data)
+            response.raise_for_status()
+            
+            result = response.json()
+            # Parse result
+            transcript = result['results']['channels'][0]['alternatives'][0]['transcript']
+            
+            logger.info(f"Deepgram transcription complete. Length: {len(transcript)} chars")
+            
+            metadata = {
+                "source": Path(file_path).name,
+                "provider": "deepgram",
+                "model": "nova-2 (REST)"
+            }
+            return transcript, metadata
+
+        except Exception as e:
+            logger.error(f"Deepgram transcription failed: {e}")
+            raise
+
     def _transcribe_video(self, file_path: str) -> Tuple[str, dict]:
-        """Extract audio from video and transcribe."""
+        """Extract audio from video and transcribe with Deepgram."""
         logger.info(f"Extracting audio from video: {file_path}")
         
+        # Extracted audio temp file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             wav_path = tmp.name
         
         try:
             self._convert_to_wav(file_path, wav_path)
-            return self._run_continuous_recognition(wav_path)
+            # Re-route to Deepgram
+            return self._transcribe_deepgram(wav_path)
         finally:
             if os.path.exists(wav_path):
                 os.remove(wav_path)
     
     def _run_continuous_recognition(self, wav_path: str) -> Tuple[str, dict]:
-        """
-        Run continuous speech recognition for long audio files.
-        Uses Azure Speech SDK's continuous recognition API.
-        """
-        import azure.cognitiveservices.speech as speechsdk
-        import threading
-        
-        audio_config = speechsdk.audio.AudioConfig(filename=wav_path)
-        speech_recognizer = speechsdk.SpeechRecognizer(
-            speech_config=self.speech_config,
-            audio_config=audio_config
-        )
-        
-        # Store results
-        all_results = []
-        done = threading.Event()
-        error_msg = None
-        
-        def recognized_cb(evt):
-            if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                all_results.append(evt.result.text)
-                logger.debug(f"Recognized: {evt.result.text[:50]}...")
-        
-        def canceled_cb(evt):
-            nonlocal error_msg
-            if evt.reason == speechsdk.CancellationReason.Error:
-                error_msg = f"Speech recognition error: {evt.error_details}"
-                logger.error(error_msg)
-            done.set()
-        
-        def stopped_cb(evt):
-            done.set()
-        
-        # Connect callbacks
-        speech_recognizer.recognized.connect(recognized_cb)
-        speech_recognizer.canceled.connect(canceled_cb)
-        speech_recognizer.session_stopped.connect(stopped_cb)
-        
-        # Start recognition
-        logger.info("Starting continuous recognition...")
-        speech_recognizer.start_continuous_recognition()
-        
-        # Wait for completion (max 30 minutes)
-        done.wait(timeout=1800)
-        
-        speech_recognizer.stop_continuous_recognition()
-        
-        if error_msg:
-            logger.warning(f"Recognition had errors: {error_msg}")
-        
-        full_text = " ".join(all_results)
-        metadata = {
-            "source": Path(wav_path).name,
-            "segment_count": len(all_results),
-            "language": "en-US"
-        }
-        
-        return full_text, metadata
+       """Deprecated Azure Method - Kept for reference but unused."""
+       pass
 
 
 # =============================================================================
