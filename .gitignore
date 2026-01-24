@@ -1,2 +1,25 @@
+# Environment
+.env
+.env.local
+
+# Virtual Environments
 backend/venv
-.env*
+frontend/node_modules
+
+# Build outputs
+frontend/.next
+frontend/out
+
+# Testing temp
+eg_temp
+frontend/eg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
