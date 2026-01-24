@@ -1,6 +1,6 @@
 yt-dlp
 ffmpeg-python
-google-generativeai
+google-genai
 python-dotenv
 boto3
 azure-cognitiveservices-speech
