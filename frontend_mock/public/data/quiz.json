@@ -1,163 +1,177 @@
 {
-  "title": "Introductory Calculus Lecture 1 Quiz: Syllabus and Review",
+  "title": "Introduction to Stoicism",
   "questions": [
     {
       "id": "1",
-      "text": "How many lectures are scheduled in total for this Introductory Calculus course?",
+      "text": "Who is credited with founding the philosophical school of Stoicism?",
       "type": "MCQ",
       "options": [
-        "8",
-        "12",
-        "16",
-        "20"
+        "Aristotle",
+        "Epictetus",
+        "Zeno of Cyprus",
+        "Marcus Aurelius"
       ],
       "correct_answer_index": 2,
-      "explanation": "The lecture notes specify that there are 16 lectures in total for the course.",
-      "topic_focus": "Course Structure and Practical Information"
+      "explanation": "Stoicism was founded by Zeno of Cyprus, who began studying philosophy after losing his wealth in a shipwreck near Athens.",
+      "topic_focus": "Historical Origins"
     },
     {
       "id": "2",
-      "text": "The recommended textbook for the course is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
-      "type": "True/False",
+      "text": "The name 'Stoicism' is derived from the Stoa Poikile. What does 'Stoa Poikile' refer to?",
+      "type": "MCQ",
       "options": [
-        "True",
-        "False"
+        "The philosophical retreat Zeno owned",
+        "A bookshop where Zeno found inspiration",
+        "A public painted porch or colonnade",
+        "The Greek word for 'inner peace'"
       ],
-      "correct_answer_index": 0,
-      "explanation": "The recommended reading listed in the practical information is the book by Mary Boas.",
-      "topic_focus": "Course Resources"
+      "correct_answer_index": 2,
+      "explanation": "Stoicism gets its name from the Stoa Poikile, which was a public colonnade (painted porch) in Athens where Zeno taught his philosophy.",
+      "topic_focus": "Etymology"
     },
     {
       "id": "3",
-      "text": "What defines the 'order' of an Ordinary Differential Equation (ODE)?",
-      "type": "MCQ",
+      "text": "A central tenet of Stoicism is directing energy towards controlling external events, rather than controlling one's own approach and judgments about those events.",
+      "type": "True/False",
       "options": [
-        "The number of independent variables in the equation.",
-        "The highest power of the function $y(x)$ present.",
-        "The order of the highest derivative that occurs in the equation.",
-        "The complexity of the solution function."
+        "True",
+        "False"
       ],
-      "correct_answer_index": 2,
-      "explanation": "The order of an ODE is defined by the order of the highest derivative present in the equation.",
-      "topic_focus": "Definition of Differential Equations"
+      "correct_answer_index": 1,
+      "explanation": "False. Stoicism emphasizes focusing energy on what we can control (our approach, reactions, and judgments) and accepting what we cannot control (external events).",
+      "topic_focus": "Dichotomy of Control"
     },
     {
       "id": "4",
-      "text": "Newton's second law, $F=ma$, when relating force $F$ to position $r(t)$, is generally expressed as a first-order differential equation.",
-      "type": "True/False",
+      "text": "In Stoic philosophy, the term Logos refers to which concept?",
+      "type": "MCQ",
       "options": [
-        "True",
-        "False"
+        "The pursuit of pleasure and avoidance of pain",
+        "The rational structure of the universe and the interconnected web of cause and effect",
+        "The doctrine of the separation of powers",
+        "The material wealth required for a virtuous life"
       ],
       "correct_answer_index": 1,
-      "explanation": "Acceleration ($a$) is the second derivative of position ($r$) with respect to time ($t$), i.e., $a = \\frac{d^2r}{dt^2}$. Thus, $F=m\\frac{d^2r}{dt^2}$ is a second-order differential equation.",
-      "topic_focus": "Differential Equations in Physics"
+      "explanation": "Logos is the Stoic concept describing the rational, governing structure of the universe, suggesting that everything operates according to an ordered system of cause and effect.",
+      "topic_focus": "Stoic Cosmology"
     },
     {
       "id": "5",
-      "text": "The differential equation modeling the charge $Q(t)$ in an RLC circuit with voltage source $V$ is represented by:",
+      "text": "Which of the following is NOT considered one of the Four Cardinal Virtues of Stoicism?",
       "type": "MCQ",
       "options": [
-        "$$ R \\frac{dQ}{dt} + \\frac{1}{C} Q = V $$",
-        "$$ L \\frac{d^2Q}{dt^2} + R \\frac{dQ}{dt} + \\frac{1}{C} Q = V $$",
-        "$$ L \\frac{dQ}{dt} + R Q + \\frac{1}{C} \\int Q dt = V $$",
-        "$$ L Q + R \\frac{dQ}{dt} + C \\frac{d^2Q}{dt^2} = V $$"
+        "Practical wisdom",
+        "Temperance",
+        "Wealth",
+        "Justice"
       ],
-      "correct_answer_index": 1,
-      "explanation": "Kirchhoff's law leads to the second-order linear ODE: $L \\frac{d^2Q}{dt^2} + R \\frac{dQ}{dt} + \\frac{1}{C} Q = V$, where $I = dQ/dt$.",
-      "topic_focus": "Applications of ODEs (Electrical Circuits)"
+      "correct_answer_index": 2,
+      "explanation": "The four cardinal virtues are Practical wisdom, Temperance, Justice, and Courage. Wealth is considered an external factor, not a core virtue.",
+      "topic_focus": "The Four Virtues"
     },
     {
       "id": "6",
-      "text": "Which differentiation rule is the foundation for the Integration by Parts technique?",
+      "text": "Which cardinal virtue is defined as 'the ability to navigate complex situations in a logical, informed, and calm manner'?",
       "type": "MCQ",
       "options": [
-        "The Chain Rule",
-        "The Quotient Rule",
-        "The Power Rule",
-        "The Product Rule"
+        "Courage",
+        "Temperance",
+        "Practical wisdom",
+        "Justice"
       ],
-      "correct_answer_index": 3,
-      "explanation": "Integration by Parts is derived by integrating the Product Rule for differentiation: $(fg)' = f'g + fg'$.",
-      "topic_focus": "Integration by Parts"
+      "correct_answer_index": 2,
+      "explanation": "Practical wisdom (phronesis) involves the knowledge of what is good, bad, and indifferent, guiding one's actions rationally in complex scenarios.",
+      "topic_focus": "Virtue Definition"
     },
     {
       "id": "7",
-      "text": "In the integration by parts formula $\\int f g' dx = f g - \\int f' g dx$, if one must integrate $\\int x^2 \\sin(x) dx$, the standard choice for $f$ is $x^2$.",
-      "type": "True/False",
+      "text": "Seneca, a prominent Roman Stoic, was notable for advocating which practical social application of Stoicism?",
+      "type": "MCQ",
       "options": [
-        "True",
-        "False"
+        "Military expansion across the Danube",
+        "Strict adherence to pagan religious festivals",
+        "The humane treatment of slaves",
+        "The establishment of democratic elections"
       ],
-      "correct_answer_index": 0,
-      "explanation": "In $\\int x^2 \\sin(x) dx$, we typically choose $f = x^2$ because its derivative, $f' = 2x$, simplifies the subsequent integral. $g' = \\sin(x)$.",
-      "topic_focus": "Applying Integration by Parts"
+      "correct_answer_index": 2,
+      "explanation": "Seneca advocated strongly for humane treatment of others, specifically emphasizing compassion and fair treatment, even towards slaves, demonstrating the universality of Stoic ethics.",
+      "topic_focus": "Stoicism in Practice"
     },
     {
       "id": "8",
-      "text": "The final part of the Introductory Calculus syllabus focuses on the study of Partial Differential Equations (PDEs).",
-      "type": "True/False",
-      "options": [
-        "True",
-        "False"
-      ],
-      "correct_answer_index": 1,
-      "explanation": "The final part of the syllabus covers Calculus of functions in two variables, including surfaces, gradients, Taylor's theorem, and critical points. Differential Equations are covered in the first half.",
-      "topic_focus": "Syllabus Structure"
-    },
-    {
-      "id": "9",
-      "text": "A differential equation is considered 'separable' if it can be written in which of the following forms?",
-      "type": "MCQ",
-      "options": [
-        "$$ \\frac{dy}{dx} = a(x) + b(y) $$",
-        "$$ \\frac{dy}{dx} = a(x) b(y) $$",
-        "$$ \\frac{dy}{dx} = x^n y^m $$",
-        "$$ \\frac{dy}{dx} = C $$"
-      ],
-      "correct_answer_index": 1,
-      "explanation": "A separable equation must be expressible as $dy/dx = a(x)b(y)$, allowing the variables to be separated: $\\frac{1}{b(y)} dy = a(x) dx$.",
-      "topic_focus": "Separable Equations"
-    },
-    {
-      "id": "10",
-      "text": "When solving the separable equation $dy/dx = a(x)b(y)$, the correct separation and integration setup is:",
-      "type": "MCQ",
-      "options": [
-        "$$ \\int b(y) dy = \\int a(x) dx $$",
-        "$$ \\int y dy = \\int a(x) b(x) dx $$",
-        "$$ \\int \\frac{1}{b(y)} dy = \\int a(x) dx $$",
-        "$$ \\int \\frac{1}{a(x)} dx = \\int b(y) dy $$"
-      ],
-      "correct_answer_index": 2,
-      "explanation": "To separate variables, we manipulate the equation to get $dy/b(y) = a(x) dx$. Integrating yields $\\int \\frac{1}{b(y)} dy = \\int a(x) dx$.",
-      "topic_focus": "Solving Separable Equations"
-    },
-    {
-      "id": "11",
-      "text": "The integral $I_n = \\int \\cos^n(x) dx$ can be solved using a reduction formula that relates $I_n$ to $I_{n-2}$.",
+      "text": "Marcus Aurelius was a famous Roman Emperor who utilized Stoic principles to lead the empire through wars and personal loss.",
       "type": "True/False",
       "options": [
         "True",
         "False"
       ],
       "correct_answer_index": 0,
-      "explanation": "Reduction formulas typically relate the integral of power $n$ to an integral of a power two steps lower, such as $I_{n-2}$. The formula given in the notes confirms this.",
-      "topic_focus": "Integration Reduction Formulas"
+      "explanation": "True. Marcus Aurelius was known as the 'Stoic Emperor' and his personal writings, 'Meditations,' reflect his reliance on Stoicism during immense hardship.",
+      "topic_focus": "Historical Figures"
+    },
+    {
+      "id": "9",
+      "text": "The philosopher Epictetus taught that suffering originates from the catastrophic events themselves, independent of our personal judgments about those events.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "False. Epictetus argued that suffering stems not from external events, but from our internal judgments and interpretations of those events.",
+      "topic_focus": "Epictetus and Judgment"
+    },
+    {
+      "id": "10",
+      "text": "Nelson Mandela drew guidance and comfort during his imprisonment by reading the journals of which Stoic figure?",
+      "type": "MCQ",
+      "options": [
+        "Zeno of Cyprus",
+        "Epictetus",
+        "Marcus Aurelius",
+        "Plato"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Nelson Mandela famously utilized the journals of Marcus Aurelius, 'Meditations,' to guide him through his long imprisonment, highlighting the philosophy's resilience.",
+      "topic_focus": "Modern Application"
+    },
+    {
+      "id": "11",
+      "text": "The cultivation of virtue in Stoicism is primarily aimed at achieving the state of Ataraxia, or tranquility of mind.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 0,
+      "explanation": "True. While virtue is an end in itself, its successful cultivation leads directly to inner peace, resilience, and tranquility (Ataraxia).",
+      "topic_focus": "Goals of Stoicism"
     },
     {
       "id": "12",
-      "text": "What type of equation involves partial derivatives of a function of several variables?",
+      "text": "Which modern psychological approach is explicitly mentioned as having roots in Stoic philosophy, particularly concerning the analysis of beliefs and judgments?",
       "type": "MCQ",
       "options": [
-        "Ordinary Differential Equation (ODE)",
-        "Separable Equation",
-        "Linear Algebraic Equation",
-        "Partial Differential Equation (PDE)"
+        "Freudian Psychoanalysis",
+        "Rational Emotive Behavioral Therapy (REBT)",
+        "Behavioral Conditioning",
+        "Dream Analysis"
       ],
-      "correct_answer_index": 3,
-      "explanation": "A Partial Differential Equation (PDE) is defined as a differential equation involving partial derivatives of a function of several variables.",
-      "topic_focus": "Types of Differential Equations"
+      "correct_answer_index": 1,
+      "explanation": "Rational Emotive Behavioral Therapy (REBT) is heavily influenced by Stoic ideas, particularly the concept that emotional disturbance is caused by irrational beliefs and judgments, echoing Epictetus.",
+      "topic_focus": "Modern Relevance"
+    },
+    {
+      "id": "13",
+      "text": "The Stoic concept of Justice requires treating others with absolute fairness and righteousness, but only if they have done no wrong themselves.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "False. Stoic Justice involves treating others with fairness and righteousness, even in circumstances where they have wronged you, as demonstrated by the advocacy for humane treatment of slaves.",
+      "topic_focus": "Definition of Justice"
     }
   ]
 }
