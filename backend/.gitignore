@@ -1,0 +1,14 @@
+# Temporary files and test outputs
+temp/
+*.txt
+!requirements.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Logs
+*.log

@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+@theme {
+  --color-honey-50: #FFFBEB;
+  --color-honey-100: #FEF3C7;
+  --color-honey-200: #FDE68A;
+  --color-honey-300: #FCD34D;
+  --color-honey-400: #FBBF24;
+  --color-honey-500: #F59E0B;
+  --color-honey-600: #D97706;
+  --color-honey-700: #B45309;
+  --color-honey-800: #92400E;
+  --color-honey-900: #78350F;
+
+  --color-bee-black: #0F0F0F;
+  --color-bee-yellow: #FFC107;
+  --color-cream: #FAF9F6;
+  --color-wax: #E6E2D3;
+  
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-display: "Cabinet Grotesk", "Instrument Sans", sans-serif;
+
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-swarm: swarm 3s ease-in-out infinite;
+
+  --color-border: #E2E2E2;
+  --color-background: var(--color-cream);
+  --color-foreground: var(--color-bee-black);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes swarm {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(2px, -2px); }
+  50% { transform: translate(-1px, 2px); }
+  75% { transform: translate(-2px, -1px); }
+}
+
+:root {
+  --background: var(--color-cream);
+  --foreground: var(--color-bee-black);
+  --card: #FFFFFF;
+  --card-foreground: var(--color-bee-black);
+  --popover: #FFFFFF;
+  --popover-foreground: var(--color-bee-black);
+  --primary: var(--color-honey-500);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--color-wax);
+  --secondary-foreground: var(--color-bee-black);
+  --muted: #F1F1F1;
+  --muted-foreground: #666666;
+  --accent: var(--color-bee-yellow);
+  --accent-foreground: var(--color-bee-black);
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E2E2;
+  --input: #E2E2E2;
+  --ring: var(--color-honey-500);
+}
+
+.dark {
+  --background: var(--color-bee-black);
+  --foreground: var(--color-cream);
+  --card: #1A1A1A;
+  --card-foreground: var(--color-cream);
+  --popover: #1A1A1A;
+  --popover-foreground: var(--color-cream);
+  --primary: var(--color-honey-400);
+  --primary-foreground: var(--color-bee-black);
+  --secondary: #2A2A2A;
+  --secondary-foreground: var(--color-cream);
+  --muted: #2A2A2A;
+  --muted-foreground: #A1A1A1;
+  --accent: var(--color-honey-300);
+  --accent-foreground: var(--color-bee-black);
+  --destructive: #7F1D1D;
+  --destructive-foreground: var(--color-cream);
+  --border: #333333;
+  --input: #333333;
+  --ring: var(--color-honey-400);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    cursor: default;
+  }
+  
+    a, 
+    button, 
+    [role="button"], 
+    input[type="submit"], 
+    input[type="button"], 
+    .cursor-pointer,
+    .react-flow__node,
+    .react-flow__handle,
+    .react-flow__edge,
+    .react-flow__edge-path,
+    .react-flow__pane,
+    select,
+    summary,
+    label,
+    .honey-dropzone,
+    [draggable="true"] {
+      cursor: pointer !important;
+    }
+
+
+  [draggable="true"]:active {
+    cursor: grabbing !important;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-honey-200 selection:text-honey-900;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv02";
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight font-bold;
+  }
+
+  /* Custom Themed Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-bee-black/10 rounded-full border-[3px] border-cream bg-clip-padding hover:bg-honey-500 transition-colors;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 border-bee-black hover:bg-honey-400;
+  }
+
+  /* React Flow Attribution Fix */
+  .react-flow__attribution {
+    background: transparent !important;
+    padding: 0 12px 12px 0 !important;
+    font-size: 9px !important;
+    opacity: 0.2;
+    transition: opacity 0.3s;
+  }
+  .react-flow__attribution:hover {
+    opacity: 1;
+  }
+  .react-flow__attribution a {
+    color: var(--color-bee-black) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+}
+
+.glass {
+  @apply bg-white/30 backdrop-blur-2xl border border-white/20;
+}
+
+.glass-card {
+  @apply bg-white/20 backdrop-blur-xl border border-border/40 shadow-sm hover:shadow-xl hover:shadow-honey-500/5 transition-all duration-500;
+}
+
+.dark .glass {
+  @apply bg-black/40 backdrop-blur-2xl border border-white/10;
+}
+
+.dark .glass-card {
+  @apply bg-black/30 backdrop-blur-xl border border-white/5;
+}
+
+/* GSAP staggered reveal utilities */
+.reveal {
+  will-change: opacity, transform;
+}
+
+.honey-glow {
+  @apply shadow-[0_0_20px_rgba(245,158,11,0.2)];
+}
+
+.honey-glow-lg {
+  @apply shadow-[0_0_40px_rgba(245,158,11,0.3)];
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
