@@ -19,8 +19,10 @@ import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
 import { Logo } from "./Logo";
 
+import { useSidebarStore } from "@/store/useSidebarStore";
+
 export function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed, toggle } = useSidebarStore();
   const pathname = usePathname();
   
   const navItems = [
@@ -35,7 +37,7 @@ export function Sidebar() {
     <motion.aside
       initial={false}
       animate={{ width: isCollapsed ? 100 : 280 }}
-      className="fixed left-0 top-0 h-screen bg-bee-black text-white border-r border-white/5 z-50 flex flex-col"
+      className="fixed left-0 top-0 h-screen bg-bee-black/60 backdrop-blur-2xl text-white border-r border-white/5 z-50 flex flex-col"
     >
       {/* Logo Section */}
       <div className="flex items-center justify-between p-8 border-b border-white/5 h-24">
@@ -66,7 +68,7 @@ export function Sidebar() {
         {!isCollapsed && (
           <button
             onClick={() => {
-              setIsCollapsed(!isCollapsed);
+              toggle();
               playSound("pickup");
             }}
             onMouseEnter={() => playSound("hover")}
@@ -80,7 +82,7 @@ export function Sidebar() {
       {isCollapsed && (
         <button
           onClick={() => {
-            setIsCollapsed(!isCollapsed);
+            toggle();
             playSound("drop");
           }}
           onMouseEnter={() => playSound("hover")}
