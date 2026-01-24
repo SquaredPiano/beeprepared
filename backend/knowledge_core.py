@@ -61,14 +61,14 @@ class KnowledgeCoreService:
         self._setup_gemini()
 
     def _setup_gemini(self):
-        """Initialize Gemini client using google-genai SDK."""
+        """Initialize Gemini client."""
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
             try:
                 self.client = genai.Client(api_key=api_key)
-                self.model_name = 'gemini-2.0-flash-exp'
+                self.model_name = 'gemini-2.0-flash'
             except Exception as e:
-                logger.error(f"Failed to initialize Gemini: {e}")
+                logger.error(f"Failed to initialize Gemini client: {e}")
                 self.client = None
         else:
             logger.warning("GEMINI_API_KEY not found. Knowledge Core generation will fail.")
@@ -108,10 +108,10 @@ class KnowledgeCoreService:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=[prompt, clean_text],
-                config=genai.types.GenerateContentConfig(
-                    response_mime_type='application/json',
-                    response_schema=KnowledgeCore
-                )
+                config={
+                    'response_mime_type': 'application/json',
+                    'response_schema': KnowledgeCore
+                }
             )
             
             # The SDK returns a parsed object if response_schema is a Pydantic model
