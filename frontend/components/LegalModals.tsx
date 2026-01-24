@@ -91,45 +91,46 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
     <AnimatePresence>
       {isOpen && (
         <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="fixed inset-0 bg-bee-black/30 backdrop-blur-sm z-[100] cursor-pointer"
-            />
-
-            {/* Modal Container */}
-            <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4 md:p-6">
+              {/* Backdrop */}
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="w-full max-w-2xl bg-white/30 backdrop-blur-3xl border border-white/30 rounded-[32px] shadow-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[80vh]"
-              >
-              {/* Header */}
-              <div className="p-8 pb-0 flex items-center justify-between relative">
-                <div className="flex gap-6">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`relative font-display text-[10px] uppercase tracking-[0.2em] font-bold py-2 transition-colors ${
-                        activeTab === tab.id ? "text-honey-600" : "text-bee-black/30 hover:text-bee-black/60"
-                      }`}
-                    >
-                      {tab.label}
-                      {activeTab === tab.id && (
-                        <motion.div
-                          layoutId="activeTab"
-                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-honey-600 rounded-full"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="fixed inset-0 bg-bee-black/60 backdrop-blur-md z-[100] cursor-pointer"
+              />
+
+              {/* Modal Container */}
+              <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4 md:p-6">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="w-full max-w-2xl bg-cream border border-wax rounded-[32px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] overflow-hidden pointer-events-auto flex flex-col max-h-[80vh]"
+                >
+                {/* Header */}
+                <div className="p-8 pb-0 flex items-center justify-between relative">
+                  <div className="flex gap-6">
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`relative font-display text-[10px] uppercase tracking-[0.2em] font-bold py-2 transition-colors cursor-pointer ${
+                          activeTab === tab.id ? "text-honey-600" : "text-bee-black/30 hover:text-bee-black/60"
+                        }`}
+                      >
+                        {tab.label}
+                        {activeTab === tab.id && (
+                          <motion.div
+                            layoutId="activeTab"
+                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                            className="absolute bottom-0 left-0 right-0 h-0.5 bg-honey-600 rounded-full"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
 
                 {/* Close Button - Intentionally centered X */}
                 <button
