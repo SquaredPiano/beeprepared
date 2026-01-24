@@ -90,32 +90,39 @@ function App() {
 
     let slide = pres.addSlide();
     slide.background = { color: COLOR_PRIMARY };
-    slide.addText(slides.title, { x: 0.5, y: '30%', w: '90%', h: '20%', fontSize: 44, align: 'center', valign: 'middle', color: 'FFFFFF', bold: true });
-    slide.addText(`Audience: ${slides.audience_level}`, { x: 0.5, y: '55%', w: '90%', h: '10%', fontSize: 20, align: 'center', valign: 'top', color: 'CBD5E1' });
-    slide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: COLOR_ACCENT });
+    // Title Slide: Perfectly centered
+    slide.addText(slides.title, { x: 0, y: '30%', w: '100%', h: 1.5, fontSize: 44, align: 'center', valign: 'middle', color: 'FFFFFF', bold: true });
+    slide.addText(`Audience: ${slides.audience_level}`, { x: 0, y: '50%', w: '100%', h: 0.5, fontSize: 20, align: 'center', valign: 'top', color: 'CBD5E1' });
+
+    // Bottom Accent Bar
+    slide.addShape(pres.ShapeType.rect, { x: 0, y: 5.4, w: '100%', h: 0.225, fill: COLOR_ACCENT });
 
     slides.slides.forEach(sItem => {
       let s = pres.addSlide();
-      s.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 1.2, fill: COLOR_BG_TITLE });
-      s.addText(sItem.heading, { x: 0.5, y: 0.3, w: '90%', fontSize: 28, bold: true, color: COLOR_PRIMARY, align: 'center' });
 
-      // Main Content Box - Centered
-      s.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.5, w: 9, h: 4.5, fill: "FFFFFF", line: { color: COLOR_ACCENT, width: 0 } }); // Invisible box for layout? No, use text box.
+      // Header Bar (Clean, Top)
+      s.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 1.0, fill: COLOR_BG_TITLE });
+      s.addText(sItem.heading, { x: 0.5, y: 0.1, w: 9, h: 0.8, fontSize: 32, bold: true, color: COLOR_PRIMARY, align: 'center', valign: 'middle' });
 
-      // Main Idea
-      s.addText(sItem.main_idea, { x: 1, y: 2.0, w: 8, h: 1, fontSize: 20, color: "4338CA", italic: true, align: 'center', valign: 'middle' });
+      // Accent Line
+      s.addShape(pres.ShapeType.line, { x: 1, y: 1.2, w: 8, h: 0, line: { color: COLOR_ACCENT, width: 2 } });
 
-      // Bullets - Centered list
+      // Main Idea (Centered, Italic)
+      s.addText(sItem.main_idea, { x: 1.5, y: 1.5, w: 7, h: 1, fontSize: 20, color: "4338CA", italic: true, align: 'center', valign: 'middle' });
+
+      // Bullets (Centered Block, Left Aligned Text)
+      // We place the text box in the center (x=1.5, w=7), but align text left for readability
       if (sItem.bullet_points) {
         let bullets = sItem.bullet_points.map(bp => ({
           text: bp,
-          options: { fontSize: 18, indentLevel: 0, bullet: { type: 'number', color: COLOR_ACCENT } }
+          options: { fontSize: 20, indentLevel: 0, bullet: { type: 'number', color: COLOR_ACCENT }, breakLine: true }
         }));
-        s.addText(bullets, { x: 1.5, y: 3.2, w: 7, h: 3, color: COLOR_TEXT, align: 'left', valign: 'top' });
+        // Use a narrower text box to force centering of the content visually
+        s.addText(bullets, { x: 2.0, y: 2.8, w: 6.0, h: 2.5, color: COLOR_TEXT, align: 'left', valign: 'top', lineSpacing: 32 });
       }
       s.addNotes(sItem.speaker_notes);
     });
-    pres.writeFile({ fileName: "Lecture_Slides.pptx" });
+    pres.writeFile({ fileName: "Lecture_Slides_Professional.pptx" });
   }
 
   return (
