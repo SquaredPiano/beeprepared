@@ -32,7 +32,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${instrumentSans.variable} ${instrumentSerif.variable} font-sans antialiased min-h-screen bg-background text-foreground overflow-x-hidden`}>
+      <body 
+        className={`${instrumentSans.variable} ${instrumentSerif.variable} font-sans antialiased min-h-screen bg-background text-foreground overflow-x-hidden`}
+        suppressHydrationWarning
+      >
         <Providers>
           {/* Subtle noise and grid background */}
           <div className="fixed inset-0 z-[-1] pointer-events-none opacity-40 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] brightness-100 contrast-150 mix-blend-multiply" />
