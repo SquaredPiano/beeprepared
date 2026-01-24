@@ -29,18 +29,28 @@ export default function DashboardPage() {
   const container = useRef(null);
 
   useGSAP(() => {
-    const tl = gsap.timeline({ defaults: { ease: "power4.out", duration: 1.2 } });
+    if (!container.current) return;
+    
+    // Set initial state explicitly via GSAP to avoid FOUC
+    gsap.set(".reveal", { opacity: 0, y: 15 });
+    
+    const tl = gsap.timeline({ 
+      defaults: { ease: "power3.out", duration: 0.8 }
+    });
     
     tl.to(".reveal", {
       opacity: 1,
       y: 0,
-      stagger: 0.1,
-      delay: 0.2
+      stagger: 0.05
     });
-  }, { scope: container });
+
+    return () => {
+      tl.kill();
+    };
+  }, { scope: container, dependencies: [] });
 
   return (
-    <div ref={container} className="max-w-7xl mx-auto px-6 py-12 space-y-16">
+    <div ref={container} className="max-w-6xl mx-auto px-12 py-16 space-y-16">
       {/* Hero Section */}
       <header className="flex flex-col md:flex-row justify-between items-end gap-8 border-b border-border/40 pb-12 reveal">
         <div className="space-y-4 max-w-2xl">
@@ -79,37 +89,38 @@ export default function DashboardPage() {
               </div>
               <ArrowUpRight className="w-4 h-4 opacity-20 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">{stat.label}</p>
-              <p className="text-4xl font-display font-bold mt-1 tracking-tight">{stat.value}</p>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">{stat.label}</p>
+                <p className="text-4xl font-display font-bold mt-1 tracking-tight truncate">{stat.value}</p>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        {/* Recent Activity */}
-        <section className="lg:col-span-2 space-y-8">
-          <div className="flex items-center justify-between border-b border-border/40 pb-4 reveal">
-            <h2 className="font-display text-xs uppercase tracking-[0.2em] font-bold opacity-40">Matrix Activity</h2>
-            <button className="text-[10px] uppercase tracking-widest font-bold hover:text-honey-600 transition-colors cursor-pointer">View Library</button>
-          </div>
-          
-          <div className="space-y-4">
-            {files.length > 0 ? (
-              files.map((file, i) => (
-                <div
-                  key={file.id}
-                  className="group flex items-center justify-between p-6 glass rounded-2xl border border-border/40 hover:border-honey-300 transition-all cursor-pointer reveal"
-                >
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center group-hover:bg-honey-50 transition-colors">
-                      <FileText className="w-6 h-6 opacity-40 group-hover:text-honey-600 transition-colors" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-lg tracking-tight uppercase">{file.name}</h3>
-                      <div className="flex items-center gap-3 mt-1 opacity-40 text-[10px] uppercase tracking-widest font-bold">
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          {/* Recent Activity */}
+          <section className="lg:col-span-2 space-y-8 min-w-0">
+            <div className="flex items-center justify-between border-b border-border/40 pb-4 reveal">
+              <h2 className="font-display text-xs uppercase tracking-[0.2em] font-bold opacity-40">Matrix Activity</h2>
+              <button className="text-[10px] uppercase tracking-widest font-bold hover:text-honey-600 transition-colors cursor-pointer">View Library</button>
+            </div>
+            
+            <div className="space-y-4">
+              {files.length > 0 ? (
+                files.map((file, i) => (
+                  <div
+                    key={file.id}
+                    className="group flex items-center justify-between p-6 glass rounded-2xl border border-border/40 hover:border-honey-300 transition-all cursor-pointer reveal min-w-0"
+                  >
+                    <div className="flex items-center gap-6 min-w-0">
+                      <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center group-hover:bg-honey-50 transition-colors shrink-0">
+                        <FileText className="w-6 h-6 opacity-40 group-hover:text-honey-600 transition-colors" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-medium text-lg tracking-tight uppercase truncate">{file.name}</h3>
+                        <div className="flex items-center gap-3 mt-1 opacity-40 text-[10px] uppercase tracking-widest font-bold">
+
                         <span>Updated 2h ago</span>
                         <div className="w-1 h-1 rounded-full bg-border" />
                         <span>PDF</span>
@@ -164,7 +175,7 @@ export default function DashboardPage() {
                       className="h-full bg-gradient-to-r from-honey-400 to-honey-600"
                       initial={{ width: 0 }}
                       animate={{ width: "45%" }}
-                      transition={{ duration: 1.5, ease: "expo.out" }}
+                      transition={{ duration: 1.5, ease: [0.16, 1, 0.3, 1] }}
                     />
                   </div>
                 </div>

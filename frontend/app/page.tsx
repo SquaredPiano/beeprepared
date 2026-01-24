@@ -67,27 +67,27 @@ export default function HomePage() {
         ease: "sine.inOut"
       });
 
-      // Hero entrance
-      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
-      tl.from(".reveal-hero", {
-        y: 80,
-        opacity: 0,
-        duration: 2,
-        stagger: 0.15,
-        delay: 0.5
-      })
-      .from(beeRef.current, {
-        scale: 0,
-        opacity: 0,
-        duration: 1,
-      }, "-=1.5");
+        // Hero entrance
+        const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+        tl.from(".reveal-hero", {
+          y: 40,
+          opacity: 0,
+          duration: 1.5,
+          stagger: 0.1,
+          delay: 0.2
+        })
+        .from(beeRef.current, {
+          scale: 0,
+          opacity: 0,
+          duration: 1,
+        }, "-=1");
+
     }, { scope: containerRef });
 
 
   return (
-    <div ref={containerRef} className="relative min-h-screen bg-background overflow-hidden font-sans">
+    <div ref={containerRef} className="relative min-h-screen overflow-hidden font-sans">
       <ParticleBackground />
-      <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
       
       {/* Background Pattern */}
       <div className="absolute inset-0 -z-10 opacity-[0.03]">
@@ -103,7 +103,7 @@ export default function HomePage() {
       <div ref={beeRef} className="absolute top-1/4 left-1/4 text-4xl pointer-events-none z-20">🐝</div>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-6 pt-32 pb-24 flex flex-col items-center text-center relative z-10">
+      <section className="container mx-auto px-8 md:px-16 lg:px-24 pt-32 pb-24 flex flex-col items-center text-center relative z-10">
         <div className="space-y-12 max-w-6xl">
             <div className="overflow-hidden">
               <h1 ref={titleRef} className="text-7xl md:text-[140px] font-display uppercase leading-[0.8] tracking-tighter reveal-hero">
@@ -115,14 +115,14 @@ export default function HomePage() {
               </h1>
             </div>
             
-            <div ref={subRef} className="max-w-3xl mx-auto reveal-hero">
-              <p className="text-xl md:text-2xl text-muted-foreground leading-tight font-medium uppercase tracking-tight">
-                <Balancer>
-                  Transform documents and audio into clean, architectural artifacts.
-                  Built for high-performance learning.
-                </Balancer>
-              </p>
-            </div>
+              <div ref={subRef} className="max-w-3xl mx-auto reveal-hero">
+                <p className="text-xl md:text-2xl text-bee-black/60 leading-tight font-medium uppercase tracking-tight">
+                  <Balancer>
+                    Transform documents and audio into clean, architectural artifacts.
+                    Built for high-performance learning.
+                  </Balancer>
+                </p>
+              </div>
 
             <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-8 pt-4 reveal-hero">
 
@@ -147,8 +147,8 @@ export default function HomePage() {
       </section>
 
       {/* Features Grid */}
-      <section className="container mx-auto px-6 py-24">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+      <section className="container mx-auto px-8 md:px-16 lg:px-24 py-32">
+        <div className="grid grid-cols-1 md:grid-cols-auto gap-16 items-stretch">
           <ScrollReveal>
             <FeatureCard 
               icon={<Layers className="w-12 h-12 text-honey-600" />}
@@ -174,13 +174,13 @@ export default function HomePage() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="py-16 text-center relative">
+      <section className="py-32 text-center relative">
         <ScrollReveal>
-          <div className="container mx-auto px-6 space-y-12 relative z-10">
-            <h2 className="text-6xl md:text-[120px] font-display uppercase leading-none tracking-tighter">
-              The hive is <br />
-              <span className="font-serif italic lowercase opacity-30">waiting for you</span>
-            </h2>
+          <div className="container mx-auto px-8 md:px-16 lg:px-24 space-y-12 relative z-10">
+              <h2 className="text-6xl md:text-[120px] font-display uppercase leading-none tracking-tighter">
+                The hive is <br />
+                <span className="font-serif italic lowercase opacity-50">waiting for you</span>
+              </h2>
             <Link 
               href="/upload" 
               className="inline-block bg-bee-black text-white px-16 py-8 rounded-full font-display text-sm uppercase tracking-widest font-bold hover:bg-honey-500 transition-all shadow-2xl cursor-pointer"
@@ -192,12 +192,13 @@ export default function HomePage() {
 
         
         {/* Abstract shapes */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] rotate-12 opacity-[0.01] pointer-events-none">
-          <svg viewBox="0 0 100 100" className="w-full h-full fill-honey-500">
-            <path d="M20 0l17.32 10v20L20 40 2.68 30V10z" />
-          </svg>
-        </div>
-      </section>
-    </div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] rotate-12 opacity-[0.01] pointer-events-none">
+            <svg viewBox="0 0 100 100" className="w-full h-full fill-honey-500">
+              <path d="M20 0l17.32 10v20L20 40 2.68 30V10z" />
+            </svg>
+          </div>
+        </section>
+
+      </div>
   );
 }

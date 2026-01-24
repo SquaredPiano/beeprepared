@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useRef } from "react";
 import { 
   ReactFlow, 
   Background, 
@@ -48,47 +48,33 @@ function PipelineCanvasContent() {
     setEdges 
   } = useFlowStore();
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-
-  // Initialize nodes if empty
-  React.useEffect(() => {
-    if (nodes.length === 0) {
-      const initialNodes: Node[] = [
-        { id: "ingest", type: "agent", position: { x: 50, y: 350 }, data: { label: "Ingestion Agent", type: "ingest", role: "Input Gateway", status: "completed" } },
-        { id: "extract", type: "agent", position: { x: 450, y: 350 }, data: { label: "Extraction Agent", type: "extract", role: "Structural Analyst", status: "processing" } },
-        { id: "categorize", type: "agent", position: { x: 850, y: 350 }, data: { label: "Cognitive Agent", type: "categorize", role: "Matrix Manager", status: "idle" } },
-        { id: "generate", type: "agent", position: { x: 1250, y: 350 }, data: { label: "Synthesis Agent", type: "generate", role: "Content Creator", status: "idle" } },
-        { id: "finalize", type: "agent", position: { x: 1650, y: 350 }, data: { label: "Archival Agent", type: "finalize", role: "Library Manager", status: "idle" } },
-      ];
-      const initialEdges: Edge[] = [
-        { id: "e1-2", source: "ingest", target: "extract", animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" }, style: { stroke: "#FCD34F", strokeWidth: 2 } },
-        { id: "e2-3", source: "extract", target: "categorize", animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" }, style: { stroke: "#FCD34F", strokeWidth: 2 } },
-        { id: "e3-4", source: "categorize", target: "generate", animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" }, style: { stroke: "#FCD34F", strokeWidth: 2 } },
-        { id: "e4-5", source: "generate", target: "finalize", animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" }, style: { stroke: "#FCD34F", strokeWidth: 2 } },
-      ];
-      setNodes(initialNodes);
-      setEdges(initialEdges);
-      takeSnapshot();
-    }
-  }, []);
 
   const onContextMenu = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault();
-      setMenu({ x: event.clientX, y: event.clientY });
+      if (!containerRef.current) return;
+      
+      const rect = containerRef.current.getBoundingClientRect();
+      setMenu({ 
+        x: event.clientX - rect.left, 
+        y: event.clientY - rect.top 
+      });
     },
     [setMenu]
   );
 
+
   const onPaneClick = useCallback(() => setMenu(null), [setMenu]);
 
-  const handleResetView = () => {
-    fitView({ padding: 0.2, duration: 800 });
-    playSound("drop");
-    setMenu(null);
-  };
+    const handleResetView = () => {
+      fitView({ padding: 0.4, duration: 800 });
+      playSound("drop");
+      setMenu(null);
+    };
 
-  const handleUndo = () => {
+    const handleUndo = () => {
     undo();
     playSound("pickup");
     setMenu(null);
@@ -106,10 +92,43 @@ function PipelineCanvasContent() {
     setMenu(null);
   };
 
+  // Hotkeys
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+        handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo, handleSave]);
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
+
+  const onNodeDragStop = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
+
+  const onNodesDelete = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
+
+  const onEdgesDelete = useCallback(() => {
+    takeSnapshot();
+  }, [takeSnapshot]);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -139,29 +158,37 @@ function PipelineCanvasContent() {
 
   return (
     <div 
+      ref={containerRef}
       className="w-full h-full glass rounded-[3rem] border border-border/40 relative group"
       onContextMenu={onContextMenu}
     >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onPaneClick={onPaneClick}
-        nodeTypes={nodeTypes}
-        connectionMode={ConnectionMode.Loose}
-        fitView
-        className="bg-stone-50/20 rounded-[3rem]"
-      >
-        <Background 
-          variant={BackgroundVariant.Lines} 
-          gap={48} 
-          size={1} 
-          color="rgba(252, 211, 79, 0.05)" 
-        />
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodesDelete={onNodesDelete}
+            onEdgesDelete={onEdgesDelete}
+            onNodeDragStop={onNodeDragStop}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onPaneClick={onPaneClick}
+            nodeTypes={nodeTypes}
+            connectionMode={ConnectionMode.Loose}
+            defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
+            minZoom={0.2}
+            maxZoom={1.5}
+            fitView
+            fitViewOptions={{ padding: 0.4 }}
+            className="bg-stone-50/10 rounded-[3rem]"
+          >
+          <Background 
+            variant={BackgroundVariant.Lines} 
+            gap={48} 
+            size={1} 
+            color="rgba(252, 211, 79, 0.15)" 
+          />
         
         <Panel position="top-right" className="flex items-center gap-2 m-6">
           <div className="glass flex items-center p-1.5 rounded-2xl border border-border/40 shadow-xl">
@@ -207,7 +234,7 @@ function PipelineCanvasContent() {
       {menu && (
         <div 
           style={{ top: menu.y + 5, left: menu.x + 5 }}
-          className="fixed z-[100] w-56 glass border border-border/40 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in duration-200"
+          className="absolute z-[100] w-56 glass border border-border/40 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in duration-200"
         >
           <button 
             onClick={handleUndo}

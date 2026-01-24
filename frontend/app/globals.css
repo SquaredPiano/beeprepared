@@ -125,28 +125,62 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-display tracking-tight font-bold;
   }
+
+  /* Custom Themed Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-bee-black/10 rounded-full border-[3px] border-cream bg-clip-padding hover:bg-honey-500 transition-colors;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 border-bee-black hover:bg-honey-400;
+  }
+
+  /* React Flow Attribution Fix */
+  .react-flow__attribution {
+    background: transparent !important;
+    padding: 0 12px 12px 0 !important;
+    font-size: 9px !important;
+    opacity: 0.2;
+    transition: opacity 0.3s;
+  }
+  .react-flow__attribution:hover {
+    opacity: 1;
+  }
+  .react-flow__attribution a {
+    color: var(--color-bee-black) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
 }
 
 .glass {
-  @apply bg-white/70 backdrop-blur-xl border border-white/20;
+  @apply bg-white/30 backdrop-blur-2xl border border-white/20;
 }
 
 .glass-card {
-  @apply bg-white/40 backdrop-blur-md border border-border/40 shadow-sm hover:shadow-xl hover:shadow-honey-500/5 transition-all duration-500;
+  @apply bg-white/20 backdrop-blur-xl border border-border/40 shadow-sm hover:shadow-xl hover:shadow-honey-500/5 transition-all duration-500;
 }
 
 .dark .glass {
-  @apply bg-black/50 backdrop-blur-xl border border-white/10;
+  @apply bg-black/40 backdrop-blur-2xl border border-white/10;
 }
 
 .dark .glass-card {
-  @apply bg-black/40 backdrop-blur-md border border-white/5;
+  @apply bg-black/30 backdrop-blur-xl border border-white/5;
 }
 
 /* GSAP staggered reveal utilities */
 .reveal {
-  opacity: 0;
-  transform: translateY(20px);
+  will-change: opacity, transform;
 }
 
 .honey-glow {

@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { Sidebar } from "@/components/Sidebar";
+import { Footer } from "@/components/Footer";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { cn } from "@/lib/utils";
+import { HoneyJar } from "@/components/HoneyJar";
 
 export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebarStore();
@@ -24,12 +26,15 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main 
           className={cn(
-            "flex-1 transition-[margin] duration-300",
-            isCollapsed ? "ml-[100px]" : "ml-[280px]"
+            "flex-1 transition-[padding] duration-300 min-h-screen",
+            isCollapsed ? "pl-[100px]" : "pl-[280px]"
           )}
         >
           {children}
         </main>
+        {isDashboard && (
+          <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
+        )}
       </div>
     );
   }
@@ -37,10 +42,11 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-screen flex-col">
       <header className="sticky top-0 z-50 w-full glass border-b border-border/40">
-        <div className="container mx-auto flex h-20 items-center justify-between px-6">
-          <Link href="/" className="group cursor-pointer">
-            <Logo />
-          </Link>
+
+          <div className="container mx-auto flex h-20 items-center justify-between px-6">
+            <Link href="/" className="group cursor-pointer">
+              <Logo showText={true} />
+            </Link>
           <nav className="hidden md:flex items-center gap-10 text-[10px] font-bold tracking-[0.2em] uppercase opacity-80">
             <Link href="/dashboard" className="hover:opacity-100 transition-opacity cursor-pointer">Dashboard</Link>
             <Link href="/dashboard/canvas" className="hover:opacity-100 transition-opacity cursor-pointer">Flow</Link>
@@ -53,23 +59,7 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
       <main className="flex-1">
         {children}
       </main>
-        <footer className="border-t border-border/40 py-24 bg-muted/30">
-          <div className="container mx-auto px-6 space-y-16">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-12">
-              <div className="flex items-center gap-4 opacity-60">
-                <Logo size={32} />
-              </div>
-              <div className="flex gap-12 text-[10px] uppercase tracking-widest font-bold opacity-40">
-                <Link href="#" className="hover:opacity-100 transition-opacity">Privacy</Link>
-                <Link href="#" className="hover:opacity-100 transition-opacity">Terms</Link>
-                <Link href="#" className="hover:opacity-100 transition-opacity">Documentation</Link>
-              </div>
-              <div className="text-muted-foreground text-[10px] tracking-[0.2em] uppercase font-bold opacity-30">
-                © 2026 Architectural Knowledge Systems
-              </div>
-            </div>
-          </div>
-        </footer>
+      <Footer />
     </div>
   );
 }
