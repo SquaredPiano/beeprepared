@@ -1,4 +1,6 @@
-# Core
+yt-dlp
+ffmpeg-python
+google-generativeai
 python-dotenv
 boto3
 
