@@ -147,8 +147,8 @@ export default function HomePage() {
       </section>
 
       {/* Features Grid */}
-      <section className="container mx-auto px-8 md:px-16 lg:px-24 py-32">
-        <div className="grid grid-cols-1 md:grid-cols-auto gap-16 items-stretch">
+      <section className="container mx-auto px-8 md:px-16 lg:px-24 py-32 overflow-visible">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-16 items-stretch overflow-visible p-8">
           <ScrollReveal>
             <FeatureCard 
               icon={<Layers className="w-12 h-12 text-honey-600" />}
@@ -182,8 +182,8 @@ export default function HomePage() {
                 <span className="font-serif italic lowercase opacity-50">waiting for you</span>
               </h2>
             <Link 
-              href="/upload" 
-              className="inline-block bg-bee-black text-white px-16 py-8 rounded-full font-display text-sm uppercase tracking-widest font-bold hover:bg-honey-500 transition-all shadow-2xl cursor-pointer"
+              href="/auth/login" 
+              className="inline-block bg-bee-black text-white px-16 py-8 rounded-full font-display text-sm uppercase tracking-widest font-bold hover:bg-honey-500 transition-all shadow-[0_20px_50px_rgba(0,0,0,0.2)] hover:shadow-honey-500/20 cursor-pointer"
             >
               Begin Ingestion
             </Link>

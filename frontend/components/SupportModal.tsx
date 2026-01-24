@@ -1,19 +1,8 @@
 "use client";
 
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription,
-  DialogFooter
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { HelpCircle, Mail, MessageSquare, Send, Check } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Mail, MessageSquare, LifeBuoy } from "lucide-react";
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -21,93 +10,85 @@ interface SupportModalProps {
 }
 
 export function SupportModal({ isOpen, onClose }: SupportModalProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsCheck] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    
-    // Simulate support ticket creation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsSubmitting(false);
-    setIsCheck(true);
-    toast.success("Support ticket logged in Hive Archive");
-    
-    setTimeout(() => {
-      setIsCheck(false);
-      onClose();
-    }, 2000);
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md bg-cream border-wax rounded-[2.5rem] shadow-2xl overflow-hidden p-0">
-        <div className="p-8 space-y-6">
-          <DialogHeader>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-honey/10 rounded-2xl">
-                <HelpCircle className="w-6 h-6 text-honey" />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-bee-black/40 backdrop-blur-md z-[200] cursor-pointer"
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[201] pointer-events-none p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-cream border border-wax rounded-[32px] shadow-2xl overflow-hidden pointer-events-auto flex flex-col"
+            >
+              <div className="p-8 flex items-center justify-between border-b border-wax/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-honey/10 flex items-center justify-center">
+                    <LifeBuoy className="text-honey-600 w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display uppercase font-bold tracking-tight text-bee-black">
+                      Hive Support
+                    </h3>
+                    <p className="text-[10px] uppercase tracking-widest text-bee-black/40 font-bold">
+                      Direct Architect Relay
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="w-10 h-10 rounded-full bg-bee-black/5 hover:bg-bee-black/10 flex items-center justify-center transition-all group"
+                >
+                  <X className="w-4 h-4 text-bee-black transition-transform group-hover:rotate-90" />
+                </button>
               </div>
-              <div>
-                <DialogTitle className="text-2xl font-serif">Hive Support</DialogTitle>
-                <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40">
-                  Worker Assistance Protocol
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
 
-          {isSuccess ? (
-            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4 animate-in zoom-in-95 duration-500">
-              <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
-                <Check className="w-10 h-10 text-green-500" />
-              </div>
-              <h3 className="text-xl font-bold text-bee-black">Protocol Logged</h3>
-              <p className="text-sm text-bee-black/40 max-w-[240px]">A senior worker will analyze your query and relay a response shortly.</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Subject</Label>
-                <Input 
-                  placeholder="e.g. Ingestion pipeline error" 
-                  className="bg-white/50 border-wax rounded-xl h-12"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Detailed Relay</Label>
-                <textarea 
-                  className="w-full min-h-[120px] bg-white/50 border border-wax rounded-2xl p-4 text-sm focus:outline-none focus:border-honey focus:ring-1 focus:ring-honey transition-all font-medium"
-                  placeholder="Describe your issue in detail..."
-                  required
-                />
-              </div>
-              <Button 
-                type="submit" 
-                className="w-full h-12 bg-bee-black hover:bg-bee-black/90 text-cream rounded-xl font-bold uppercase text-[10px] tracking-widest gap-2 group transition-all"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Transmitting..." : "Send Support Request"}
-                {!isSubmitting && <Send className="w-3.5 h-3.5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
-              </Button>
-            </form>
-          )}
-        </div>
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-1 gap-4">
+                  <a 
+                    href="mailto:support@beeprepared.ai"
+                    className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                      <Mail className="text-blue-600 w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Email Protocol</h4>
+                      <p className="text-xs text-bee-black/50">support@beeprepared.ai</p>
+                    </div>
+                  </a>
 
-        <div className="bg-white/50 backdrop-blur-xl border-t border-wax p-6 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-bee-black/40">
-            <Mail size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">support@beeprepared.ai</span>
+                  <div className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group cursor-pointer">
+                    <div className="w-12 h-12 rounded-xl bg-honey/10 flex items-center justify-center group-hover:bg-honey/20 transition-colors">
+                      <MessageSquare className="text-honey-600 w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Live Relay</h4>
+                      <p className="text-xs text-bee-black/50">Available Mon-Fri, 9am-5pm EST</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-honey/5 border border-honey/10 rounded-2xl p-6 text-center">
+                  <p className="text-xs text-honey-700 font-medium leading-relaxed">
+                    Our architects are currently synthesizing high-fidelity responses. 
+                    Expect a relay within 2-4 hive cycles (hours).
+                  </p>
+                </div>
+              </div>
+
+              <div className="h-1.5 bg-gradient-to-r from-honey-400 via-honey-500 to-honey-600 opacity-30" />
+            </motion.div>
           </div>
-          <div className="flex items-center gap-3 text-bee-black/40">
-            <MessageSquare size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-honey hover:underline cursor-pointer">Live Chat</span>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

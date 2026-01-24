@@ -13,7 +13,7 @@ export function FeatureCard({ icon, title, description }: FeatureCardProps) {
   return (
     <motion.div
       whileHover={{ scale: 1.05, y: -5 }}
-      className="relative group h-full"
+      className="relative group h-full p-4"
     >
       {/* Glassmorphism effect */}
       <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-lg rounded-3xl" />

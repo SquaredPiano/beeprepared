@@ -4,11 +4,7 @@ import { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
   ReactFlow,
   Background,
-  Controls,
-  MiniMap,
   addEdge,
-  useNodesState,
-  useEdgesState,
   type OnConnect,
   MarkerType,
   ConnectionMode,
@@ -16,43 +12,32 @@ import {
   Panel,
   useReactFlow,
   ReactFlowProvider,
+  Node,
+  Edge,
+  Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import useSound from "use-sound";
+import { toast } from "sonner";
+import { useSearchParams } from "next/navigation";
+import { AlertCircle } from "lucide-react";
 
+import { useCanvasStore } from "@/store/useCanvasStore";
 import { AssetNode } from "./nodes/AssetNode";
 import { ProcessNode } from "./nodes/ProcessNode";
 import { ResultNode } from "./nodes/ResultNode";
+
+import { CanvasHeader } from "./CanvasHeader";
+import { CanvasSidebar } from "./CanvasSidebar";
+import { CanvasControls } from "./CanvasControls";
 import { AssetUploadModal } from "./AssetUploadModal";
-import { Button } from "@/components/ui/button";
-import { 
-  Plus, 
-  Upload, 
-  Play, 
-  Save, 
-  Undo2, 
-  Redo2, 
-  Maximize2, 
-  Trash2, 
-  MousePointer2,
-  Box,
-  Zap,
-  Layers,
-  Sparkles
-} from "lucide-react";
-import { toast } from "sonner";
-import { useFlowStore } from "@/store/useFlowStore";
-import { useSearchParams } from "next/navigation";
-import { 
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-} from "@/components/ui/context-menu";
+import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
+import { NodeContextMenu } from "./NodeContextMenu";
+
+// Modals
+import { AssetPreviewModal } from "./modals/AssetPreviewModal";
+import { ProcessStatusModal } from "./modals/ProcessStatusModal";
+import { ArtifactPreviewModal } from "./modals/ArtifactPreviewModal";
 
 const nodeTypes = {
   asset: AssetNode,
@@ -67,19 +52,31 @@ function BeeCanvasInner() {
     onNodesChange, 
     onEdgesChange, 
     onConnect, 
-    undo, 
-    redo, 
-    save, 
+    setNodes,
+    setEdges,
     loadProject, 
     currentProjectId,
-    takeSnapshot
-  } = useFlowStore();
+    takeSnapshot,
+    isDragging,
+    setIsDragging,
+    isLocked,
+    showMiniMap,
+    projectName
+  } = useCanvasStore();
   
-  const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
+
+  // Local UI State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [nodesToDelete, setNodesToDelete] = useState<Node[]>([]);
+  
+  // Preview Modals State
+  const [previewAsset, setPreviewAsset] = useState<any>(null);
+  const [previewProcess, setPreviewProcess] = useState<any>(null);
+  const [previewArtifact, setPreviewArtifact] = useState<any>(null);
 
   // Sounds
   const [playConnect] = useSound("/sounds/connect.mp3", { volume: 0.5 });
@@ -93,201 +90,258 @@ function BeeCanvasInner() {
     }
   }, [projectId, loadProject, currentProjectId]);
 
-  const onConnectWrapped: OnConnect = useCallback(
-    (params) => {
-      onConnect(params);
-      playConnect();
-    },
-    [onConnect, playConnect]
-  );
-
-  const handleAssetUpload = (asset: { label: string; type: 'pdf' | 'video' | 'pptx' }) => {
-    const id = `asset-${Date.now()}`;
-    const newNode = {
-      id,
-      type: "asset",
-      position: { x: 100, y: 300 },
-      data: { ...asset },
-    };
-    useFlowStore.getState().setNodes([...nodes, newNode]);
-    takeSnapshot();
-    playComplete();
+  // Constraints & Auto-connect logic
+  const findNearestCompatibleNode = (
+    position: { x: number, y: number },
+    targetType: 'asset' | 'process'
+  ): Node | null => {
+    const threshold = 300;
+    let nearest: Node | null = null;
+    let minDistance = threshold;
+    
+    for (const node of nodes) {
+      if (node.type !== targetType) continue;
+      
+      const distance = Math.sqrt(
+        Math.pow(node.position.x - position.x, 2) +
+        Math.pow(node.position.y - position.y, 2)
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = node;
+      }
+    }
+    
+    return nearest;
   };
 
-  const addNodeAtPosition = (type: string, data: any, position?: { x: number, y: number }) => {
-    const id = `${type}-${Date.now()}`;
-    const pos = position || { x: Math.random() * 400, y: Math.random() * 400 };
-    const newNode = {
-      id,
-      type,
-      position: pos,
-      data,
-    };
-    useFlowStore.getState().setNodes([...nodes, newNode]);
-    takeSnapshot();
-    playClick();
-  };
+  const autoConnectNode = useCallback((newNode: Node) => {
+    if (newNode.type === 'process') {
+      const sourceNode = findNearestCompatibleNode(newNode.position, 'asset');
+      if (sourceNode) {
+        const edge: Edge = {
+          id: `e${sourceNode.id}-${newNode.id}`,
+          source: sourceNode.id,
+          target: newNode.id,
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#3B82F6" },
+          style: { stroke: "#3B82F6", strokeWidth: 2, strokeDasharray: "5 5" }
+        };
+        setEdges([...edges, edge]);
+        playConnect();
+        toast.success(`Synthesized connection to ${sourceNode.data.label}`);
+      }
+    } else if (newNode.type === 'result') {
+      const sourceNode = findNearestCompatibleNode(newNode.position, 'process');
+      if (sourceNode) {
+        const edge: Edge = {
+          id: `e${sourceNode.id}-${newNode.id}`,
+          source: sourceNode.id,
+          target: newNode.id,
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" },
+          style: { stroke: "#FCD34F", strokeWidth: 2, strokeDasharray: "5 5" }
+        };
+        setEdges([...edges, edge]);
+        playConnect();
+        toast.success(`Artifact linked to synthesis layer`);
+      }
+    }
+  }, [nodes, edges, setEdges, playConnect]);
 
-  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+  const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    setMenuPosition({ x: event.clientX, y: event.clientY });
+    event.dataTransfer.dropEffect = "move";
   }, []);
 
+  const onDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    
+    const dataStr = event.dataTransfer.getData("application/reactflow");
+    if (!dataStr) return;
+    
+    const nodeData = JSON.parse(dataStr);
+    
+    // Check constraints
+    const hasSource = nodes.some(n => n.type === 'asset');
+    const hasProcess = nodes.some(n => n.type === 'process');
+
+    if (nodeData.type === 'process' && !hasSource) {
+      toast.warning("Ingest Source First", {
+        description: "An architectural source must exist before synthesis layers.",
+        icon: <AlertCircle className="h-4 w-4" />,
+      });
+      return;
+    }
+
+    if (nodeData.type === 'result' && !hasProcess) {
+      toast.warning("Synthesize Knowledge First", {
+        description: "Add a synthesis layer to process your sources before creating artifacts.",
+        icon: <AlertCircle className="h-4 w-4" />,
+      });
+      return;
+    }
+
+    const position = screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    const newNode: Node = {
+      id: `${nodeData.type}-${Date.now()}`,
+      type: nodeData.type,
+      position,
+      data: { 
+        ...nodeData, 
+        status: nodeData.type === 'process' ? 'pending' : 'ready',
+        progress: 0,
+        stage: 'extraction'
+      },
+    };
+
+    setNodes([...nodes, newNode]);
+    autoConnectNode(newNode);
+    takeSnapshot();
+    playClick();
+  }, [nodes, setNodes, screenToFlowPosition, autoConnectNode, takeSnapshot, playClick]);
+
+  // Handle deletion with confirmation
+  const onNodesDelete = useCallback((deletedNodes: Node[]) => {
+    const hasImportant = deletedNodes.some(n => 
+      n.type === 'asset' || 
+      (n.type === 'process' && n.data.status === 'complete') ||
+      n.type === 'result'
+    );
+
+    if (hasImportant) {
+      setNodesToDelete(deletedNodes);
+      setDeleteDialogOpen(true);
+      return false; // Prevent immediate deletion
+    }
+
+    takeSnapshot();
+    playDelete();
+    return true;
+  }, [takeSnapshot, playDelete]);
+
+  const confirmDelete = () => {
+    const deletedIds = new Set(nodesToDelete.map(n => n.id));
+    setNodes(nodes.filter(n => !deletedIds.has(n.id)));
+    setEdges(edges.filter(e => !deletedIds.has(e.source) && !deletedIds.has(e.target)));
+    setDeleteDialogOpen(false);
+    setNodesToDelete([]);
+    takeSnapshot();
+    playDelete();
+  };
+
+  // Node interaction handlers
+  const onNodeClick = useCallback((_: any, node: Node) => {
+    if (node.type === 'asset') setPreviewAsset(node.data);
+    else if (node.type === 'process') setPreviewProcess(node.data);
+    else if (node.type === 'result') setPreviewArtifact({ ...node.data, id: node.id });
+  }, []);
+
+  // Edge styling logic
+  const styledEdges = useMemo(() => {
+    return edges.map(edge => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      const color = sourceNode?.type === 'asset' ? "#3B82F6" : "#FCD34F";
+      
+      return {
+        ...edge,
+        animated: !isDragging,
+        style: {
+          stroke: color,
+          strokeWidth: isDragging ? 3 : 2,
+          strokeDasharray: isDragging ? "none" : "5 5",
+          transition: 'stroke-width 0.2s, stroke-dasharray 0.2s',
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color,
+        }
+      };
+    });
+  }, [edges, nodes, isDragging]);
+
   return (
-    <div className="w-full h-full relative bg-cream/5" onContextMenu={handleContextMenu}>
-      <ContextMenu>
-        <ContextMenuTrigger className="w-full h-full block">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnectWrapped}
-            nodeTypes={nodeTypes}
-            connectionMode={ConnectionMode.Loose}
-            fitView
-            className="bg-transparent"
-            defaultEdgeOptions={{
-              type: 'bezier',
-              animated: true,
-              style: { strokeWidth: 3, stroke: '#FCD34F' },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#FCD34F' }
-            }}
-          >
-            <Background color="#FCD34F" variant={BackgroundVariant.Dots} gap={24} size={1.5} className="opacity-30" />
-            
-            <Panel position="top-center" className="mt-4">
-              <div className="flex items-center gap-3 p-2 bg-white/90 backdrop-blur-xl rounded-[1.5rem] border border-wax shadow-2xl shadow-honey/10 z-50 ring-1 ring-black/[0.03]">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-10 px-4 gap-2 rounded-xl hover:bg-honey/10 text-bee-black font-bold uppercase text-[10px] tracking-widest cursor-pointer"
-                  onClick={() => setIsUploadModalOpen(true)}
-                >
-                  <Upload className="w-3.5 h-3.5" /> Ingest
-                </Button>
-                <div className="w-px h-4 bg-wax" />
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-10 px-4 gap-2 rounded-xl hover:bg-honey/10 text-bee-black font-bold uppercase text-[10px] tracking-widest cursor-pointer"
-                  onClick={() => addNodeAtPosition('process', { label: 'Synthesize', status: 'pending' })}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Process
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-10 px-4 gap-2 rounded-xl hover:bg-honey/10 text-bee-black font-bold uppercase text-[10px] tracking-widest cursor-pointer"
-                  onClick={() => addNodeAtPosition('result', { label: 'Knowledge Node', type: 'flashcards', id: 'sample' })}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Result
-                </Button>
-                <div className="w-px h-4 bg-wax" />
-                <Button 
-                  className="h-10 px-6 gap-2 rounded-xl bg-bee-black hover:bg-bee-black/90 text-cream font-bold uppercase text-[10px] tracking-widest cursor-pointer shadow-lg shadow-bee-black/20"
-                  onClick={() => {
-                    playComplete();
-                    toast.success('Generation pipeline active');
-                  }}
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" /> Run Flow
-                </Button>
-              </div>
-            </Panel>
+    <div className="w-full h-full relative bg-[#FBFBFB] overflow-hidden" onDrop={onDrop} onDragOver={onDragOver}>
+      <CanvasHeader />
+      <CanvasSidebar />
+      <CanvasControls />
 
-            <Panel position="bottom-left" className="mb-4 ml-4 flex flex-col gap-2">
-              <div className="flex gap-1 p-1.5 bg-white/90 backdrop-blur-xl rounded-2xl border border-wax shadow-xl ring-1 ring-black/[0.03]">
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl hover:bg-honey/10 cursor-pointer" onClick={undo} title="Undo">
-                  <Undo2 size={18} className="text-bee-black/60" />
-                </Button>
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl hover:bg-honey/10 cursor-pointer" onClick={redo} title="Redo">
-                  <Redo2 size={18} className="text-bee-black/60" />
-                </Button>
-                <div className="w-px h-6 bg-wax mx-1 self-center" />
-                <Button variant="ghost" size="icon" className="w-10 h-10 rounded-xl hover:bg-honey/10 cursor-pointer" onClick={() => fitView()} title="Reset View">
-                  <Maximize2 size={18} className="text-bee-black/60" />
-                </Button>
-              </div>
-            </Panel>
+      <ReactFlow
+        nodes={nodes}
+        edges={styledEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onNodeDragStart={() => setIsDragging(true)}
+        onNodeDragStop={() => setIsDragging(false)}
+        onNodeClick={onNodeClick}
+        onNodesDelete={onNodesDelete}
+        nodeTypes={nodeTypes}
+        connectionMode={ConnectionMode.Loose}
+        nodesDraggable={!isLocked}
+        nodesConnectable={!isLocked}
+        elementsSelectable={!isLocked}
+        panOnDrag={!isLocked}
+        zoomOnScroll={!isLocked}
+        fitView
+        className="bg-transparent"
+      >
+        <Background 
+          color="#FCD34F" 
+          variant={BackgroundVariant.Dots} 
+          gap={24} 
+          size={1} 
+          className="opacity-[0.15]" 
+        />
+      </ReactFlow>
 
-            <Panel position="bottom-right" className="mb-4 mr-4 flex flex-col items-end gap-4">
-              <MiniMap 
-                nodeColor={(n) => {
-                  if (n.type === 'process') return '#0F172A'
-                  if (n.type === 'result') return '#FCD34F'
-                  return '#FFF'
-                }}
-                className="!bg-white/80 !backdrop-blur-xl !border-wax !rounded-[1.5rem] !shadow-2xl !ring-1 !ring-black/[0.03] overflow-hidden"
-                maskColor="rgba(255, 251, 235, 0.4)"
-              />
-              <Button 
-                size="lg" 
-                className="h-14 px-8 rounded-2xl bg-honey hover:bg-honey/90 text-bee-black font-bold uppercase text-[10px] tracking-[0.2em] shadow-2xl shadow-honey/20 transition-all active:scale-95 cursor-pointer border border-wax/50 group"
-                onClick={() => {
-                  playClick();
-                  save();
-                }}
-              >
-                <Save className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" /> Persist Architecture
-              </Button>
-            </Panel>
+      {/* Delete Confirmation */}
+      <DeleteConfirmationDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDelete}
+        title="Decommission Node?"
+        description="This will permanently sever all architectural links and remove synthesized artifacts."
+        itemName={nodesToDelete.map(n => n.data.label).join(', ')}
+      />
 
-            <Controls showInteractive={false} className="!bg-white/90 !backdrop-blur-xl !border-wax !rounded-2xl !shadow-xl !m-0 !mt-20 !ml-4 !flex !flex-col !gap-1 !p-1 ring-1 ring-black/[0.03]" />
-          </ReactFlow>
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-64 rounded-2xl border-wax p-2 bg-white/95 backdrop-blur-2xl shadow-2xl ring-1 ring-black/5">
-          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/30">Architectural Suite</div>
-          <ContextMenuSeparator className="bg-wax/50 mx-1" />
-          <ContextMenuItem className="gap-3 rounded-xl py-3 px-4 cursor-pointer focus:bg-honey/10" onClick={() => setIsUploadModalOpen(true)}>
-            <div className="p-1.5 bg-honey/10 rounded-lg"><Upload size={14} className="text-honey" /></div>
-            <div className="flex flex-col"><span className="text-sm font-bold text-bee-black">Ingest Asset</span><span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">External Data Node</span></div>
-          </ContextMenuItem>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger className="gap-3 rounded-xl py-3 px-4 cursor-pointer focus:bg-honey/10">
-              <div className="p-1.5 bg-bee-black/5 rounded-lg"><Plus size={14} className="text-bee-black/60" /></div>
-              <div className="flex flex-col"><span className="text-sm font-bold text-bee-black">Synthesis Layer</span><span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">Logic Operations</span></div>
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent className="w-56 rounded-xl border-wax bg-white/95 backdrop-blur-2xl p-1.5 shadow-2xl">
-              <ContextMenuItem className="gap-3 rounded-lg py-2 px-3 cursor-pointer focus:bg-honey/10" onClick={() => addNodeAtPosition('process', { label: 'Synthesize', status: 'pending' })}>
-                <Zap size={14} className="text-honey" /> <span className="text-xs font-bold uppercase tracking-wider">Fast Synthesis</span>
-              </ContextMenuItem>
-              <ContextMenuItem className="gap-3 rounded-lg py-2 px-3 cursor-pointer focus:bg-honey/10" onClick={() => addNodeAtPosition('process', { label: 'Categorize', status: 'pending' })}>
-                <Layers size={14} className="text-bee-black/60" /> <span className="text-xs font-bold uppercase tracking-wider">Categorization</span>
-              </ContextMenuItem>
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger className="gap-3 rounded-xl py-3 px-4 cursor-pointer focus:bg-honey/10">
-              <div className="p-1.5 bg-honey/10 rounded-lg"><Box size={14} className="text-honey" /></div>
-              <div className="flex flex-col"><span className="text-sm font-bold text-bee-black">Knowledge Output</span><span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">Artifact Synthesis</span></div>
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent className="w-56 rounded-xl border-wax bg-white/95 backdrop-blur-2xl p-1.5 shadow-2xl">
-              <ContextMenuItem className="gap-3 rounded-lg py-2 px-3 cursor-pointer focus:bg-honey/10" onClick={() => addNodeAtPosition('result', { label: 'Flashcards', type: 'flashcards' })}>
-                <Sparkles size={14} className="text-honey" /> <span className="text-xs font-bold uppercase tracking-wider">Flashcards</span>
-              </ContextMenuItem>
-              <ContextMenuItem className="gap-3 rounded-lg py-2 px-3 cursor-pointer focus:bg-honey/10" onClick={() => addNodeAtPosition('result', { label: 'Quiz Suite', type: 'quiz' })}>
-                <MousePointer2 size={14} className="text-bee-black/60" /> <span className="text-xs font-bold uppercase tracking-wider">Quiz Suite</span>
-              </ContextMenuItem>
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-          <ContextMenuSeparator className="bg-wax/50 mx-1" />
-          <ContextMenuItem className="gap-3 rounded-xl py-3 px-4 text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" onClick={() => {
-            useFlowStore.getState().setNodes([]);
-            useFlowStore.getState().setEdges([]);
-            takeSnapshot();
-            playDelete();
-          }}>
-            <div className="p-1.5 bg-red-100 rounded-lg"><Trash2 size={14} /></div>
-            <div className="flex flex-col"><span className="text-sm font-bold">Clear Pipeline</span><span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">Destructive Action</span></div>
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      {/* Preview Modals */}
+      <AssetPreviewModal 
+        isOpen={!!previewAsset} 
+        onClose={() => setPreviewAsset(null)} 
+        asset={previewAsset} 
+      />
+      <ProcessStatusModal 
+        isOpen={!!previewProcess} 
+        onClose={() => setPreviewProcess(null)} 
+        process={previewProcess} 
+      />
+      <ArtifactPreviewModal 
+        isOpen={!!previewArtifact} 
+        onClose={() => setPreviewArtifact(null)} 
+        artifact={previewArtifact} 
+      />
 
+      {/* Upload Modal Relay */}
       <AssetUploadModal 
         isOpen={isUploadModalOpen} 
         onClose={() => setIsUploadModalOpen(false)} 
-        onUpload={handleAssetUpload}
+        onUpload={(asset) => {
+          const newNode: Node = {
+            id: `asset-${Date.now()}`,
+            type: "asset",
+            position: { x: 100, y: 300 },
+            data: asset,
+          };
+          setNodes([...nodes, newNode]);
+          takeSnapshot();
+          playComplete();
+        }}
       />
     </div>
   );
