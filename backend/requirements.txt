@@ -11,8 +11,8 @@ pymupdf
 python-pptx
 python-docx
 
-# AI Services
-google-genai
+# AI Services (from origin/main)
+google-generativeai
 azure-cognitiveservices-speech
 
 # Database

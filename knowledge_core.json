@@ -1,0 +1,364 @@
+{
+  "title": "How to Write Science Fiction and Fantasy - Introduction and Philosophy",
+  "summary": "Brandon Sanderson's introductory lecture to his Science Fiction and Fantasy writing class at BYU covers his teaching philosophy, the importance of developing a personal writing process, and the realities of pursuing a professional writing career. He emphasizes the need to treat writing as a craft to be mastered, the validity of different writing styles (outlining vs. discovery writing), and the importance of understanding survivorship bias when seeking advice. He also stresses the value of writing, regardless of professional aspirations, and offers guidance on writing groups and revision.",
+  "concepts": [
+    {
+      "name": "Writing Process",
+      "description": "The individual approach and methods a writer uses to create their work, including outlining, discovery writing, revision, and habit formation. Sanderson emphasizes the importance of finding what works best for each writer through experimentation and self-awareness.",
+      "importance_score": 10
+    },
+    {
+      "name": "Professional vs. Non-Professional Writing",
+      "description": "The distinction between writing as a hobby or personal enrichment versus pursuing it as a full-time career. Sanderson acknowledges the validity of both paths but focuses the class on providing tools for those aspiring to be professional science fiction and fantasy writers.",
+      "importance_score": 9
+    },
+    {
+      "name": "Chef vs. Cook",
+      "description": "A metaphor for the difference between blindly following writing rules and understanding the underlying principles to adapt and create effectively. Sanderson encourages students to become 'chefs' who can understand and manipulate the elements of writing.",
+      "importance_score": 8
+    },
+    {
+      "name": "Survivorship Bias",
+      "description": "The tendency to overvalue the advice of successful individuals without considering that their success may be due to luck or factors not applicable to everyone. Sanderson cautions against blindly following advice without critical evaluation.",
+      "importance_score": 7
+    },
+    {
+      "name": "Artistic Integrity vs. Business Acumen",
+      "description": "The balance between maintaining artistic vision and making pragmatic decisions to market and sell one's work. Sanderson suggests separating the artistic and business mindsets to avoid compromising the creative process.",
+      "importance_score": 7
+    },
+    {
+      "name": "Revision",
+      "description": "The process of reviewing, editing, and improving a written work. Sanderson emphasizes its importance as a skill to be learned and practiced, and offers advice on how to approach it effectively.",
+      "importance_score": 8
+    }
+  ],
+  "section_hierarchy": [
+    {
+      "title": "Introduction",
+      "summary": "Brandon Sanderson welcomes students to the Science Fiction and Fantasy writing class and introduces the topics to be covered.",
+      "subsections": [
+        {
+          "title": "Course Overview",
+          "summary": "Explanation of the class structure, including lectures, Q&A sessions, and guest speakers. Core topics include plot, setting, character, and the business of writing."
+        }
+      ]
+    },
+    {
+      "title": "Philosophy of the Class",
+      "summary": "Sanderson outlines his teaching philosophy, emphasizing individual learning and the importance of writing as an art form.",
+      "subsections": [
+        {
+          "title": "Writing Advice and Individuality",
+          "summary": "Discussion of how writing advice is subjective and what works for one writer may not work for another."
+        },
+        {
+          "title": "Chef vs. Cook Metaphor",
+          "summary": "Explanation of the 'chef' metaphor, emphasizing the need to understand the fundamentals of writing to create original work."
+        }
+      ]
+    },
+    {
+      "title": "Being a Pro vs Non-Pro Writer",
+      "summary": "Exploration of the different motivations for writing and the distinction between professional and non-professional aspirations.",
+      "subsections": [
+        {
+          "title": "The Utilitarian View of Art",
+          "summary": "Critique of society's tendency to view art from a utilitarian perspective, emphasizing the primary purpose of art as self-enrichment."
+        },
+        {
+          "title": "Focus on Aspiring Professionals",
+          "summary": "The course will be taught to those who are aspiring to be professionals, but the advice will be useful to non-professionals as well."
+        }
+      ]
+    },
+    {
+      "title": "Making a Living as a Novelist",
+      "summary": "Realistic look at the challenges and probabilities of making a living as a professional novelist.",
+      "subsections": [
+        {
+          "title": "Odds of Success",
+          "summary": "Discussion of the odds of making a significant portion of income from writing and comparison to other fields."
+        },
+        {
+          "title": "Importance of Practice",
+          "summary": "Focus on aggressive writing schedules and finishing multiple novels to learn the writing process."
+        },
+        {
+          "title": "Learning Scales Metaphor",
+          "summary": "The first several novels are learning scales to a song, not a finished work."
+        }
+      ]
+    },
+    {
+      "title": "Philosophy on Artistic Expression",
+      "summary": "Advice on balancing artistic integrity with business considerations in the writing process.",
+      "subsections": [
+        {
+          "title": "Separating the Artist and Business Person",
+          "summary": "Discussion of when to prioritize artistic vision and when to consider business aspects of writing."
+        },
+        {
+          "title": "Example of John Scalzi",
+          "summary": "Example of John Scalzi's back and forth on prioritizing artistic intergrity with business."
+        }
+      ]
+    },
+    {
+      "title": "Revision and Writing Styles",
+      "summary": "Discussion on the importance of revision and different approaches to writing (outlining vs. discovery writing).",
+      "subsections": [
+        {
+          "title": "Importance of Feedback",
+          "summary": "Importance of feedback in the revisions process."
+        },
+        {
+          "title": "Discovery Writers vs. Outliners",
+          "summary": "The difference between the two, and some advice for each."
+        }
+      ]
+    },
+    {
+      "title": "Motivation and Overcoming Challenges",
+      "summary": "Sanderson shares personal anecdotes and advice on staying motivated and overcoming obstacles in the writing journey.",
+      "subsections": [
+        {
+          "title": "Personal Motivation",
+          "summary": "Sanderson's own motivation to write."
+        },
+        {
+          "title": "The Spreadsheet Technique",
+          "summary": "Tracking your progress to see growth."
+        },
+        {
+          "title": "Survivorship Bias",
+          "summary": "Acknowledge that things that worked for Sanderson won't work for everyone."
+        },
+        {
+          "title": "The Story of Almost Giving Up",
+          "summary": "Sanderson almost quit writing because he was rejected."
+        }
+      ]
+    },
+    {
+      "title": "Questions and Answers",
+      "summary": "Sanderson addresses questions from students on various topics related to writing and the writing process.",
+      "subsections": [
+        {
+          "title": "Writing in the Same World",
+          "summary": "Addressing the detriment, or lack thereof, of writing in the same world."
+        },
+        {
+          "title": "Escaping a World",
+          "summary": "Addressing the fear of writing a great world in the first several, generally considered bad, novels."
+        },
+        {
+          "title": "Forcing Yourself to Rewrite",
+          "summary": "How to revise works."
+        }
+      ]
+    },
+    {
+      "title": "Writing Groups",
+      "summary": "Sanderson discusses the purpose of writing groups.",
+      "subsections": []
+    }
+  ],
+  "notes": [
+    {
+      "heading": "Introduction to the Class",
+      "bullets": [
+        "The class is a lecture series on science fiction and fantasy writing at Brigham Young University.",
+        "The course will cover introductory material, Sanderson's teaching philosophy, and the difference between discovery writers and outline writers.",
+        "The class approaches writing with the goal of becoming a professional writer.",
+        "The goal of the class is to receive a firehose of information about writing, that can also be found later on Youtube."
+      ]
+    },
+    {
+      "heading": "Philosophy of Teaching Writing",
+      "bullets": [
+        "Writing is hard to teach because you learn more by writing than can be taught.",
+        "Writing requires work, effort, exploration, and revision.",
+        "Writing advice is only as good as its ability to help you individually; bad advice for you is possible.",
+        "Most writers are a mix of 'gardener' (discovery writer) and 'architect' (outliner).",
+        "Treat students as 'chefs' who understand the principles of writing, not just 'cooks' who follow recipes."
+      ]
+    },
+    {
+      "heading": "Being a Professional vs. Non-Professional Writer",
+      "bullets": [
+        "It is perfectly fine to be a nonprofessional writer; writing is good for personal enrichment.",
+        "People often ask writers if they are published or when they will make money from their books.",
+        "Society treats art too utilitarianly, overlooking the primary purpose of enriching the artist's life.",
+        "The class will primarily focus on advice for those wanting to make a full-time living as a science fiction/fantasy novelist.",
+        "Advice for aspiring professionals encompasses advice for other writing goals."
+      ]
+    },
+    {
+      "heading": "Making a Living as a Novelist (Realistically)",
+      "bullets": [
+        "Making a living as a professional novelist is difficult, like being a professional musician or fine artist.",
+        "Writing fiction and making a living at it is hard, but not as hard as it used to be.",
+        "If seriously dedicated, you have a better than one in twenty shot of making a significant portion of your income from writing if you work hard for 10 years.",
+        "Even among those who go pro, only a few regularly hit the New York Times bestseller list.",
+        "Your job as a writer early on is to write enough books to learn your process, not to sell books.",
+        "It's generally advised to finish several novels before seriously pursuing publication to develop style and consistency.",
+        "Approach your writing like learning the piano; early books are like learning scales."
+      ]
+    },
+    {
+      "heading": "Philosophy on Artistic Expression",
+      "bullets": [
+        "While writing a book, the artist should be in control and make the best decisions for the story and characters.",
+        "After finishing the book, a 'business person' should take over to exploit the book for profit.",
+        "Do not compromise artistic integrity through revisions solely for business reasons.",
+        "There should be communication between business and artistic aspects of the work."
+      ]
+    },
+    {
+      "heading": "Revision Advice",
+      "bullets": [
+        "Revision is a difficult but essential skill to learn.",
+        "There's an argument for putting aside the first book and coming back later.",
+        "Discovery writers tend to over-revise early chapters and never finish the book.",
+        "Those writers who constantly revise the early chapters, they don't tend to make it."
+      ]
+    },
+    {
+      "heading": "Motivation to Write",
+      "bullets": [
+        "The thought of having to get a job that Sanderson didn't enjoy made him write.",
+        "Hours passed when writing and Sanderson wouldn't know what time it was.",
+        "Sanderson kept a spreadsheet of the amount he wrote each day.",
+        "Sanderson felt like he was working his way up a progress bar in an MMO."
+      ]
+    },
+    {
+      "heading": "Survivorship Bias",
+      "bullets": [
+        "Our brains are more likely to weigh the words of someone who's been successful, even if their success was random, than someone who has not been."
+      ]
+    },
+    {
+      "heading": "Almost Giving Up",
+      "bullets": [
+        "Sanderson applied to grad schools and got rejected from all of them.",
+        "Sanderson had written around 12 novels and hadn't sold any.",
+        "Sanderson got into BYU's grad program, but it didn't have an MFA.",
+        "Sanderson decided that he would write for the rest of his life before he became one of the most famous writers in the world."
+      ]
+    },
+    {
+      "heading": "Questions and Answers",
+      "bullets": [
+        "Writing all books in the same world is okay.",
+        "Ideas are cheap.",
+        "It is more important to be a good writer, than to have a good idea.",
+        "Find what triggers yourself to write."
+      ]
+    },
+    {
+      "heading": "Writing Groups",
+      "bullets": [
+        "If you are a discovery writer, be very careful about taking any advice for your book until after you have finished said book and are working on a different one.",
+        "If you are getting feedback, try not to say anything.",
+        "If you are giving feedback, be descriptive, not proscriptive."
+      ]
+    }
+  ],
+  "definitions": [
+    {
+      "term": "Discovery Writer",
+      "definition": "A writer who discovers the story as they write, without a detailed outline.",
+      "context": "Contrasted with an outline writer, in the discussion of different writing styles."
+    },
+    {
+      "term": "Outline Writer",
+      "definition": "A writer who plans the story in detail before writing, using an outline to guide the process.",
+      "context": "Contrasted with a discovery writer, in the discussion of different writing styles."
+    },
+    {
+      "term": "Gardener",
+      "definition": "A metaphor for a writer who nurtures a story as it grows, seeing what it becomes organically.",
+      "context": "George R.R. Martin's term for a discovery writer."
+    },
+    {
+      "term": "Architect",
+      "definition": "A metaphor for a writer who builds a structure for their story, then hangs a story upon it.",
+      "context": "George R.R. Martin's term for an outline writer."
+    },
+    {
+      "term": "Pantsing",
+      "definition": "Writing by the seat of your pants; writing without an outline.",
+      "context": "Another term for discovery writing."
+    },
+    {
+      "term": "Chef",
+      "definition": "Someone who understands the underlying principles of writing and can adapt them to create new things.",
+      "context": "Sanderson's metaphor for a writer who has mastered the craft."
+    },
+    {
+      "term": "Cook",
+      "definition": "Someone who can follow a recipe but doesn't understand the underlying principles.",
+      "context": "Sanderson's metaphor for a writer who blindly follows rules."
+    },
+    {
+      "term": "Survivorship Bias",
+      "definition": "The tendency to overvalue the advice of successful individuals without considering the role of luck or other factors.",
+      "context": "Discussion of the value of the advice given."
+    },
+    {
+      "term": "Grimdark",
+      "definition": "A subgenre of fantasy that is known for being particularly dark, violent, and morally ambiguous.",
+      "context": "Referenced when Sanderson was trying to conform to modern book trends."
+    }
+  ],
+  "examples": [
+    {
+      "description": "Orson Scott Card advocating for outlines versus Stephen King arguing against them.",
+      "relevance": "Illustrates the contradictory nature of writing advice and the need for individual experimentation."
+    },
+    {
+      "description": "George R.R. Martin's gardener versus architect analogy for writing styles.",
+      "relevance": "Provides a vivid metaphor for the difference between discovery writing and outlining."
+    },
+    {
+      "description": "The 'chef' versus 'cook' metaphor.",
+      "relevance": "Explains the difference between blindly following writing rules and understanding the underlying principles."
+    },
+    {
+      "description": "John Scalzi choosing a project based on what was selling well.",
+      "relevance": "Illustrates the interplay between artistic integrity and business considerations."
+    },
+    {
+      "description": "Jim Butcher's Codex Alera series origin of Pokemon meets the Lost Roman Legion",
+      "relevance": "The ability to be good at writing outshines the quality of an idea."
+    }
+  ],
+  "key_facts": [
+    {
+      "fact": "The class is a lecture series on science fiction and fantasy writing at Brigham Young University.",
+      "category": "Course Information"
+    },
+    {
+      "fact": "The core ideas covered include plot, setting, character, and the business of writing.",
+      "category": "Course Content"
+    },
+    {
+      "fact": "Sanderson estimates that about one in 20 dedicated writers will make a significant portion of their income from writing within 10 years.",
+      "category": "Statistical"
+    },
+    {
+      "fact": "Sanderson sold his sixth book (Elantris), while Dan Wells sold his sixth, illustrating the importance of practice.",
+      "category": "Anecdotal"
+    },
+    {
+      "fact": "Harry Potter, Twilight, and Name of the Wind were all first books.",
+      "category": "Book Information"
+    },
+    {
+      "fact": "Sanderson's Mistborn was his 14th novel.",
+      "category": "Book Information"
+    }
+  ]
+}
