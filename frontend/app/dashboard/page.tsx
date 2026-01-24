@@ -2,6 +2,7 @@
 
 import React, { useRef } from "react";
 import { useStore } from "@/store/useStore";
+import { motion } from "framer-motion";
 import { 
   Plus, 
   ArrowUpRight, 
