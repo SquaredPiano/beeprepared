@@ -87,7 +87,7 @@ export default function HomePage() {
   return (
     <div ref={containerRef} className="relative min-h-screen bg-background overflow-hidden font-sans">
       <ParticleBackground />
-      <HoneyJar points={450} maxPoints={1000} level="Worker Bee" />
+      <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
       
       {/* Background Pattern */}
       <div className="absolute inset-0 -z-10 opacity-[0.03]">
@@ -103,7 +103,7 @@ export default function HomePage() {
       <div ref={beeRef} className="absolute top-1/4 left-1/4 text-4xl pointer-events-none z-20">🐝</div>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-6 pt-40 pb-32 flex flex-col items-center text-center relative z-10">
+      <section className="container mx-auto px-6 pt-32 pb-24 flex flex-col items-center text-center relative z-10">
         <div className="space-y-12 max-w-6xl">
             <div className="overflow-hidden">
               <h1 ref={titleRef} className="text-7xl md:text-[140px] font-display uppercase leading-[0.8] tracking-tighter reveal-hero">
@@ -116,10 +116,10 @@ export default function HomePage() {
             </div>
             
             <div ref={subRef} className="max-w-3xl mx-auto reveal-hero">
-              <p className="text-xl md:text-3xl text-muted-foreground leading-tight font-medium uppercase tracking-tight">
+              <p className="text-xl md:text-2xl text-muted-foreground leading-tight font-medium uppercase tracking-tight">
                 <Balancer>
                   Transform documents and audio into clean, architectural artifacts.
-                  Built for the high-performance mind.
+                  Built for high-performance learning.
                 </Balancer>
               </p>
             </div>
@@ -147,7 +147,7 @@ export default function HomePage() {
       </section>
 
       {/* Features Grid */}
-      <section className="container mx-auto px-6 py-32">
+      <section className="container mx-auto px-6 py-24">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
           <ScrollReveal>
             <FeatureCard 
@@ -174,10 +174,10 @@ export default function HomePage() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="py-64 text-center relative">
+      <section className="py-32 text-center relative">
         <ScrollReveal>
           <div className="container mx-auto px-6 space-y-16 relative z-10">
-            <h2 className="text-6xl md:text-9xl font-display uppercase leading-none tracking-tighter">
+            <h2 className="text-6xl md:text-[120px] font-display uppercase leading-none tracking-tighter">
               The hive is <br />
               <span className="font-serif italic lowercase opacity-30">waiting for you</span>
             </h2>
@@ -189,6 +189,7 @@ export default function HomePage() {
             </Link>
           </div>
         </ScrollReveal>
+
         
         {/* Abstract shapes */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] rotate-12 opacity-[0.01] pointer-events-none">
