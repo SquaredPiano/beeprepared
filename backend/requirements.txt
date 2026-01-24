@@ -1,6 +1,20 @@
-yt-dlp
-ffmpeg-python
-google-genai
+# Core
 python-dotenv
 boto3
+
+# Media Processing
+yt-dlp
+ffmpeg-python
+
+# Document Extraction
+pymupdf
+python-pptx
+python-docx
+
+# AI Services
+google-genai
 azure-cognitiveservices-speech
+
+# Database
+supabase
+psycopg2-binary
