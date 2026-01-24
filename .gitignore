@@ -1,6 +1,10 @@
 # Environment
 .env
 .env.local
+ENV_SETUP.md
+
+# Prompts (internal planning docs)
+.github/prompts
 
 # Virtual Environments
 backend/venv

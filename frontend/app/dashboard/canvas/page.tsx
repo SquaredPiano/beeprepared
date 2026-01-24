@@ -1,86 +1,72 @@
 "use client";
 
-import { PipelineCanvas } from "@/components/canvas/PipelineCanvas";
-import { AgentPalette } from "@/components/canvas/AgentPalette";
-import { ArrowLeft, Plus, Edit3, Check } from "lucide-react";
+import { BeeCanvas } from "@/components/canvas/BeeCanvas";
+import { ArrowLeft, Edit3, Check, Hexagon } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
-import { useFlowStore } from "@/store/useFlowStore";
 
 function CanvasHeader() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
-  const { loadProject, projectName, createNewProject } = useFlowStore();
+  const [projectName, setProjectName] = useState("Unstructured Pipeline");
   const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setProjectName] = useState(projectName);
-
-  useEffect(() => {
-    if (projectId) {
-      loadProject(projectId);
-    } else {
-      createNewProject();
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    setProjectName(projectName);
-  }, [projectName]);
-
-  const handleNameSave = () => {
-    useFlowStore.setState({ projectName: tempName });
-    setIsEditingName(false);
-  };
 
   return (
-    <header className="flex items-center justify-between px-8 py-6 border-b border-border/40 bg-white/50 backdrop-blur-md h-24 shrink-0">
+    <header className="flex items-center justify-between px-8 py-6 border-b border-wax bg-white/80 backdrop-blur-xl h-24 shrink-0 z-50">
       <div className="flex items-center gap-8">
         <Link 
           href="/dashboard/library" 
-          className="group flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity cursor-pointer"
+          className="group flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/40 hover:text-bee-black transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Exit View
+          Exit Hive
         </Link>
-        <div className="h-4 w-px bg-border/60" />
+        <div className="h-4 w-px bg-wax" />
         <div className="flex items-center gap-4">
+          <div className="p-2 bg-honey/10 rounded-lg">
+            <Hexagon className="w-5 h-5 text-honey fill-honey/20" />
+          </div>
           <div className="space-y-0.5">
             {isEditingName ? (
               <div className="flex items-center gap-2">
                 <input 
                   autoFocus
-                  value={tempName}
+                  value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  onBlur={handleNameSave}
-                  onKeyDown={(e) => e.key === "Enter" && handleNameSave()}
-                  className="bg-transparent border-none focus:outline-none text-sm font-bold uppercase tracking-widest text-honey-600 w-48"
+                  onBlur={() => setIsEditingName(false)}
+                  onKeyDown={(e) => e.key === "Enter" && setIsEditingName(false)}
+                  className="bg-transparent border-none focus:outline-none text-sm font-bold uppercase tracking-widest text-honey outline-none"
                 />
-                <Check size={14} className="text-honey-600" />
+                <Check size={14} className="text-honey" />
               </div>
             ) : (
               <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingName(true)}>
-                <h1 className="text-sm font-bold uppercase tracking-widest">{projectName}</h1>
-                <Edit3 size={12} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                <h1 className="text-sm font-bold uppercase tracking-widest text-bee-black">{projectName}</h1>
+                <Edit3 size={12} className="opacity-0 group-hover:opacity-40 transition-opacity text-bee-black" />
               </div>
             )}
-            <p className="text-[10px] opacity-40 uppercase tracking-tighter">
-              {projectId ? "Stored in Hive" : "Interactive Visualization"}
+            <p className="text-[10px] text-bee-black/40 uppercase tracking-[0.1em] font-medium">
+              {projectId ? `Syncing with Node ID: ${projectId.slice(0, 8)}` : "Live Architectural Visualization"}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <Link 
-          href="/upload" 
-          className="group flex items-center gap-4 bg-bee-black text-white pl-8 pr-6 py-4 rounded-2xl hover:bg-honey-500 transition-all cursor-pointer shadow-xl hover:scale-105 active:scale-95"
-        >
-          <span className="text-xs font-bold uppercase tracking-[0.2em]">Add Content</span>
-          <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center group-hover:bg-bee-black/20 transition-colors">
-            <Plus className="w-5 h-5" />
-          </div>
-        </Link>
+      <div className="flex items-center gap-6">
+        <div className="flex -space-x-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-wax flex items-center justify-center text-[10px] font-bold text-bee-black/40">
+              U{i}
+            </div>
+          ))}
+        </div>
+        <div className="h-4 w-px bg-wax" />
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-honey uppercase tracking-wider">Status</p>
+          <p className="text-xs font-bold text-bee-black">Ready for Synthesis</p>
+        </div>
       </div>
     </header>
   );
@@ -88,28 +74,22 @@ function CanvasHeader() {
 
 export default function CanvasPage() {
   return (
-    <div className="flex flex-col h-screen bg-stone-50/30 overflow-hidden">
+    <div className="flex flex-col h-screen bg-cream overflow-hidden font-sans">
       <Suspense fallback={<div className="h-24 bg-white/50 animate-pulse" />}>
         <CanvasHeader />
       </Suspense>
 
       {/* Canvas Area */}
-      <main className="flex-1 p-8 relative min-h-0 flex flex-col">
-        <div className="absolute top-12 right-12 z-40 flex flex-col gap-4 items-end max-h-[calc(100vh-theme(spacing.40))] overflow-y-auto p-12 -m-12 scrollbar-hide pointer-events-none">
-          <div className="pointer-events-auto">
-            <AgentPalette />
-          </div>
-        </div>
-
+      <main className="flex-1 relative min-h-0">
         <motion.div 
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex-1 w-full h-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="w-full h-full"
         >
-          <PipelineCanvas />
+          <BeeCanvas />
         </motion.div>
       </main>
     </div>
   );
 }
-
