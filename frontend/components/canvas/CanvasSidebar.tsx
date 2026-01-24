@@ -13,7 +13,8 @@ import {
   FileText, 
   Presentation,
   Map,
-  Share2
+  Share2,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "@/store/useCanvasStore";
@@ -80,7 +81,11 @@ const agents = [
   },
 ];
 
-export function CanvasSidebar() {
+interface CanvasSidebarProps {
+  onIngestClick?: () => void;
+}
+
+export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
   const { 
     isSidebarCollapsed, 
     setIsSidebarCollapsed, 
@@ -121,11 +126,29 @@ export function CanvasSidebar() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {!isSidebarCollapsed && (
-          <div className="px-2 py-2">
+          <div className="px-2 pt-2 pb-1">
+            <Button 
+              onClick={onIngestClick}
+              className="w-full h-12 rounded-2xl bg-bee-black text-white hover:bg-honey hover:text-bee-black font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg mb-6"
+            >
+              <Plus size={16} className="mr-2" /> Ingest Source
+            </Button>
+            
             <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/20">
               Logic Layers
             </p>
           </div>
+        )}
+
+        {isSidebarCollapsed && (
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onIngestClick}
+            className="w-12 h-12 mx-auto mb-4 rounded-xl bg-bee-black text-white hover:bg-honey hover:text-bee-black flex items-center justify-center cursor-pointer shadow-md"
+          >
+            <Plus size={18} />
+          </Button>
         )}
         
         {agents.slice(0, 3).map((agent) => (

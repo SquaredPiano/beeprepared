@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,8 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 export default function LoginPage() {
+  const supabase = createClient();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +31,9 @@ export default function LoginPage() {
       if (error) throw error;
       
       toast.success("Welcome back to the hive!");
-      window.location.href = "/dashboard/library";
+      
+      // Use replace to prevent back button issues
+      router.replace("/dashboard");
     } catch (error: any) {
       toast.error(error.message || "Failed to login");
     } finally {

@@ -2,20 +2,23 @@
 
 import { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import {
-  ReactFlow,
-  Background,
-  addEdge,
-  type OnConnect,
-  MarkerType,
-  ConnectionMode,
-  BackgroundVariant,
-  Panel,
-  useReactFlow,
-  ReactFlowProvider,
-  Node,
-  Edge,
-  Connection,
-} from "@xyflow/react";
+    ReactFlow,
+    Background,
+    MiniMap,
+    addEdge,
+    type OnConnect,
+    MarkerType,
+    ConnectionMode,
+    BackgroundVariant,
+    Panel,
+    useReactFlow,
+    ReactFlowProvider,
+    Node,
+    Edge,
+    Connection,
+    Viewport,
+  } from "@xyflow/react";
+
 import "@xyflow/react/dist/style.css";
 import useSound from "use-sound";
 import { toast } from "sonner";
@@ -46,25 +49,28 @@ const nodeTypes = {
 };
 
 function BeeCanvasInner() {
-  const { 
-    nodes, 
-    edges, 
-    onNodesChange, 
-    onEdgesChange, 
-    onConnect, 
-    setNodes,
-    setEdges,
-    loadProject, 
-    currentProjectId,
-    takeSnapshot,
-    isDragging,
-    setIsDragging,
-    isLocked,
-    showMiniMap,
-    projectName
-  } = useCanvasStore();
-  
-  const { screenToFlowPosition, fitView } = useReactFlow();
+    const { 
+      nodes, 
+      edges, 
+      onNodesChange, 
+      onEdgesChange, 
+      onConnect, 
+      setNodes,
+      setEdges,
+      loadProject, 
+      currentProjectId,
+      takeSnapshot,
+      isDragging,
+      setIsDragging,
+      isLocked,
+      showMiniMap,
+      viewport,
+      setViewport,
+      projectName
+    } = useCanvasStore();
+    
+    const { screenToFlowPosition, fitView } = useReactFlow();
+
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
 
@@ -272,40 +278,49 @@ function BeeCanvasInner() {
     });
   }, [edges, nodes, isDragging]);
 
-  return (
-    <div className="w-full h-full relative bg-[#FBFBFB] overflow-hidden" onDrop={onDrop} onDragOver={onDragOver}>
-      <CanvasHeader />
-      <CanvasSidebar />
-      <CanvasControls />
+    return (
+      <div className="w-full h-full relative bg-[#FBFBFB] overflow-hidden" onDrop={onDrop} onDragOver={onDragOver}>
+        <CanvasHeader />
+        <CanvasSidebar onIngestClick={() => setIsUploadModalOpen(true)} />
+        <CanvasControls />
+  
+        <ReactFlow
+          nodes={nodes}
+          edges={styledEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDragStart={() => setIsDragging(true)}
+          onNodeDragStop={() => setIsDragging(false)}
+          onNodeClick={onNodeClick}
+          onNodesDelete={onNodesDelete}
+          onViewportChange={onViewportChange}
+          defaultViewport={viewport}
+          nodeTypes={nodeTypes}
+          connectionMode={ConnectionMode.Loose}
+          nodesDraggable={!isLocked}
+          nodesConnectable={!isLocked}
+          elementsSelectable={!isLocked}
+          panOnDrag={!isLocked}
+          zoomOnScroll={!isLocked}
+          fitView
+          className="bg-transparent"
+        >
+          <Background 
+            color="#FCD34F" 
+            variant={BackgroundVariant.Dots} 
+            gap={24} 
+            size={1} 
+            className="opacity-[0.15]" 
+          />
+          {showMiniMap && (
+            <MiniMap 
+              nodeColor={(n) => n.type === 'asset' ? '#3B82F6' : n.type === 'result' ? '#FCD34F' : '#0F172A'}
+              className="!rounded-2xl !border-wax"
+            />
+          )}
+        </ReactFlow>
 
-      <ReactFlow
-        nodes={nodes}
-        edges={styledEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDragStart={() => setIsDragging(true)}
-        onNodeDragStop={() => setIsDragging(false)}
-        onNodeClick={onNodeClick}
-        onNodesDelete={onNodesDelete}
-        nodeTypes={nodeTypes}
-        connectionMode={ConnectionMode.Loose}
-        nodesDraggable={!isLocked}
-        nodesConnectable={!isLocked}
-        elementsSelectable={!isLocked}
-        panOnDrag={!isLocked}
-        zoomOnScroll={!isLocked}
-        fitView
-        className="bg-transparent"
-      >
-        <Background 
-          color="#FCD34F" 
-          variant={BackgroundVariant.Dots} 
-          gap={24} 
-          size={1} 
-          className="opacity-[0.15]" 
-        />
-      </ReactFlow>
 
       {/* Delete Confirmation */}
       <DeleteConfirmationDialog

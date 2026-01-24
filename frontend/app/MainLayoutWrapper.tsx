@@ -18,90 +18,166 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const supabase = createClient();
 
+  // Route markers
   const isDashboard = pathname?.startsWith("/dashboard");
   const isProcessing = pathname?.startsWith("/processing");
   const isUpload = pathname === "/upload";
   const isAuthPage = pathname?.startsWith("/auth");
+  const isLandingPage = pathname === "/";
+  const isProtectedRoute = isDashboard || isProcessing || isUpload;
 
-    useEffect(() => {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        
-        // Redirect logic based on pathname
-        if (currentUser && pathname === "/") {
-          router.push("/dashboard");
-        } else if (!currentUser && (pathname?.startsWith("/dashboard") || pathname?.startsWith("/processing") || pathname === "/upload")) {
-          router.push("/auth/login");
-        }
-      });
-
-      return () => subscription.unsubscribe();
-    }, [supabase, pathname, router]);
-
-    const handleAuthAction = async () => {
-      if (user) {
-        await supabase.auth.signOut();
-        router.push("/");
-      } else {
-        router.push("/auth/login");
-      }
+  // Initial session check
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setIsLoading(false);
     };
+    checkSession();
+  }, [supabase]);
 
-    // Persistent Sidebar for all app views (Dashboard, Processing, Upload)
-    const showSidebar = isDashboard || isProcessing || isUpload;
+  // Auth state change listener + redirects
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsLoading(false);
+      
+      // Redirect logic
+      if (currentUser && (isLandingPage || isAuthPage)) {
+        router.replace("/dashboard");
+      } else if (!currentUser && isProtectedRoute) {
+        router.replace("/auth/login");
+      }
+    });
 
-    if (showSidebar) {
-      return (
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main 
-            className={cn(
-              "flex-1 transition-[padding] duration-300 min-h-screen",
-              isCollapsed ? "pl-0" : "pl-[280px]"
-            )}
-          >
-            {children}
-          </main>
-          {isDashboard && (
-            <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
-          )}
-          <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
-        </div>
-      );
+    return () => subscription.unsubscribe();
+  }, [supabase, pathname, router, isLandingPage, isAuthPage, isProtectedRoute]);
+
+  // Immediate redirect check after loading
+  useEffect(() => {
+    if (isLoading) return;
+    
+    if (user && (isLandingPage || isAuthPage)) {
+      router.replace("/dashboard");
+    } else if (!user && isProtectedRoute) {
+      router.replace("/auth/login");
     }
+  }, [isLoading, user, isLandingPage, isAuthPage, isProtectedRoute, router]);
 
-    // Auth pages don't get the landing header/footer
-    if (isAuthPage) {
-      return <>{children}</>;
+  useEffect(() => {
+    if (!isLandingPage) return;
+    
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 50);
+    };
+    
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isLandingPage]);
+
+  const handleAuthAction = async () => {
+    if (user) {
+      await supabase.auth.signOut();
+      router.replace("/");
+    } else {
+      router.push("/auth/login");
     }
+  };
 
+  // Show loading state while checking auth for protected routes
+  if (isLoading && isProtectedRoute) {
     return (
-      <div className="relative flex min-h-screen flex-col">
-        <header className="sticky top-0 z-50 w-full glass border-b border-border/40">
-          <div className="container mx-auto flex h-20 items-center justify-between px-6 md:px-12 lg:px-24">
-            <Link href="/" className="group cursor-pointer">
-              <Logo showText={true} />
-            </Link>
-            
-            <div className="flex items-center gap-8">
-              <button 
-                onClick={handleAuthAction}
-                className="bg-bee-black text-white px-10 py-3.5 rounded-full hover:bg-honey-500 transition-all duration-500 font-display text-[10px] font-bold uppercase tracking-[0.2em] cursor-pointer shadow-xl shadow-bee-black/10"
-              >
-                {user ? "Sign Out" : "Access Hive"}
-              </button>
-            </div>
+      <div className="min-h-screen flex items-center justify-center bg-cream">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-honey border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-bee-black/50 font-bold uppercase tracking-widest text-xs">Loading hive...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Block protected routes if not authenticated
+  if (!isLoading && !user && isProtectedRoute) {
+    return null; // Will redirect via useEffect
+  }
+
+  // Block landing/auth if authenticated
+  if (!isLoading && user && (isLandingPage || isAuthPage)) {
+    return null; // Will redirect via useEffect
+  }
+
+  // Persistent Sidebar for all app views (Dashboard, Processing, Upload)
+  const showSidebar = isDashboard || isProcessing || isUpload;
+
+  if (showSidebar) {
+    return (
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <main 
+          className={cn(
+            "flex-1 transition-[padding] duration-300 min-h-screen",
+            isCollapsed ? "pl-0" : "pl-[280px]"
+          )}
+        >
+          {children}
+        </main>
+        {isDashboard && (
+          <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
+        )}
+        <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
+      </div>
+    );
+  }
+
+  // Auth pages don't get the landing header/footer
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="relative flex min-h-screen flex-col">
+      <header className={cn(
+        "fixed top-0 z-[100] w-full transition-all duration-500",
+        isLandingPage 
+          ? isScrolled
+            ? "bg-cream/95 backdrop-blur-md border-b-2 border-bee-black shadow-[0_4px_0px_0px_#FFB800]"
+            : "bg-transparent border-none"
+          : "sticky bg-white/80 backdrop-blur-md border-b border-border/40"
+      )}>
+        <div className="container mx-auto flex h-24 items-center justify-between px-8 md:px-12">
+          <Link href="/" className="group cursor-pointer">
+            <Logo showText={true} />
+          </Link>
+          
+          <div className="flex items-center gap-8">
+            <button 
+              onClick={handleAuthAction}
+              className={cn(
+                "px-10 py-4 font-black uppercase tracking-[0.2em] text-[10px] transition-all duration-500 shadow-xl",
+                isLandingPage 
+                  ? "bg-honey text-bee-black hover:bg-white hover:scale-105" 
+                  : "bg-bee-black text-white hover:bg-honey-500"
+              )}
+            >
+              {user ? "Sign Out" : "Access Hive"}
+            </button>
           </div>
-        </header>
+        </div>
+      </header>
 
       <main className="flex-1">
         {children}
       </main>
-      <Footer />
+      
+      {/* Only show global footer if NOT the landing page */}
+      {!isLandingPage && <Footer />}
+      
       <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
     </div>
   );

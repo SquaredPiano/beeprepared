@@ -91,57 +91,53 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
     <AnimatePresence>
       {isOpen && (
         <>
-                {/* Backdrop */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={onClose}
-                  className="fixed inset-0 bg-bee-black/80 backdrop-blur-xl z-[100] cursor-pointer"
-                />
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-bee-black/80 backdrop-blur-xl z-[200] cursor-pointer"
+          />
 
-                {/* Modal Container */}
-                <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4 md:p-6">
-                  <motion.div
-                    initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                    transition={{ type: "spring", damping: 30, stiffness: 400 }}
-                    className="w-full max-w-2xl bg-cream border border-wax rounded-[32px] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.5)] overflow-hidden pointer-events-auto flex flex-col max-h-[85vh] relative z-[102]"
-                  >
-                  {/* Header */}
-                  <div className="p-8 pb-0 flex items-center justify-between relative border-b border-wax/50">
-                    <div className="flex gap-8">
-                      {tabs.map((tab) => (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={`relative font-display text-[10px] uppercase tracking-[0.2em] font-bold pb-4 transition-colors cursor-pointer ${
-                            activeTab === tab.id ? "text-honey-600" : "text-bee-black/30 hover:text-bee-black/60"
-                          }`}
-                        >
-                          {tab.label}
-                          {activeTab === tab.id && (
-                            <motion.div
-                              layoutId="activeTabUnderline"
-                              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                              className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-honey-600 rounded-full"
-                            />
-                          )}
-                        </button>
-                      ))}
-                    </div>
+          {/* Modal Container */}
+          <div className="fixed inset-0 flex items-center justify-center z-[201] pointer-events-none p-4 md:p-6">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              className="w-full max-w-2xl bg-cream border border-wax rounded-[32px] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.5)] overflow-hidden pointer-events-auto flex flex-col max-h-[85vh] relative z-[202]"
+            >
+              {/* Header - Fixed Height & Centered Content */}
+              <div className="h-20 px-8 flex items-center justify-between border-b border-wax/50">
+                <div className="flex gap-8 h-full items-center">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`relative font-display text-[10px] uppercase tracking-[0.2em] font-bold transition-colors cursor-pointer flex items-center h-full ${
+                        activeTab === tab.id ? "text-honey-600" : "text-bee-black/30 hover:text-bee-black/60"
+                      }`}
+                    >
+                      {tab.label}
+                      {activeTab === tab.id && (
+                        <motion.div
+                          layoutId="activeTabUnderline"
+                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                          className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-honey-600 rounded-full"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
 
-
-                {/* Close Button - Intentionally centered X */}
                 <button
                   onClick={onClose}
-                  className="group w-10 h-10 rounded-full bg-bee-black/5 hover:bg-bee-black/10 flex items-center justify-center transition-all duration-300"
+                  className="group w-10 h-10 rounded-full bg-bee-black/5 hover:bg-bee-black/10 flex items-center justify-center transition-all duration-300 cursor-pointer"
                   aria-label="Close modal"
                 >
-                  <div className="relative w-4 h-4 flex items-center justify-center">
-                    <X className="w-full h-full text-bee-black transition-transform duration-300 group-hover:rotate-90" />
-                  </div>
+                  <X className="w-5 h-5 text-bee-black transition-transform duration-300 group-hover:rotate-90" />
                 </button>
               </div>
 
@@ -158,7 +154,7 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
               </div>
 
               {/* Content Area */}
-              <div className="flex-1 overflow-y-auto p-8 pt-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-8 pt-6 custom-scrollbar cursor-text">
                 <motion.div
                   key={activeTab}
                   initial={{ opacity: 0, y: 10 }}

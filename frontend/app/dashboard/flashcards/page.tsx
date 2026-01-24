@@ -35,6 +35,40 @@ export default function FlashcardsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [cards, setCards] = useState<Flashcard[]>(mockFlashcards);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadCards() {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("artifacts")
+          .select("*")
+          .eq("type", "flashcard")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          // Transform artifact data to Flashcard interface
+          const transformed: Flashcard[] = data.flatMap(a => 
+            (a.content.cards || []).map((c: any, i: number) => ({
+              id: `${a.id}-${i}`,
+              front: c.question || c.front,
+              back: c.answer || c.back,
+              category: a.metadata?.subject || "General"
+            }))
+          );
+          if (transformed.length > 0) setCards(transformed);
+        }
+      } catch (error) {
+        console.error("Load error:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadCards();
+  }, []);
 
   const nextCard = () => {
     setIsFlipped(false);
