@@ -14,9 +14,9 @@ interface HoneyJarProps {
 }
 
 export function HoneyJar({ points, maxPoints, level, isMystery, onReveal }: HoneyJarProps) {
-  const fillPercentage = isMystery ? 0 : Math.min((points / maxPoints) * 100, 100);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [revealed, setRevealed] = useState(!isMystery);
+  const fillPercentage = (isMystery && !revealed) ? 0 : Math.min((points / maxPoints) * 100, 100);
+  const [isAnimating, setIsAnimating] = useState(false);
   
   useEffect(() => {
     if (revealed) {

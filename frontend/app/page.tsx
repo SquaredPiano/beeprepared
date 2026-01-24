@@ -174,9 +174,9 @@ export default function HomePage() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="py-32 text-center relative">
+      <section className="py-16 text-center relative">
         <ScrollReveal>
-          <div className="container mx-auto px-6 space-y-16 relative z-10">
+          <div className="container mx-auto px-6 space-y-12 relative z-10">
             <h2 className="text-6xl md:text-[120px] font-display uppercase leading-none tracking-tighter">
               The hive is <br />
               <span className="font-serif italic lowercase opacity-30">waiting for you</span>
