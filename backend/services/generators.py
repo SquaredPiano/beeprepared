@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from backend.models.artifacts import (
     FinalExamModel, QuizModel, FlashcardModel, NotesModel, SlidesModel, ExamQuestion, ExamSpec
 )
-from backend.knowledge_core import KnowledgeCore
+from backend.core.knowledge_core import KnowledgeCore
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

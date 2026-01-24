@@ -1,183 +1,225 @@
 {
-  "title": "Introductory Calculus Lecture 1",
-  "summary": "This lecture introduces the syllabus for Introductory Calculus, covering differential equations, line and double integrals, and calculus of functions in two variables. It also reviews practical information like lecture times, problem sheets, and recommended reading. The lecture includes examples of differential equations from physics and engineering, as well as a review of integration techniques such as integration by parts and separable equations.",
+  "title": "Introduction to Stoicism",
+  "summary": "This text introduces Stoicism, a philosophy founded by Zeno of Cyprus, emphasizing virtue, tolerance, self-control, and living in accordance with nature. It explores the core tenets of Stoicism, including the concept of Logos, the four cardinal virtues (Practical wisdom, Temperance, Justice, and Courage), and its focus on personal improvement as a means to positive change. The text also discusses influential Stoics like Seneca, Marcus Aurelius, and Epictetus, and the continuing relevance of Stoicism in modern psychology and self-help movements.",
   "concepts": [
     {
-      "name": "Differential Equations",
-      "description": "Equations involving an independent variable, a function of that variable, and the derivatives of that function. They can be ordinary (ODEs) or partial (PDEs).",
+      "name": "Stoicism",
+      "description": "A philosophy originated by Zeno of Cyprus that emphasizes virtue, tolerance, and self-control as paths to happiness and fulfillment. It focuses on accepting what we cannot control and directing our energy towards what we can, aiming for inner peace and resilience.",
       "importance_score": 10
     },
     {
-      "name": "Integration Techniques",
-      "description": "Methods for finding the integral of a function, including integration by parts, substitution, and using reduction formulas.",
+      "name": "Logos",
+      "description": "The Stoic concept of a rational structure of the universe, representing the interconnected web of cause and effect that governs all events.",
+      "importance_score": 8
+    },
+    {
+      "name": "Virtue",
+      "description": "The cornerstone of Stoic ethics, encompassing qualities like practical wisdom, temperance, justice, and courage. Stoics strive to cultivate these virtues to live a fulfilling and meaningful life.",
       "importance_score": 9
     },
     {
-      "name": "Separable Equations",
-      "description": "A type of differential equation that can be solved by separating the variables and integrating each side independently.",
-      "importance_score": 7
-    },
-    {
-      "name": "Integration by Parts",
-      "description": "A technique used to integrate the product of two functions, based on the product rule of differentiation.",
+      "name": "Self-Control",
+      "description": "The ability to manage one's emotions, desires, and impulses.  A key aspect of Stoicism that enables individuals to respond rationally and virtuously to life's challenges.",
       "importance_score": 8
     }
   ],
   "section_hierarchy": [
     {
-      "title": "Practical Information",
-      "summary": "Details about the course structure, including lectures, problem sheets, tutorials, and the recommended reading list.",
-      "subsections": []
+      "title": "Zeno and the Origins of Stoicism",
+      "summary": "Introduction of Zeno of Cyprus and the circumstances that led to the founding of Stoicism.",
+      "subsections": [
+        {
+          "title": "Shipwreck and Discovery",
+          "summary": "Zeno's shipwreck in Athens and his subsequent interest in philosophy after visiting a bookshop."
+        },
+        {
+          "title": "The Stoa Poikile",
+          "summary": "Explanation of how the name Stoicism came from the Stoa Poikile, where Zeno taught."
+        }
+      ]
     },
     {
-      "title": "Syllabus",
-      "summary": "Outline of the topics to be covered in the course: differential equations, line and double integrals, and calculus of functions in two variables.",
-      "subsections": []
+      "title": "Core Principles of Stoicism",
+      "summary": "Explanation of the fundamental beliefs and concepts within Stoic philosophy.",
+      "subsections": [
+        {
+          "title": "Logos and the Universe",
+          "summary": "The Stoic belief in a rational structure of the universe (Logos) and the importance of understanding cause and effect."
+        },
+        {
+          "title": "Control and Approach",
+          "summary": "The distinction between what we can and cannot control, emphasizing the importance of controlling our approach to events."
+        },
+        {
+          "title": "The Four Cardinal Virtues",
+          "summary": "Detailed description of the four cardinal virtues: Practical wisdom, Temperance, Justice, and Courage."
+        }
+      ]
     },
     {
-      "title": "Examples of Differential Equations",
-      "summary": "Illustrations of how differential equations appear in physical sciences, such as mechanics (Newton's second law) and electrical circuits (RLC circuit).",
-      "subsections": []
+      "title": "Stoicism in Practice",
+      "summary": "Examples of how Stoicism is applied in personal improvement, humane treatment, and social change.",
+      "subsections": [
+        {
+          "title": "Personal Improvement and Virtue",
+          "summary": "Emphasis on personal improvement through the cultivation of virtue and self-control."
+        },
+        {
+          "title": "Social Responsibility",
+          "summary": "The Stoic call for humane treatment, even towards slaves, and the idea that virtuous individuals can bring positive change to others."
+        }
+      ]
     },
     {
-      "title": "Review of Integration",
-      "summary": "A refresher on integration techniques, focusing on integration by parts and separable equations, with examples.",
-      "subsections": []
+      "title": "Historical Figures and Stoicism",
+      "summary": "Examples of historical figures who embodied Stoic principles.",
+      "subsections": [
+        {
+          "title": "Seneca",
+          "summary": "Roman Stoic known for humane treatment."
+        },
+        {
+          "title": "Marcus Aurelius",
+          "summary": "The Stoic emperor of Rome and his use of Stoicism to lead through wars and personal loss."
+        },
+        {
+          "title": "Nelson Mandela",
+          "summary": "Nelson Mandela's use of Marcus Aurelius' journals to guide him through imprisonment."
+        }
+      ]
+    },
+    {
+      "title": "The Lasting Influence of Stoicism",
+      "summary": "The continued influence of Stoicism throughout history and in modern times.",
+      "subsections": [
+        {
+          "title": "Historical Influence",
+          "summary": "The impact of Stoicism on Christian theologians and the parallels with Buddhist concepts."
+        },
+        {
+          "title": "Modern Relevance",
+          "summary": "The influence of Stoicism on modern psychology, including rational emotive behavioral therapy and logotherapy."
+        }
+      ]
     }
   ],
   "notes": [
     {
-      "heading": "Practical Information",
+      "heading": "Zeno's Journey to Stoicism",
       "bullets": [
-        "16 lectures in total.",
-        "Lecture notes are available online; written by Cath Wilkins.",
-        "Lecturer: Dan Ciubotaru (call him Dan).",
-        "Lectures on Mondays and Wednesdays at 10 AM.",
-        "8 problem sheets; the first two are online.",
-        "4 tutorials in college to cover problem sheets.",
-        "Reading list is online.",
-        "Recommended book: *Mathematical Methods in the Physical Sciences* by Mary Boas."
+        "Zeno of Cyprus lost his wealth in a shipwreck near Athens.",
+        "He became interested in philosophy after reading about Socrates in a bookshop.",
+        "He studied with philosophers in Athens and eventually founded Stoicism."
       ]
     },
     {
-      "heading": "Syllabus",
+      "heading": "Core Tenets of Stoicism",
       "bullets": [
-        "First half (7-8 lectures): Differential Equations (ODEs and PDEs).",
-        "Second part: Line and double integrals (3 lectures).",
-        "Final part: Calculus of functions in two variables (gentle introduction to multivariable calculus).",
-        "Topics include: surfaces, gradient normal vectors, Taylor's theorem, critical points, Lagrange multipliers.",
-        "Course interacts with Multivariable Calculus, Dynamics, PDEs (Fourier Series), and Analysis 2.",
-        "Useful and mandatory course."
+        "Stoicism emphasizes virtue, tolerance, and self-control.",
+        "The name Stoicism comes from the Stoa Poikile, a public colonnade where Zeno taught.",
+        "Stoicism involves accepting what we cannot control and focusing on what we can.",
+        "The Stoics believed in a rational structure of the universe called Logos.",
+        "The four cardinal virtues are: Practical wisdom, Temperance, Justice, and Courage."
       ]
     },
     {
-      "heading": "Examples of Differential Equations",
+      "heading": "Stoicism in Practice and History",
       "bullets": [
-        "ODE: Equation involving an independent variable (x), a function of x (y), and derivatives of y with respect to x.",
-        "Order of ODE: The order of the highest derivative.",
-        "Simplest ODE: dy/dx = f(x). Solved by direct integration.",
-        "Mechanics: Newton's second law (F=ma). Acceleration is a derivative (a = dv/dt = d^2r/dt^2).",
-        "Electrical Circuit (RLC): Resistor (R), Inductor (L), Capacitor (C), Voltage Source (V).",
-        "Kirchhoff's Law: V(t) = RI + Q/C + L(dI/dt).",
-        "Differential equation for RLC circuit: L(d^2Q/dt^2) + R(dQ/dt) + (1/C)Q = V.",
-        "Radioactive Decay: Rate of decay is proportional to the remaining number of atoms (exercise)."
+        "Stoicism focuses on personal improvement but is not self-centered.",
+        "Seneca advocated for the humane treatment of slaves.",
+        "Marcus Aurelius used Stoicism to lead the Roman Empire through wars and personal loss.",
+        "Nelson Mandela found guidance and comfort in Marcus Aurelius' journals during his imprisonment.",
+        "Epictetus believed that suffering stems from our judgments about events, not the events themselves."
       ]
     },
     {
-      "heading": "Review of Integration",
+      "heading": "Modern Applications of Stoicism",
       "bullets": [
-        "Integration by Parts: Based on the product rule: (fg)' = f'g + fg'.",
-        "Integration by parts formula: ∫fg' dx = fg - ∫f'g dx.",
-        "Example: ∫x^2 sin(x) dx. Choose f = x^2, g' = sin(x). Result: -x^2 cos(x) + 2 ∫x cos(x) dx.",
-        "Example: ∫(2x-1) ln(x^2+1) dx. Choose f = ln(x^2+1), g' = 2x-1.",
-        "Example: Reduction formula for  I_n = ∫cos^n(x) dx. Result: I_n = (1/n)cos^(n-1)(x)sin(x) + ((n-1)/n)I_(n-2).",
-        "Separable Equations: dy/dx = a(x)b(y).",
-        "Separate and integrate: ∫(1/b(y)) dy = ∫a(x) dx.",
-        "Example: x(y^2-1) + y(x^2-1)(dy/dx) = 0. General solution: (1-y^2)(1-x^2) = C, where C >= 0."
+        "Stoicism has influenced Christian theologians and shares parallels with Buddhist concepts like Nirvana.",
+        "Rational emotive behavioral therapy (REBT) is influenced by Stoic principles.",
+        "Viktor Frankl's logotherapy is based on the Stoic principle of finding meaning in life, even in difficult circumstances."
       ]
     }
   ],
   "definitions": [
     {
-      "term": "Ordinary Differential Equation (ODE)",
-      "definition": "An equation involving an independent variable, a function of that variable, and the derivatives of that function.",
-      "context": "Introduction to differential equations"
+      "term": "Stoicism",
+      "definition": "A philosophy emphasizing virtue, tolerance, and self-control to achieve inner peace and resilience.",
+      "context": "The overall topic of the text; a school of thought founded by Zeno of Cyprus."
     },
     {
-      "term": "Partial Differential Equation (PDE)",
-      "definition": "A differential equation involving partial derivatives of a function of several variables.",
-      "context": "Introduction to differential equations"
+      "term": "Logos",
+      "definition": "The Stoic concept of a rational structure of the universe, a web of cause and effect.",
+      "context": "The Stoics believed that everything operates according to this rational structure."
     },
     {
-      "term": "Order of a Differential Equation",
-      "definition": "The order of the highest derivative that occurs in the differential equation.",
-      "context": "Definition of ODE properties"
+      "term": "Practical Wisdom",
+      "definition": "The ability to navigate complex situations in a logical, informed, and calm manner.",
+      "context": "One of the four cardinal virtues in Stoicism."
     },
     {
-      "term": "Integration by Parts",
-      "definition": "A technique for integrating the product of two functions using the formula ∫ u dv = uv - ∫ v du.",
-      "context": "Review of integration techniques"
+      "term": "Temperance",
+      "definition": "The exercise of self-restraint and moderation in all aspects of life.",
+      "context": "One of the four cardinal virtues in Stoicism."
     },
     {
-      "term": "Separable Equation",
-      "definition": "A differential equation that can be written in the form dy/dx = a(x)b(y), allowing separation of variables for integration.",
-      "context": "Types of ODEs"
+      "term": "Justice",
+      "definition": "Treating others with fairness, even when they have done wrong.",
+      "context": "One of the four cardinal virtues in Stoicism."
+    },
+    {
+      "term": "Courage",
+      "definition": "Facing daily challenges with clarity and integrity, not just in extraordinary circumstances.",
+      "context": "One of the four cardinal virtues in Stoicism."
+    },
+    {
+      "term": "Ataraxia",
+      "definition": "Tranquility of mind",
+      "context": "A state strived for in Stoicism, akin to the Buddhist concept of Nirvana."
     }
   ],
   "examples": [
     {
-      "description": "Newton's Second Law (F=ma) as a Differential Equation",
-      "relevance": "Illustrates how differential equations arise in mechanics, with acceleration being the second derivative of displacement with respect to time."
+      "description": "Zeno's shipwreck and loss of fortune led him to philosophy and the founding of Stoicism.",
+      "relevance": "Illustrates how adversity can lead to positive change and the development of a profound philosophy."
     },
     {
-      "description": "RLC Circuit Differential Equation",
-      "relevance": "Demonstrates how differential equations model electrical circuits, relating voltage, current, charge, resistance, inductance, and capacitance."
+      "description": "Marcus Aurelius leading the Roman Empire through wars and personal loss using Stoic principles.",
+      "relevance": "Demonstrates the practical application of Stoicism in leadership and managing difficult circumstances."
     },
     {
-      "description": "Radioactive Decay Problem",
-      "relevance": "Example that the rate at which a radioactive substance decays is proportional to the remaining number of atoms; provides an exercise for the student."
-    },
-    {
-      "description": "Integration by parts examples with polynomials, trigonometric, and logarithmic functions.",
-      "relevance": "Demonstrates the application of the integration by parts formula with various types of functions."
-    },
-    {
-      "description": "Recursive formula for integral of cos^n(x).",
-      "relevance": "Illustrates how to generate a recursive formula to reduce integrals of cos^n(x) to lower powers."
+      "description": "Nelson Mandela using Marcus Aurelius' journals to guide him through his 27-year imprisonment.",
+      "relevance": "Shows how Stoic philosophy can provide strength, comfort, and guidance during extreme hardship and injustice."
     }
   ],
   "key_facts": [
     {
-      "fact": "The course consists of 16 lectures.",
-      "category": "Course Structure"
+      "fact": "Zeno of Cyprus founded Stoicism.",
+      "category": "Historical"
     },
     {
-      "fact": "Lectures are on Mondays and Wednesdays at 10 AM.",
-      "category": "Course Schedule"
+      "fact": "The name Stoicism comes from the Stoa Poikile.",
+      "category": "Etymological"
     },
     {
-      "fact": "There are 8 problem sheets.",
-      "category": "Assignments"
+      "fact": "The four cardinal virtues of Stoicism are: Practical wisdom, Temperance, Justice, and Courage.",
+      "category": "Philosophical"
     },
     {
-      "fact": "The recommended book is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
-      "category": "Resources"
+      "fact": "Seneca was a Roman Stoic who advocated for the humane treatment of slaves.",
+      "category": "Historical"
     },
     {
-      "fact": "The first half of the course focuses on differential equations.",
-      "category": "Syllabus"
+      "fact": "Marcus Aurelius was a Roman Emperor and Stoic philosopher.",
+      "category": "Historical"
     },
     {
-      "fact": "Newton's Second Law (F=ma) can be expressed as a second-order differential equation.",
-      "category": "Physics"
+      "fact": "Epictetus believed suffering stems from our judgments, not events themselves.",
+      "category": "Philosophical"
     },
     {
-      "fact": "The voltage across an inductor is given by L(dI/dt).",
-      "category": "Electrical Engineering"
-    },
-    {
-      "fact": "The integration by parts formula is ∫fg' dx = fg - ∫f'g dx.",
-      "category": "Mathematics"
+      "fact": "Nelson Mandela was inspired by Stoicism.",
+      "category": "Historical"
     }
   ]
 }
