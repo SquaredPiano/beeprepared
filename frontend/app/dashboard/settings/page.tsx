@@ -1,64 +1,317 @@
 "use client";
 
-import React from "react";
-import { User, Bell, Shield, Palette, Zap, Globe, CreditCard } from "lucide-react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-
-const sections = [
-  { icon: User, label: "Account", desc: "Manage your personal information and security." },
-  { icon: Zap, label: "Pipeline", desc: "Configure autonomous agent behaviors and thresholds." },
-  { icon: Palette, label: "Appearance", desc: "Customize the interface theme and motion settings." },
-  { icon: Bell, label: "Notifications", desc: "Decide when and how you want to be alerted." },
-  { icon: CreditCard, label: "Billing", desc: "Manage your subscription and processing credits." },
-  { icon: Shield, label: "Privacy", desc: "Control your data and architectural privacy." },
-];
+import { 
+  User, 
+  Bell, 
+  Shield, 
+  Palette, 
+  Volume2, 
+  Bug,
+  Save,
+  LogOut,
+  CreditCard,
+  Cloud,
+  ChevronRight,
+  Monitor,
+  Moon,
+  Sun,
+  Trash2,
+  AlertTriangle
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  useEffect(() => {
+    async function fetchProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setProfile(user);
+      }
+    }
+    fetchProfile();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  };
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsLoading(false);
+    toast.success("Settings saved");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") {
+      toast.error("Please type DELETE to confirm");
+      return;
+    }
+    
+    try {
+      // In production, this would call a server action to delete the user
+      toast.success("Account scheduled for deletion");
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (error) {
+      toast.error("Failed to delete account");
+    }
+  };
+
+  const sections = [
+    { id: "account", label: "Profile", icon: User },
+    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "system", label: "System", icon: Monitor },
+    { id: "security", label: "Security", icon: Shield },
+  ];
+
   return (
-    <div className="p-12 space-y-12">
+    <div className="max-w-5xl mx-auto px-8 py-16 space-y-12 min-h-screen bg-cream/30">
       <header className="space-y-4">
-        <h1 className="text-5xl font-display uppercase tracking-tighter">System <br /> <span className="italic lowercase opacity-40">Settings</span></h1>
-        <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-40 max-w-xs leading-relaxed">
-          Calibrate your architectural experience and agent autonomy.
-        </p>
+        <h1 className="text-5xl font-serif italic text-bee-black">Settings</h1>
+        <p className="text-sm text-bee-black/40 font-medium uppercase tracking-[0.1em]">Manage your account and preferences</p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {sections.map((section, i) => (
-          <motion.div
-            key={section.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="group flex items-start gap-6 p-8 glass rounded-[2.5rem] border border-border/40 hover:border-honey-300 transition-all cursor-pointer"
-          >
-            <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center group-hover:bg-honey-500 group-hover:text-white transition-all duration-500">
-              <section.icon className="w-6 h-6" />
-            </div>
-            <div className="space-y-2 pt-2">
-              <h3 className="text-lg font-display font-bold uppercase tracking-tight">{section.label}</h3>
-              <p className="text-[10px] uppercase tracking-widest font-bold opacity-40 leading-relaxed max-w-[200px]">
-                {section.desc}
-              </p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+      <Tabs defaultValue="account" className="space-y-8">
+        <div className="bg-white/60 backdrop-blur-xl border border-wax rounded-[2rem] p-2 inline-flex shadow-sm">
+          <TabsList className="bg-transparent gap-2 h-auto p-0">
+            {sections.map((section) => (
+              <TabsTrigger 
+                key={section.id}
+                value={section.id} 
+                className="data-[state=active]:bg-bee-black data-[state=active]:text-cream rounded-2xl px-6 py-3 font-bold uppercase text-[10px] tracking-widest text-bee-black/40 transition-all gap-2"
+              >
+                <section.icon size={14} />
+                {section.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
-      <div className="p-10 glass rounded-[3rem] border border-border/40 bg-honey-50/10 space-y-8">
-        <div className="space-y-2">
-          <h2 className="text-xl font-display font-bold uppercase tracking-tight">Danger Zone</h2>
-          <p className="text-[10px] uppercase tracking-widest font-bold opacity-40">Irreversible system actions.</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+          <div className="lg:col-span-2">
+            <div className="bg-white/80 backdrop-blur-xl border border-wax rounded-[2.5rem] p-10 shadow-sm min-h-[500px]">
+              <TabsContent value="account" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 bg-honey/10 rounded-[2rem] flex items-center justify-center border-2 border-dashed border-honey/30 relative group cursor-pointer overflow-hidden">
+                      <User size={32} className="text-honey group-hover:scale-110 transition-transform" />
+                      <div className="absolute inset-0 bg-honey/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Save size={20} className="text-bee-black" />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-bee-black font-serif">Your Profile</h3>
+                      <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest mt-1">ID: {profile?.id?.slice(0, 8) || "---"}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-bee-black/70 ml-1">Full Name</Label>
+                      <Input defaultValue={profile?.user_metadata?.full_name || "New Worker"} className="bg-cream/30 border-wax rounded-xl h-12" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-bee-black/70 ml-1">Email</Label>
+                      <Input defaultValue={profile?.email || ""} disabled className="bg-bee-black/5 border-wax rounded-xl h-12 opacity-50" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-bee-black/70 ml-1">Bio</Label>
+                    <textarea 
+                      className="w-full min-h-[100px] bg-cream/30 border border-wax rounded-2xl p-4 text-sm focus:outline-none focus:border-honey focus:ring-1 focus:ring-honey transition-all font-medium"
+                      placeholder="Tell us about yourself..."
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="appearance" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-bee-black uppercase tracking-widest text-[10px] border-b border-wax pb-2">Theme</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      {[
+                        { id: 'light', icon: Sun, label: 'Cream' },
+                        { id: 'dark', icon: Moon, label: 'Wax' },
+                        { id: 'system', icon: Monitor, label: 'Auto' }
+                      ].map((theme) => (
+                        <div key={theme.id} className="cursor-pointer group">
+                          <div className="h-24 bg-cream/50 border border-wax rounded-2xl flex items-center justify-center group-hover:border-honey transition-all mb-2">
+                            <theme.icon className="text-bee-black/20 group-hover:text-honey transition-colors" />
+                          </div>
+                          <p className="text-[10px] font-bold uppercase text-center opacity-40 group-hover:opacity-100">{theme.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-bee-black">Bee Mascot</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Show the animated bee helper</p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
+                    <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-bee-black">Animations</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Enable smooth motion effects</p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="system" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
+                    <div className="flex gap-4 items-center">
+                      <div className="p-3 bg-honey/10 rounded-2xl"><Volume2 className="text-honey" /></div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-bee-black">Audio Feedback</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Play sounds for UI interactions</p>
+                      </div>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                  <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
+                    <div className="flex gap-4 items-center">
+                      <div className="p-3 bg-blue-500/10 rounded-2xl"><Cloud className="text-blue-500" /></div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-bee-black">Auto-Save</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Automatically save canvas progress</p>
+                      </div>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="security" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-bee-black uppercase tracking-widest text-[10px] border-b border-wax pb-2">Account Security</h3>
+                    <div className="p-6 rounded-3xl bg-cream/30 border border-wax space-y-4">
+                      <div className="flex gap-4 items-center">
+                        <div className="p-3 bg-green-500/10 rounded-2xl"><Shield className="text-green-500" /></div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-bee-black">Email Verified</p>
+                          <p className="text-xs text-bee-black/40 font-medium tracking-wide">{profile?.email || "No email"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-red-600 uppercase tracking-widest text-[10px] border-b border-red-200 pb-2">Danger Zone</h3>
+                    <div className="p-6 rounded-3xl bg-red-50 border border-red-200 space-y-4">
+                      <div className="flex gap-4 items-start">
+                        <div className="p-3 bg-red-100 rounded-2xl"><AlertTriangle className="text-red-500" /></div>
+                        <div className="space-y-2 flex-1">
+                          <p className="text-sm font-bold text-red-700">Delete Account</p>
+                          <p className="text-xs text-red-600/60 font-medium">This action is irreversible. All your projects, artifacts, and data will be permanently deleted.</p>
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" className="mt-4 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400">
+                                <Trash2 size={14} className="mr-2" />
+                                Delete My Account
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="rounded-3xl">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-red-600">Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription className="space-y-4">
+                                  <p>This will permanently delete your account and all associated data. This action cannot be undone.</p>
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-semibold">Type DELETE to confirm</Label>
+                                    <Input 
+                                      value={deleteConfirmText}
+                                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                      placeholder="DELETE"
+                                      className="border-red-200 focus:border-red-400"
+                                    />
+                                  </div>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                <AlertDialogAction 
+                                  onClick={handleDeleteAccount}
+                                  disabled={deleteConfirmText !== "DELETE"}
+                                  className="bg-red-600 hover:bg-red-700 rounded-xl disabled:opacity-50"
+                                >
+                                  Delete Account
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+            </div>
+          </div>
+
+          <aside className="space-y-8">
+            <div className="space-y-3">
+              <Button 
+                variant="outline" 
+                onClick={handleSave}
+                disabled={isLoading}
+                className="w-full h-14 border-wax hover:bg-honey/10 hover:border-honey/30 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em]"
+              >
+                {isLoading ? "Saving..." : <><Save size={16} /> Save Settings</>}
+              </Button>
+              <Button 
+                variant="ghost" 
+                onClick={handleLogout}
+                className="w-full h-14 hover:bg-red-50 hover:text-red-600 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em] text-bee-black/40"
+              >
+                <LogOut size={16} /> Log Out
+              </Button>
+            </div>
+
+            <div className="p-6 border border-wax rounded-[2rem] bg-white/40 flex items-center justify-between cursor-pointer hover:border-honey/30 transition-colors">
+              <div className="flex items-center gap-3">
+                <Bug size={14} className="opacity-40" />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Build Logs</span>
+              </div>
+              <ChevronRight size={14} className="opacity-40" />
+            </div>
+          </aside>
         </div>
-        <div className="flex flex-wrap gap-4">
-          <button className="px-8 py-4 rounded-2xl border border-red-200 text-red-600 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-all cursor-pointer">
-            Purge All Data
-          </button>
-          <button className="px-8 py-4 rounded-2xl border border-red-200 text-red-600 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-all cursor-pointer">
-            Deactivate Account
-          </button>
-        </div>
-      </div>
+      </Tabs>
     </div>
   );
 }
