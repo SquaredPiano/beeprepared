@@ -19,7 +19,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from supabase import create_client, Client
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,6 +27,101 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# SUPABASE HTTP CLIENT (No SDK needed)
+# ============================================================================
+
+class SupabaseClient:
+    """Simple Supabase REST API client using httpx."""
+    
+    def __init__(self):
+        self.url = os.environ.get("SUPABASE_URL", "")
+        self.key = os.environ.get("SUPABASE_KEY", "")
+        if not self.url or not self.key:
+            raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY")
+        self.rest_url = f"{self.url}/rest/v1"
+        self.headers = {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+    
+    def table(self, name: str):
+        return SupabaseTable(self, name)
+
+
+class SupabaseTable:
+    """Simple table operations for Supabase REST API."""
+    
+    def __init__(self, client: SupabaseClient, table_name: str):
+        self.client = client
+        self.table_name = table_name
+        self.url = f"{client.rest_url}/{table_name}"
+        self._filters = []
+        self._select = "*"
+        self._insert_data = None
+        self._update_data = None
+        self._is_delete = False
+    
+    def select(self, columns: str = "*"):
+        self._select = columns
+        return self
+    
+    def eq(self, column: str, value):
+        self._filters.append(f"{column}=eq.{value}")
+        return self
+    
+    def insert(self, data: dict):
+        """Queue an insert operation."""
+        self._insert_data = data
+        return self
+    
+    def update(self, data: dict):
+        """Queue an update operation."""
+        self._update_data = data
+        return self
+    
+    def delete(self):
+        """Queue a delete operation."""
+        self._is_delete = True
+        return self
+    
+    def execute(self):
+        """Execute the queued operation."""
+        url = self.url
+        
+        # Add filters to URL
+        if self._filters:
+            url += "?" + "&".join(self._filters)
+        
+        with httpx.Client() as http:
+            if self._insert_data is not None:
+                # INSERT
+                response = http.post(self.url, headers=self.client.headers, json=self._insert_data)
+            elif self._update_data is not None:
+                # UPDATE
+                response = http.patch(url, headers=self.client.headers, json=self._update_data)
+            elif self._is_delete:
+                # DELETE
+                response = http.delete(url, headers=self.client.headers)
+            else:
+                # SELECT
+                params = {"select": self._select}
+                response = http.get(url, headers=self.client.headers, params=params)
+            
+            if response.status_code >= 400:
+                raise Exception(f"Supabase error: {response.text}")
+            
+            data = response.json() if response.text else None
+            return type('Response', (), {'data': data})()
+
+
+def get_supabase() -> SupabaseClient:
+    """Get Supabase client."""
+    return SupabaseClient()
 
 # ============================================================================
 # FROZEN PAYLOAD CONTRACTS
@@ -72,7 +167,7 @@ class ProjectCreate(BaseModel):
     """Request body for POST /api/projects."""
     name: str
     description: Optional[str] = None
-    user_id: str
+    user_id: Optional[str] = None  # Optional for schema compatibility
 
 
 class ProjectResponse(BaseModel):
@@ -80,7 +175,7 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    user_id: str
+    user_id: Optional[str] = None  # Optional for schema compatibility
 
 
 # ============================================================================
@@ -103,15 +198,6 @@ app.add_middleware(
 )
 
 
-def get_supabase() -> Client:
-    """Get Supabase client."""
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE credentials")
-    return create_client(url, key)
-
-
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
@@ -119,7 +205,7 @@ def get_supabase() -> Client:
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    return {"status": "healthy", "service": "BeePrepared Hive API"}
 
 
 @app.post("/api/jobs", response_model=JobResponse)
@@ -240,20 +326,21 @@ async def list_project_artifacts(project_id: str):
 async def create_project(request: ProjectCreate):
     """
     Create a new project.
+    
+    Starts with minimal fields for maximum compatibility.
     """
-    logger.info(f"Creating project: {request.name} for user {request.user_id}")
+    logger.info(f"Creating project: {request.name}")
     
     try:
         supabase = get_supabase()
-        response = supabase.table("projects").insert({
+        
+        # Use minimal fields that definitely exist
+        insert_data = {
             "name": request.name,
             "description": request.description,
-            "user_id": request.user_id,
-            "canvas_state": {
-                "viewport": {"x": 0, "y": 0, "zoom": 1},
-                "node_positions": {}
-            }
-        }).execute()
+        }
+        
+        response = supabase.table("projects").insert(insert_data).execute()
         
         if not response.data or len(response.data) == 0:
             raise HTTPException(status_code=500, detail="Failed to create project")
@@ -265,7 +352,7 @@ async def create_project(request: ProjectCreate):
             id=project["id"],
             name=project["name"],
             description=project.get("description"),
-            user_id=project["user_id"]
+            user_id=project.get("user_id")
         )
         
     except HTTPException:
@@ -331,6 +418,24 @@ async def upload_and_ingest(
         raise
     except Exception as e:
         logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    """
+    Delete a project and all related artifacts.
+    
+    Note: Cascade delete is handled by PostgreSQL foreign keys.
+    """
+    logger.info(f"Deleting project: {project_id}")
+    
+    try:
+        supabase = get_supabase()
+        supabase.table("projects").delete().eq("id", project_id).execute()
+        return {"status": "deleted", "id": project_id}
+    except Exception as e:
+        logger.error(f"Delete failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

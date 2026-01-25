@@ -68,21 +68,37 @@ export const api = {
 
     async create(name: string, description?: string): Promise<Project> {
       const { data: userData } = await supabase.auth.getUser();
-      const { data, error } = await supabase
-        .from("projects")
-        .insert({
-          name,
-          description,
-          user_id: userData.user?.id,
-          canvas_state: {
-            viewport: { x: 0, y: 0, zoom: 1 },
-            node_positions: {}
-          }
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return data as Project;
+      
+      // Try creating with all fields, fall back to minimal if columns don't exist
+      try {
+        const { data, error } = await supabase
+          .from("projects")
+          .insert({
+            name,
+            description,
+            user_id: userData.user?.id,
+            canvas_state: {
+              viewport: { x: 0, y: 0, zoom: 1 },
+              node_positions: {}
+            }
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        return data as Project;
+      } catch (error: any) {
+        // Fallback: columns may not exist yet
+        if (error.message?.includes("canvas_state") || error.message?.includes("user_id")) {
+          const { data, error: fallbackError } = await supabase
+            .from("projects")
+            .insert({ name, description })
+            .select()
+            .single();
+          if (fallbackError) throw fallbackError;
+          return data as Project;
+        }
+        throw error;
+      }
     },
 
     async update(id: string, updates: Partial<Pick<Project, "name" | "description" | "canvas_state">>): Promise<Project> {
