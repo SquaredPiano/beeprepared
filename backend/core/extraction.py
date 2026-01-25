@@ -20,11 +20,18 @@ from typing import Optional, Tuple
 from dotenv import load_dotenv
 
 import boto3
-import azure.cognitiveservices.speech as speechsdk
-import fitz
-from pptx import Presentation
-from docx import Document
+# import azure.cognitiveservices.speech as speechsdk
+import pypdf
+try:
+    from pptx import Presentation
+except ImportError:
+    Presentation = None
+try:
+    from docx import Document
+except ImportError:
+    Document = None
 import ffmpeg
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -132,7 +139,7 @@ class ExtractionService:
         Main extraction method. Routes to appropriate handler.
         
         Returns:
-            Tuple[str, dict]: (extracted_text, metadata)
+             Tuple[str, dict]: (extracted_text, metadata)
         """
         file_type = self.detect_file_type(file_path)
         logger.info(f"Extracting from {file_path} (type: {file_type})")
@@ -168,19 +175,20 @@ class ExtractionService:
     # =========================================================================
     
     def _extract_pdf(self, file_path: str) -> Tuple[str, dict]:
-        """Extract text from PDF using PyMuPDF."""
+        """Extract text from PDF using pypdf."""
         logger.info(f"Extracting PDF: {file_path}")
         
-        doc = fitz.open(file_path)
         text_parts = []
-        
-        for page_num, page in enumerate(doc, 1):
-            page_text = page.get_text("text")
-            if page_text.strip():
-                text_parts.append(f"--- Page {page_num} ---\n{page_text}")
-        
-        doc.close()
-        
+        try:
+            reader = pypdf.PdfReader(file_path)
+            for i, page in enumerate(reader.pages, 1):
+                page_text = page.extract_text()
+                if page_text and page_text.strip():
+                    text_parts.append(f"--- Page {i} ---\n{page_text}")
+        except Exception as e:
+            logger.error(f"PDF extraction failed: {e}")
+            raise
+            
         full_text = "\n\n".join(text_parts)
         metadata = {
             "page_count": len(text_parts),
@@ -188,6 +196,7 @@ class ExtractionService:
         }
         
         return full_text, metadata
+
     
     def _extract_pptx(self, file_path: str) -> Tuple[str, dict]:
         """Extract text from PowerPoint presentations."""

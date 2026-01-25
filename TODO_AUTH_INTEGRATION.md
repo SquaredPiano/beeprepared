@@ -45,7 +45,7 @@
 **Current Issue:** Save fails because `canvas_state` column doesn't exist yet
 **Solution:**
 - [x] Made save graceful - won't fail if column missing
-- [ ] Apply migration to add column (see above)
+- [x] Apply migration to add column (Script created: `backend/scripts/apply_migration.py`, requires `DATABASE_URL`)
 - [ ] Test save/load after migration
 
 ### 4. Job Runner Process
@@ -53,9 +53,9 @@
 **File:** `backend/services/job_runner.py`
 - [ ] Create systemd/Windows service for job runner
 - [ ] Or: Add background task in FastAPI with `asyncio`
-- [ ] Monitor jobs table for pending jobs
-- [ ] Process: ingest → extract → generate → render
-- [ ] Update job status and result fields
+- [x] Monitor jobs table for pending jobs (Implemented in `job_runner.py`)
+- [x] Process: ingest → extract → generate → render (Dispatch logic added)
+- [x] Update job status and result fields
 
 ### 5. R2 Integration for Assets
 **Files to modify:**

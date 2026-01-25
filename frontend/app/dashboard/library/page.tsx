@@ -113,23 +113,21 @@ export default function LibraryPage() {
                   <h3 className="text-xl font-display font-bold uppercase tracking-tight truncate">{project.name}</h3>
                   <div className="flex items-center gap-4">
                     <span className="px-3 py-1 bg-honey-50 text-honey-700 rounded-full text-[8px] font-bold uppercase tracking-widest">
-                      {project.nodes?.length || 0} Agents
+                      {project.canvas_state?.nodes?.length || 0} Agents
                     </span>
+
                     <span className="text-[10px] font-bold opacity-30 uppercase tracking-tighter">
                       Updated {new Date(project.updated_at).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
 
-                {/* Preview Nodes */}
-                <div className="flex -space-x-3 pt-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="w-10 h-10 rounded-2xl border-4 border-white bg-stone-100 flex items-center justify-center shadow-sm" />
-                  ))}
-                  <div className="w-10 h-10 rounded-2xl border-4 border-white bg-honey-100 flex items-center justify-center text-[10px] font-bold text-honey-600 shadow-sm">
-                    +
-                  </div>
+                {/* Dynamic activity indicator */}
+                <div className="flex items-center gap-2 pt-4">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Synchronized with Hive</span>
                 </div>
+
               </motion.div>
             ))}
           </div>
