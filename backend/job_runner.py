@@ -7,64 +7,22 @@ from backend.models.jobs import JobModel
 from backend.models.protocol import JobBundle
 from backend.services.db_interface import DBInterface
 
-# --- Abstract Handler Pattern ---
-
-class JobHandler:
-    """
-    Abstract Base Class for Job Handlers.
-    
-    ARCHITECTURAL HARD CONSTRAINT:
-    Handlers are responsible for:
-    1. Fetching the *content* of input artifact IDs (from DB or R2).
-    2. Passing content to the pure services (generators.py).
-    3. Generating **new UUIDs** for output artifacts.
-    4. Creating the **EdgePayload** linking Input ID -> Output ID.
-    
-    Handlers MUST return a JobBundle. They MUST NOT commit to DB.
-    """
-    async def run(self, job: JobModel) -> JobBundle:
-        raise NotImplementedError("Handlers must implement run()")
-
-# --- Stub Handler (for verification) ---
-class StubHandler(JobHandler):
-    async def run(self, job: JobModel) -> JobBundle:
-        print(f"[StubHandler] Processing {job.id}")
-        import uuid
-        
-        # Fake Artifact
-        new_art_id = uuid.uuid4()
-        
-        from backend.models.protocol import ArtifactPayload
-        
-        # Create bundle
-        bundle = JobBundle(
-            job_id=job.id,
-            project_id=job.project_id,
-            artifacts=[
-                ArtifactPayload(
-                    id=new_art_id,
-                    project_id=job.project_id,
-                    type="text",
-                    content={"text": "Stubbed Content from backbone"},
-                    # storage_url not mandatory in protocol if content is inline JSON
-                )
-            ],
-            edges=[],
-            renderings=[],
-            result={"status": "success", "handler": "StubHandler"}
-        )
-        return bundle
+# Import real handlers
+from backend.handlers.ingest_handler import IngestHandler
+from backend.handlers.generate_handler import GenerateHandler
+from backend.handlers.base import JobHandler
 
 # --- Dispatcher ---
 
 class JobRunner:
     def __init__(self):
         self.db = DBInterface()
-        self.handlers: Dict[str, Type[JobHandler]] = {
-            "ingest": StubHandler(), # Wiring Stub
-            # "generate": GenerateHandler(),
-            # "render": RenderHandler() 
+        # Real handlers registered here
+        self.handlers: Dict[str, JobHandler] = {
+            "ingest": IngestHandler(),
+            "generate": GenerateHandler(),
         }
+
 
     async def run_loop(self):
         print("JobRunner: Starting Dispatcher Loop...")
