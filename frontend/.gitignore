@@ -12,6 +12,10 @@
 !.yarn/releases
 !.yarn/versions
 
+# bun - we use npm only
+bun.lock
+.bun
+
 # testing
 /coverage
 
