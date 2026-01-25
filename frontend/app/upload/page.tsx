@@ -3,12 +3,12 @@
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ArrowLeft, 
-  Upload, 
-  FileText, 
-  CheckCircle2, 
-  Loader2, 
+import {
+  ArrowLeft,
+  Upload,
+  FileText,
+  CheckCircle2,
+  Loader2,
   ShieldCheck,
   Zap,
   Hexagon,
@@ -46,6 +46,16 @@ export default function UploadPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    maxSize: 500 * 1024 * 1024, // 500MB
+    onDropRejected: (rejections) => {
+      rejections.forEach(r => {
+        if (r.errors[0].code === 'file-too-large') {
+          toast.error(`${r.file.name} is too large. Max 500MB.`);
+        } else {
+          toast.error(`${r.file.name}: ${r.errors[0].message}`);
+        }
+      });
+    },
     accept: {
       "application/pdf": [".pdf"],
       "audio/*": [".mp3", ".wav", ".m4a"],
@@ -63,27 +73,27 @@ export default function UploadPage() {
     }
 
     setIsProcessing(true);
-    
+
     // Process files one by one (or in parallel)
     const filesToProcess = uploadQueue.filter(f => f.status === "pending");
-    
+
     for (const item of filesToProcess) {
       setUploadQueue(prev => prev.map(f => f.id === item.id ? { ...f, status: "uploading" } : f));
-      
+
       try {
         await api.upload.uploadAndIngest(
           selectedProjectId,
           item.file,
           "/",
           (job: Job) => {
-            setUploadQueue(prev => prev.map(f => f.id === item.id ? { 
-              ...f, 
+            setUploadQueue(prev => prev.map(f => f.id === item.id ? {
+              ...f,
               status: job.status === "running" ? "processing" : "uploading",
               jobId: job.id
             } : f));
           }
         );
-        
+
         setUploadQueue(prev => prev.map(f => f.id === item.id ? { ...f, status: "completed" } : f));
         toast.success(`Uploaded ${item.file.name}`);
       } catch (err: any) {
@@ -93,7 +103,7 @@ export default function UploadPage() {
       }
 
     }
-    
+
     setIsProcessing(false);
   };
 
@@ -107,8 +117,8 @@ export default function UploadPage() {
 
       <div className="max-w-5xl mx-auto px-12 py-16 relative z-10 space-y-20">
         <header className="flex items-center justify-between">
-          <Link 
-            href="/dashboard" 
+          <Link
+            href="/dashboard"
             className="group flex items-center gap-4 text-[10px] font-bold uppercase tracking-[0.3em] text-bee-black/30 hover:text-bee-black transition-all"
           >
             <div className="w-8 h-8 rounded-full border border-wax flex items-center justify-center group-hover:bg-bee-black group-hover:text-white transition-all">
@@ -147,9 +157,9 @@ export default function UploadPage() {
 
 
             <div className="space-y-12">
-              <ProjectSelector 
-                selectedId={selectedProjectId} 
-                onSelect={setSelectedProjectId} 
+              <ProjectSelector
+                selectedId={selectedProjectId}
+                onSelect={setSelectedProjectId}
               />
 
               <div className="relative">
@@ -162,7 +172,7 @@ export default function UploadPage() {
                   )}
                 >
                   <input {...getInputProps()} />
-                  
+
                   <div className={cn(
                     "p-8 bg-wax/10 rounded-[2.5rem] text-bee-black/20 transition-all duration-500 group-hover:scale-110 group-hover:rotate-12",
                     isDragActive && "bg-honey text-white rotate-12 scale-110 shadow-2xl shadow-honey/40"
@@ -229,16 +239,16 @@ export default function UploadPage() {
                             "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
                             item.status === 'completed' ? "bg-green-50 text-green-500" : "bg-wax/20 text-bee-black/20"
                           )}>
-                            {item.status === 'completed' ? <CheckCircle2 size={18} /> : 
-                             item.status === 'uploading' || item.status === 'processing' ? <Loader2 size={18} className="animate-spin" /> :
-                             <FileText size={18} />}
+                            {item.status === 'completed' ? <CheckCircle2 size={18} /> :
+                              item.status === 'uploading' || item.status === 'processing' ? <Loader2 size={18} className="animate-spin" /> :
+                                <FileText size={18} />}
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-bee-black truncate uppercase tracking-tight">{item.file.name}</p>
                             <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-0.5">
-                              {item.status === 'uploading' ? 'Uploading...' : 
-                               item.status === 'processing' ? 'Processing...' :
-                               item.status === 'completed' ? 'Saved' : 'Queued'}
+                              {item.status === 'uploading' ? 'Uploading...' :
+                                item.status === 'processing' ? 'Processing...' :
+                                  item.status === 'completed' ? 'Saved' : 'Queued'}
                             </p>
 
                           </div>
@@ -256,8 +266,8 @@ export default function UploadPage() {
                     disabled={isProcessing || !selectedProjectId}
                     className={cn(
                       "w-full h-16 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3",
-                      isProcessing || !selectedProjectId 
-                        ? "bg-wax/20 text-bee-black/20 cursor-not-allowed" 
+                      isProcessing || !selectedProjectId
+                        ? "bg-wax/20 text-bee-black/20 cursor-not-allowed"
                         : "bg-bee-black text-white hover:bg-honey hover:text-bee-black shadow-xl"
                     )}
                   >
