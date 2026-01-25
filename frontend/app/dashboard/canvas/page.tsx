@@ -13,9 +13,10 @@ export default function CanvasPage() {
       <div className="flex h-screen items-center justify-center bg-cream">
         <div className="text-center space-y-4">
           <div className="w-12 h-12 border-4 border-honey border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-bee-black/50 font-bold uppercase tracking-widest text-xs">Entering Matrix...</p>
+          <p className="text-bee-black/50 font-bold uppercase tracking-widest text-xs">Loading Editor...</p>
         </div>
       </div>
+
     }>
       <div className="flex flex-col h-screen bg-cream overflow-hidden font-sans">
         <main className="flex-1 relative min-h-0">

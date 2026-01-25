@@ -140,7 +140,7 @@ function BeeCanvasInner() {
         };
         setEdges([...edges, edge]);
         playConnect();
-        toast.success(`Synthesized connection to ${sourceNode.data.label}`);
+        toast.success(`Connected to ${sourceNode.data.label || 'Asset'}`);
       }
     } else if (newNode.type === 'result') {
       const sourceNode = findNearestCompatibleNode(newNode.position, 'process');
@@ -192,6 +192,7 @@ function BeeCanvasInner() {
       });
       return;
     }
+
 
     const position = screenToFlowPosition({
       x: event.clientX,

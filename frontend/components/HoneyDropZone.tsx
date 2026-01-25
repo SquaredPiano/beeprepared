@@ -19,9 +19,10 @@ export function HoneyDropZone() {
       // Check for 1GB limit (mock check for now using state)
       const currentStorage = useStore.getState().getTotalUsedStorage();
       if (currentStorage + file.size > 1 * 1024 * 1024 * 1024) {
-        toast.error(`Storage limit exceeded! Cannot add ${file.name}`);
+        toast.error(`Not enough space for ${file.name}`);
         return;
       }
+
 
       const id = addFile(file.name, file.size);
       addTask({

@@ -14,9 +14,9 @@ import os
 import logging
 import tempfile
 from uuid import UUID
-from typing import Optional
+from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
@@ -123,6 +123,55 @@ def get_supabase() -> SupabaseClient:
     """Get Supabase client."""
     return SupabaseClient()
 
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
+
+def get_current_user(authorization: str = Header(None)) -> str:
+    """
+    Validates the Bearer Token sent by the Frontend.
+    Returns the User ID if valid.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    try:
+        token = authorization.replace("Bearer ", "")
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_KEY", "")
+        
+        if not supabase_url or not supabase_key:
+            raise HTTPException(status_code=500, detail="Missing Supabase configuration")
+        
+        # Verify token via Supabase Auth API
+        auth_url = f"{supabase_url}/auth/v1/user"
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {token}"
+        }
+        
+        with httpx.Client() as http:
+            response = http.get(auth_url, headers=headers)
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
+            
+            user_data = response.json()
+            user_id = user_data.get("id")
+            
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Could not extract user ID")
+            
+            return user_id
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auth error: {e}")
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+
+
 # ============================================================================
 # FROZEN PAYLOAD CONTRACTS
 # ============================================================================
@@ -167,7 +216,6 @@ class ProjectCreate(BaseModel):
     """Request body for POST /api/projects."""
     name: str
     description: Optional[str] = None
-    user_id: Optional[str] = None  # Optional for schema compatibility
 
 
 class ProjectResponse(BaseModel):
@@ -175,7 +223,10 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    user_id: Optional[str] = None  # Optional for schema compatibility
+    user_id: Optional[str] = None
+    canvas_state: Optional[dict] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 # ============================================================================
@@ -322,28 +373,101 @@ async def list_project_artifacts(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/projects", response_model=ProjectResponse)
-async def create_project(request: ProjectCreate):
+@app.get("/api/projects")
+async def list_projects(user_id: str = Depends(get_current_user)):
     """
-    Create a new project.
+    List all projects for the authenticated user.
     
-    Starts with minimal fields for maximum compatibility.
+    Returns projects ordered by updated_at descending.
     """
-    logger.info(f"Creating project: {request.name}")
+    logger.info(f"Listing projects for user: {user_id}")
     
     try:
         supabase = get_supabase()
         
-        # Use minimal fields that definitely exist
+        # Fetch projects for this user, ordered by most recent
+        response = supabase.table("projects").select("*").eq("user_id", user_id).execute()
+        
+        projects = response.data or []
+        
+        # Sort by updated_at desc (in Python since our simple client doesn't support order)
+        projects.sort(key=lambda p: p.get("updated_at", p.get("created_at", "")), reverse=True)
+        
+        logger.info(f"Found {len(projects)} projects for user")
+        return projects
+        
+    except Exception as e:
+        logger.error(f"Failed to list projects: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}")
+async def get_project(project_id: str, user_id: str = Depends(get_current_user)):
+    """
+    Get a single project by ID.
+    
+    Verifies the project belongs to the authenticated user.
+    """
+    try:
+        supabase = get_supabase()
+        response = supabase.table("projects").select("*").eq("id", project_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project = response.data[0]
+        
+        # Verify ownership
+        if project.get("user_id") and project.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return project
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project(request: ProjectCreate, user_id: str = Depends(get_current_user)):
+    """
+    Create a new project for the authenticated user.
+    
+    Requires valid Bearer token in Authorization header.
+    """
+    logger.info(f"Creating project: {request.name} for user: {user_id}")
+    
+    try:
+        supabase = get_supabase()
+        
+        # Build insert data - always include user_id and canvas_state
+        # (requires migration to be applied, but is necessary for proper multi-tenancy)
         insert_data = {
             "name": request.name,
             "description": request.description,
+            "user_id": user_id,
+            "canvas_state": {
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+                "nodes": [],
+                "edges": []
+            }
         }
         
-        response = supabase.table("projects").insert(insert_data).execute()
+        try:
+            response = supabase.table("projects").insert(insert_data).execute()
+        except Exception as insert_error:
+            # If insert failed (possibly due to missing columns), try minimal insert
+            logger.warning(f"Full insert failed: {insert_error}. Trying minimal insert (migration may not be applied)")
+            minimal_data = {
+                "name": request.name,
+                "description": request.description
+            }
+            response = supabase.table("projects").insert(minimal_data).execute()
         
         if not response.data or len(response.data) == 0:
-            raise HTTPException(status_code=500, detail="Failed to create project")
+            raise HTTPException(status_code=500, detail="Failed to create project - no data returned")
         
         project = response.data[0]
         logger.info(f"Created project: {project['id']}")
@@ -352,7 +476,10 @@ async def create_project(request: ProjectCreate):
             id=project["id"],
             name=project["name"],
             description=project.get("description"),
-            user_id=project.get("user_id")
+            user_id=project.get("user_id"),
+            canvas_state=project.get("canvas_state"),
+            created_at=project.get("created_at"),
+            updated_at=project.get("updated_at")
         )
         
     except HTTPException:
@@ -366,24 +493,37 @@ async def create_project(request: ProjectCreate):
 async def upload_and_ingest(
     project_id: str,
     file: UploadFile = File(...),
-    source_type: str = Form(...)
+    source_type: str = Form(...),
+    user_id: str = Depends(get_current_user)
 ):
     """
     Upload a file and create an ingest job.
     
     This endpoint:
-    1. Saves the uploaded file temporarily
-    2. Creates an ingest job with the file path
-    3. Returns the job_id for polling
+    1. Verifies project ownership
+    2. Saves the uploaded file temporarily
+    3. Creates an ingest job with the file path
+    4. Returns the job_id for polling
     
     source_type must be one of: audio, video, pdf, pptx, md
     """
-    logger.info(f"Upload request: project={project_id}, file={file.filename}, type={source_type}")
+    logger.info(f"Upload request: project={project_id}, file={file.filename}, type={source_type}, user={user_id}")
     
     if source_type not in {"audio", "video", "pdf", "pptx", "md"}:
         raise HTTPException(status_code=400, detail=f"Invalid source_type: {source_type}")
     
     try:
+        supabase = get_supabase()
+        
+        # Verify project ownership
+        proj_response = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        if not proj_response.data or len(proj_response.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_owner = proj_response.data[0].get("user_id")
+        if project_owner and project_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         # Save file to temp directory
         suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ""
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -394,7 +534,6 @@ async def upload_and_ingest(
         logger.info(f"Saved uploaded file to: {tmp_path}")
         
         # Create ingest job
-        supabase = get_supabase()
         response = supabase.table("jobs").insert({
             "project_id": project_id,
             "type": "ingest",
@@ -402,7 +541,8 @@ async def upload_and_ingest(
             "payload": {
                 "source_type": source_type,
                 "source_ref": tmp_path,
-                "original_name": file.filename
+                "original_name": file.filename,
+                "user_id": user_id
             }
         }).execute()
         
@@ -422,20 +562,98 @@ async def upload_and_ingest(
 
 
 @app.delete("/api/projects/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(project_id: str, user_id: str = Depends(get_current_user)):
     """
     Delete a project and all related artifacts.
     
+    Verifies ownership before deletion.
     Note: Cascade delete is handled by PostgreSQL foreign keys.
     """
-    logger.info(f"Deleting project: {project_id}")
+    logger.info(f"Deleting project: {project_id} for user: {user_id}")
     
     try:
         supabase = get_supabase()
+        
+        # Verify ownership first
+        response = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_owner = response.data[0].get("user_id")
+        if project_owner and project_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Delete the project
         supabase.table("projects").delete().eq("id", project_id).execute()
+        logger.info(f"Deleted project: {project_id}")
         return {"status": "deleted", "id": project_id}
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Delete failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ProjectUpdate(BaseModel):
+    """Request body for PATCH /api/projects/{project_id}."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    canvas_state: Optional[dict] = None
+
+
+@app.patch("/api/projects/{project_id}")
+async def update_project(
+    project_id: str, 
+    request: ProjectUpdate, 
+    user_id: str = Depends(get_current_user)
+):
+    """
+    Update a project's name, description, or canvas state.
+    
+    Verifies ownership before update.
+    """
+    logger.info(f"Updating project: {project_id} for user: {user_id}")
+    
+    try:
+        supabase = get_supabase()
+        
+        # Verify ownership first
+        response = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_owner = response.data[0].get("user_id")
+        if project_owner and project_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Build update data (only include non-None fields)
+        update_data = {}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.description is not None:
+            update_data["description"] = request.description
+        if request.canvas_state is not None:
+            update_data["canvas_state"] = request.canvas_state
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No update fields provided")
+        
+        # Perform update
+        update_response = supabase.table("projects").update(update_data).eq("id", project_id).execute()
+        
+        if not update_response.data or len(update_response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to update project")
+        
+        logger.info(f"Updated project: {project_id}")
+        return update_response.data[0]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

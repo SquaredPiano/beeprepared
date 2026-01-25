@@ -22,9 +22,10 @@ import { api, Artifact, ArtifactEdge } from "@/lib/api";
 const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   video: { label: "Video", color: "#8B5CF6", icon: "🎬" },
   audio: { label: "Audio", color: "#EC4899", icon: "🎵" },
-  text: { label: "Raw Text", color: "#6B7280", icon: "📄" },
-  flat_text: { label: "Cleaned Text", color: "#10B981", icon: "✨" },
-  knowledge_core: { label: "Knowledge Core", color: "#F59E0B", icon: "🧠" },
+  text: { label: "Standard Text", color: "#6B7280", icon: "📄" },
+  flat_text: { label: "Refined Text", color: "#10B981", icon: "✨" },
+  knowledge_core: { label: "Project Core", color: "#F59E0B", icon: "🧠" },
+
   quiz: { label: "Quiz", color: "#3B82F6", icon: "❓" },
   flashcards: { label: "Flashcards", color: "#8B5CF6", icon: "🃏" },
   notes: { label: "Notes", color: "#10B981", icon: "📝" },
@@ -252,19 +253,21 @@ interface CanvasState {
 
   
             if (currentProjectId) {
-              await api.projects.update(currentProjectId, {
+              const updatedProject = await api.projects.update(currentProjectId, {
                 name: projectName,
                 canvas_state,
               });
+              // Sync back in case server modified it
+              set({ projectName: updatedProject.name });
             } else {
-              const project = await api.projects.create(projectName);
+              const project = await api.projects.create(projectName, "");
               set({ currentProjectId: project.id });
               
-              // Update URL with new project ID without refreshing
               const url = new URL(window.location.href);
               url.searchParams.set("id", project.id);
               window.history.pushState({}, "", url.toString());
             }
+
   
             // toast.success("Hive saved successfully"); // Disable toast for auto-save to be silent
           } catch (error: any) {
@@ -370,18 +373,31 @@ interface CanvasState {
       },
 
 
-      createNewProject: () => {
+      createNewProject: async () => {
+        const newName = generateProjectName();
         set({
           nodes: [],
           edges: [],
           currentProjectId: null,
-          projectName: generateProjectName(),
+          projectName: newName,
           viewport: { x: 0, y: 0, zoom: 1 },
           history: [],
           historyIndex: -1,
         });
         get().takeSnapshot();
+        
+        // Immediately persist to avoid ID null issues
+        try {
+          const project = await api.projects.create(newName, "");
+          set({ currentProjectId: project.id });
+          const url = new URL(window.location.href);
+          url.searchParams.set("id", project.id);
+          window.history.pushState({}, "", url.toString());
+        } catch (err) {
+          console.error("Failed to persist new project:", err);
+        }
       },
+
 
       uploadFile: async (file: File) => {
         const { currentProjectId } = get();
@@ -452,14 +468,23 @@ interface CanvasState {
             
             // Add any new artifacts that aren't on canvas yet
             const existingIds = new Set(nodes.map(n => n.id));
+            let newAdded = false;
+            
             artifacts.forEach((artifact, index) => {
               if (!existingIds.has(artifact.id)) {
                 nodes.push(artifactToNode(artifact, {
                   x: 100 + (nodes.length % 4) * 250,
-                  y: 100 + Math.floor(nodes.length / 4) * 150,
+                   y: 100 + Math.floor(nodes.length / 4) * 150,
                 }));
+                newAdded = true;
               }
             });
+
+            if (newAdded) {
+               // If we added new nodes, try to auto-save the position
+               set({ nodes });
+            }
+
           }
           
           set({ nodes, edges });

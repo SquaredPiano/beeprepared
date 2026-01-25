@@ -2,6 +2,10 @@ import os
 import httpx
 from fastapi import Header, HTTPException, Depends
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Minimal Supabase Client using HTTPX to avoid binary dependencies (cryptography)
 class SupabaseQueryBuilder:
@@ -17,10 +21,29 @@ class SupabaseQueryBuilder:
         self.params["select"] = columns
         return self
 
+    def insert(self, data: Dict[str, Any]) -> 'SupabaseQueryBuilder':
+        self.method = "POST"
+        self.headers["Prefer"] = "return=representation"
+        self.json_body = data
+        return self
+
     def update(self, data: Dict[str, Any]) -> 'SupabaseQueryBuilder':
         self.method = "PATCH"
         self.headers["Prefer"] = "return=representation"
         self.json_body = data
+        return self
+
+    def delete(self) -> 'SupabaseQueryBuilder':
+        self.method = "DELETE"
+        return self
+
+    def order(self, column: str, desc: bool = False) -> 'SupabaseQueryBuilder':
+        direction = "desc" if desc else "asc"
+        self.params["order"] = f"{column}.{direction}"
+        return self
+
+    def limit(self, count: int) -> 'SupabaseQueryBuilder':
+        self.params["limit"] = str(count)
         return self
 
     def eq(self, column: str, value: Any) -> 'SupabaseQueryBuilder':
@@ -33,6 +56,10 @@ class SupabaseQueryBuilder:
                 resp = httpx.get(self.url, headers=self.headers, params=self.params)
             elif self.method == "PATCH":
                 resp = httpx.patch(self.url, headers=self.headers, params=self.params, json=self.json_body)
+            elif self.method == "POST":
+                resp = httpx.post(self.url, headers=self.headers, params=self.params, json=self.json_body)
+            elif self.method == "DELETE":
+                resp = httpx.delete(self.url, headers=self.headers, params=self.params)
             else:
                 raise NotImplementedError(f"Method {self.method} not implemented")
             
@@ -41,8 +68,12 @@ class SupabaseQueryBuilder:
                 def __init__(self, data): self.data = data
             
             if resp.status_code >= 400:
-                print(f"Supabase Error: {resp.text}")
+                print(f"Supabase Error ({self.method} {self.url}): {resp.text}")
                 return Response(None)
+            
+            # For DELETE, sometimes it returns empty 204
+            if resp.status_code == 204:
+                return Response([])
                 
             return Response(resp.json())
         except Exception as e:

@@ -67,9 +67,10 @@ export function CanvasHeader() {
                 onClick={() => setIsEditing(true)}
                 className="font-display text-xl uppercase tracking-tighter text-bee-black cursor-pointer hover:text-honey-600 transition-colors truncate"
               >
-                {projectName || "Untitled Pipeline"}
+                {projectName || "Untitled Project"}
               </h1>
             )}
+
             {!isHeaderCollapsed && (
               <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-bee-black/30">
                 Project Workspace
@@ -98,8 +99,9 @@ export function CanvasHeader() {
           className="h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg bg-honey hover:bg-honey-600 text-bee-black group"
         >
           <Play size={14} className="mr-2 fill-bee-black group-hover:scale-110 transition-transform" />
-          Run Pipeline
+          Process Project
         </Button>
+
 
         <div className="flex flex-col items-end gap-1">
           <Button 
@@ -122,9 +124,10 @@ export function CanvasHeader() {
                   exit={{ opacity: 0 }}
                   className="text-[8px] font-bold text-honey-600 uppercase tracking-widest mr-2"
                 >
-                  Synchronizing Hive...
+                  Saving Workspace...
                 </motion.span>
               ) : (
+
                 <motion.span 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 0.3 }}

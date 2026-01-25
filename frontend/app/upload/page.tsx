@@ -74,6 +74,7 @@ export default function UploadPage() {
         await api.upload.uploadAndIngest(
           selectedProjectId,
           item.file,
+          "/",
           (job: Job) => {
             setUploadQueue(prev => prev.map(f => f.id === item.id ? { 
               ...f, 
@@ -84,12 +85,13 @@ export default function UploadPage() {
         );
         
         setUploadQueue(prev => prev.map(f => f.id === item.id ? { ...f, status: "completed" } : f));
-        toast.success(`Synthesized ${item.file.name}`);
+        toast.success(`Uploaded ${item.file.name}`);
       } catch (err: any) {
         console.error("Upload failed:", err);
         setUploadQueue(prev => prev.map(f => f.id === item.id ? { ...f, status: "error", error: err.message } : f));
-        toast.error(`Fault detected in ${item.file.name}`);
+        toast.error(`Error uploading ${item.file.name}: ${err.message}`);
       }
+
     }
     
     setIsProcessing(false);
@@ -116,19 +118,12 @@ export default function UploadPage() {
           </Link>
 
           <div className="flex items-center gap-6">
-            <div className="flex -space-x-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-wax flex items-center justify-center text-[10px] font-bold text-bee-black/40">
-                  U{i}
-                </div>
-              ))}
-            </div>
             <div className="h-4 w-px bg-wax" />
             <div className="px-4 py-2 rounded-xl bg-white border border-wax shadow-sm flex items-center gap-3">
-              <ShieldCheck className="w-4 h-4 text-green-500" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40">Secure Node</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40">Active Project</span>
             </div>
           </div>
+
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-20 items-stretch">
@@ -139,16 +134,17 @@ export default function UploadPage() {
                 animate={{ opacity: 1, x: 0 }}
                 className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-honey/10 border border-honey/20 text-honey-600 font-bold text-[9px] uppercase tracking-widest"
               >
-                <Zap size={10} className="fill-honey-600" /> System: Knowledge Ingestion
+                <Zap size={10} className="fill-honey-600" /> Upload Center
               </motion.div>
               <h1 className="text-7xl font-display uppercase tracking-tighter leading-[0.8]">
-                Synthesize <br />
-                <span className="italic opacity-30 lowercase">Your Sources</span>
+                Add Your <br />
+                <span className="italic opacity-30 lowercase">Documents</span>
               </h1>
               <p className="text-bee-black/40 text-sm font-medium leading-relaxed max-w-sm">
-                Feed your hive. Upload documents, audio, or video to transform raw data into a persistent knowledge graph.
+                Add your documents, audio, or video files to your project. We'll extract the key info for your flow.
               </p>
             </div>
+
 
             <div className="space-y-12">
               <ProjectSelector 
@@ -156,53 +152,61 @@ export default function UploadPage() {
                 onSelect={setSelectedProjectId} 
               />
 
-              <div
-                {...getRootProps()}
-                className={cn(
-                  "relative aspect-[16/10] bg-white border-2 border-dashed rounded-[3rem] transition-all duration-700 flex flex-col items-center justify-center gap-6 group overflow-hidden shadow-2xl shadow-honey/5",
-                  isDragActive ? "border-honey bg-honey/5 scale-[0.98]" : "border-wax hover:border-honey/40 hover:bg-honey-50/10"
-                )}
-              >
-                <input {...getInputProps()} />
-                
-                <div className={cn(
-                  "p-8 bg-wax/10 rounded-[2.5rem] text-bee-black/20 transition-all duration-500 group-hover:scale-110 group-hover:rotate-12",
-                  isDragActive && "bg-honey text-white rotate-12 scale-110 shadow-2xl shadow-honey/40"
-                )}>
-                  <Upload size={40} className={cn(isDragActive && "animate-bounce")} />
-                </div>
-
-                <div className="text-center space-y-2">
-                  <p className="text-xl font-bold text-bee-black uppercase tracking-tight">Drop Assets Here</p>
-                  <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-30">PDF, Media, Transcripts</p>
-                </div>
-
-                {/* Corner accents */}
-                <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-wax group-hover:border-honey transition-colors" />
-                <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-wax group-hover:border-honey transition-colors" />
-                
-                <AnimatePresence>
-                  {isDragActive && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute inset-0 bg-honey/10 backdrop-blur-sm pointer-events-none"
-                    />
+              <div className="relative">
+                <div
+                  {...getRootProps()}
+                  className={cn(
+                    "relative aspect-[16/10] bg-white border-2 border-dashed rounded-[3rem] transition-all duration-700 flex flex-col items-center justify-center gap-6 group overflow-hidden shadow-2xl shadow-honey/5",
+                    isDragActive ? "border-honey bg-honey/5 scale-[0.98]" : "border-wax hover:border-honey/40 hover:bg-honey-50/10",
+                    !selectedProjectId && "opacity-40 grayscale pointer-events-none"
                   )}
-                </AnimatePresence>
+                >
+                  <input {...getInputProps()} />
+                  
+                  <div className={cn(
+                    "p-8 bg-wax/10 rounded-[2.5rem] text-bee-black/20 transition-all duration-500 group-hover:scale-110 group-hover:rotate-12",
+                    isDragActive && "bg-honey text-white rotate-12 scale-110 shadow-2xl shadow-honey/40"
+                  )}>
+                    <Upload size={40} className={cn(isDragActive && "animate-bounce")} />
+                  </div>
+
+                  <div className="text-center space-y-2">
+                    <p className="text-xl font-bold text-bee-black uppercase tracking-tight">Drop Assets Here</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-30">PDF, Media, Transcripts</p>
+                  </div>
+
+                  {/* Corner accents */}
+                  <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-wax group-hover:border-honey transition-colors" />
+                  <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-wax group-hover:border-honey transition-colors" />
+                </div>
+
+                {!selectedProjectId && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-cream/20 backdrop-blur-[2px] rounded-[3rem] z-20">
+                    <div className="p-10 bg-white/90 backdrop-blur-xl border border-wax rounded-[2.5rem] shadow-2xl flex flex-col items-center text-center space-y-6">
+                      <div className="w-16 h-16 bg-honey/10 rounded-2xl flex items-center justify-center animate-bounce">
+                        <Hexagon size={32} className="text-honey" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-bee-black uppercase">Initialization Required</h3>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40">Select or create a project above to start uploading</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+
             </div>
           </div>
 
           <div className="lg:col-span-2 flex flex-col pt-8">
             <div className="flex-1 bg-white/60 backdrop-blur-3xl rounded-[3rem] border border-wax p-10 flex flex-col shadow-2xl">
               <div className="flex items-center justify-between mb-10">
-                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-bee-black/40">Ingestion Flow</h3>
+                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-bee-black/40">Upload Queue</h3>
                 <div className="px-3 py-1 bg-wax/20 rounded-full text-[8px] font-black uppercase tracking-widest">
-                  {uploadQueue.length} Active
+                  {uploadQueue.length} Files
                 </div>
               </div>
+
 
               <div className="flex-1 space-y-4 overflow-y-auto pr-2 scrollbar-none">
                 <AnimatePresence mode="popLayout">
@@ -232,10 +236,11 @@ export default function UploadPage() {
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-bee-black truncate uppercase tracking-tight">{item.file.name}</p>
                             <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-0.5">
-                              {item.status === 'uploading' ? 'Vaulting...' : 
-                               item.status === 'processing' ? 'Synthesizing...' :
-                               item.status === 'completed' ? 'Synchronized' : 'Queued'}
+                              {item.status === 'uploading' ? 'Uploading...' : 
+                               item.status === 'processing' ? 'Processing...' :
+                               item.status === 'completed' ? 'Saved' : 'Queued'}
                             </p>
+
                           </div>
                         </div>
                       </motion.div>
@@ -259,14 +264,15 @@ export default function UploadPage() {
                     {isProcessing ? (
                       <>
                         <Loader2 size={16} className="animate-spin" />
-                        Processing Hive
+                        Processing...
                       </>
                     ) : (
                       <>
-                        Start Ingestion
+                        Start Upload
                         <ChevronRight size={16} />
                       </>
                     )}
+
                   </button>
                 </div>
               )}
