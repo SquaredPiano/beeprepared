@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from uuid import UUID
 from supabase import create_client, Client
 from backend.models.protocol import JobBundle
@@ -117,3 +117,19 @@ class DBInterface:
         except Exception as e:
             print(f"CRITICAL: Failed to mark job {job_id} as FAILED: {e}")
             # Nothing more we can do if DB is down.
+
+    def get_artifact(self, artifact_id: UUID) -> Optional[Dict[str, Any]]:
+        """
+        Fetches a single artifact by ID.
+        
+        Returns the artifact row as a dict, or None if not found.
+        """
+        try:
+            response = self.supabase.table("artifacts").select("*").eq("id", str(artifact_id)).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            print(f"DB Error fetching artifact {artifact_id}: {e}")
+            raise e
+
