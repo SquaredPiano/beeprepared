@@ -105,20 +105,20 @@ export default function SettingsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Identity Tag</Label>
+                      <Label className="text-xs font-semibold text-bee-black/70 ml-1">Full Name</Label>
                       <Input defaultValue={profile?.user_metadata?.full_name || "New Worker"} className="bg-cream/30 border-wax rounded-xl h-12" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Email Protocol</Label>
+                      <Label className="text-xs font-semibold text-bee-black/70 ml-1">Email</Label>
                       <Input defaultValue={profile?.email || ""} disabled className="bg-bee-black/5 border-wax rounded-xl h-12 opacity-50" />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Bio Transmission</Label>
+                    <Label className="text-xs font-semibold text-bee-black/70 ml-1">Bio</Label>
                     <textarea 
                       className="w-full min-h-[100px] bg-cream/30 border border-wax rounded-2xl p-4 text-sm focus:outline-none focus:border-honey focus:ring-1 focus:ring-honey transition-all font-medium"
-                      placeholder="Briefly describe your specialized knowledge..."
+                      placeholder="Tell us about yourself..."
                     />
                   </div>
                 </div>

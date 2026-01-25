@@ -73,18 +73,21 @@ export default function LoginPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-bee-black font-serif italic">Welcome Back</h1>
-          <p className="text-sm text-bee-black/40 font-medium uppercase tracking-[0.1em]">Enter the Hive to continue</p>
+          <p className="text-sm text-bee-black/40 font-medium">Sign in to continue your learning</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Email Protocol</Label>
+            <div className="px-1">
+              <Label htmlFor="email" className="text-xs font-semibold text-bee-black/70">Email</Label>
+            </div>
             <div className="relative group">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20 group-focus-within:text-honey transition-colors" />
               <Input 
                 id="email" 
                 type="email" 
-                placeholder="worker@hive.com" 
+                placeholder="you@example.com" 
+                autoComplete="email"
                 className="pl-10 h-12 bg-cream/30 border-wax focus:border-honey focus:ring-honey rounded-xl transition-all"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -94,8 +97,8 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <Label htmlFor="password" title="Password" className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60">Access Cipher</Label>
-              <Link href="#" className="text-[10px] font-bold uppercase tracking-widest text-honey hover:underline">Forgot?</Link>
+              <Label htmlFor="password" className="text-xs font-semibold text-bee-black/70">Password</Label>
+              <Link href="/auth/reset-password" className="text-xs font-semibold text-honey hover:underline">Forgot?</Link>
             </div>
             <div className="relative group">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20 group-focus-within:text-honey transition-colors" />
@@ -103,6 +106,7 @@ export default function LoginPage() {
                 id="password" 
                 type="password" 
                 placeholder="••••••••" 
+                autoComplete="current-password"
                 className="pl-10 h-12 bg-cream/30 border-wax focus:border-honey focus:ring-honey rounded-xl transition-all"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -115,7 +119,7 @@ export default function LoginPage() {
             className="w-full h-12 bg-bee-black hover:bg-bee-black/90 text-cream font-bold rounded-xl gap-2 group transition-all active:scale-95"
             disabled={isLoading}
           >
-            {isLoading ? "Authenticating..." : "Synchronize Access"}
+            {isLoading ? "Signing in..." : "Sign In"}
             {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
           </Button>
         </form>
@@ -124,8 +128,8 @@ export default function LoginPage() {
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-wax"></div>
           </div>
-          <div className="relative flex justify-center text-[10px] font-bold uppercase tracking-widest">
-            <span className="bg-white px-4 text-bee-black/30">Or alternate relay</span>
+          <div className="relative flex justify-center text-xs font-medium">
+            <span className="bg-white px-4 text-bee-black/40">Or continue with</span>
           </div>
         </div>
 
@@ -140,7 +144,7 @@ export default function LoginPage() {
 
         <p className="text-center text-xs font-medium text-bee-black/40">
           New to BeePrepared?{" "}
-          <Link href="/auth/signup" className="text-honey font-bold hover:underline">Register your Hive</Link>
+          <Link href="/auth/signup" className="text-honey font-bold hover:underline">Create an account</Link>
         </p>
       </div>
     </motion.div>
