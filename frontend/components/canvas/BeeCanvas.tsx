@@ -29,6 +29,7 @@ import { useCanvasStore } from "@/store/useCanvasStore";
 import { AssetNode } from "./nodes/AssetNode";
 import { ProcessNode } from "./nodes/ProcessNode";
 import { ResultNode } from "./nodes/ResultNode";
+import { ArtifactNode } from "./nodes/ArtifactNode";
 
 import { CanvasHeader } from "./CanvasHeader";
 import { CanvasSidebar } from "./CanvasSidebar";
@@ -46,6 +47,7 @@ const nodeTypes = {
   asset: AssetNode,
   process: ProcessNode,
   result: ResultNode,
+  artifactNode: ArtifactNode,
 };
 
 function BeeCanvasInner() {
@@ -138,7 +140,7 @@ function BeeCanvasInner() {
         };
         setEdges([...edges, edge]);
         playConnect();
-        toast.success(`Synthesized connection to ${sourceNode.data.label}`);
+        toast.success(`Connected to ${sourceNode.data.label || 'Asset'}`);
       }
     } else if (newNode.type === 'result') {
       const sourceNode = findNearestCompatibleNode(newNode.position, 'process');
@@ -190,6 +192,7 @@ function BeeCanvasInner() {
       });
       return;
     }
+
 
     const position = screenToFlowPosition({
       x: event.clientX,
