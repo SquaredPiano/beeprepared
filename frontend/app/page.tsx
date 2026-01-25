@@ -209,7 +209,7 @@ export default function LandingPage() {
                 />
               </div>
               <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-honey border-[3px] border-bee-black flex items-center justify-center shadow-[4px_4px_0px_0px_#0F0F0F]">
-                <Search size={36} className="text-bee-black" strokeWidth={2.5} />
+                <Search size={36} className="text-bee-black fill-bee-black" strokeWidth={0} />
               </div>
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function LandingPage() {
                 />
               </div>
               <div className="absolute -top-6 -right-6 w-24 h-24 bg-honey border-[3px] border-bee-black flex items-center justify-center shadow-[4px_4px_0px_0px_#FFB800]">
-                <Cpu size={36} className="text-bee-black" strokeWidth={2.5} />
+                <Cpu size={36} className="text-bee-black fill-bee-black" strokeWidth={0} />
               </div>
             </div>
             <div className="section-content space-y-8 order-1 lg:order-2">
@@ -267,7 +267,7 @@ export default function LandingPage() {
                 />
               </div>
               <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-honey border-[3px] border-bee-black flex items-center justify-center shadow-[4px_4px_0px_0px_#0F0F0F]">
-                <Zap size={36} className="text-bee-black" strokeWidth={2.5} />
+                <Zap size={36} className="text-bee-black fill-bee-black" strokeWidth={0} />
               </div>
             </div>
           </div>

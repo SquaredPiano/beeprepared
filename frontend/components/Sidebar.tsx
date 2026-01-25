@@ -13,17 +13,20 @@ import {
   HelpCircle,
   LogOut
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
 import { Logo } from "./Logo";
+import { createClient } from "@/lib/supabase/client";
 
 import { useSidebarStore } from "@/store/useSidebarStore";
 
 export function Sidebar() {
   const { isCollapsed, toggle, collapse, expand } = useSidebarStore();
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
 
   // Auto-collapse on canvas view
   useEffect(() => {
@@ -145,18 +148,18 @@ export function Sidebar() {
               <HelpCircle size={18} className="shrink-0" />
               <span className="text-[10px] uppercase tracking-widest font-bold">Support</span>
             </a>
-            <Link 
-              href="/"
+            <button 
               onMouseEnter={() => playSound("hover")}
-              onClick={() => {
+              onClick={async () => {
                 playSound("pickup");
-                // Logout logic
+                await supabase.auth.signOut();
+                router.replace("/");
               }}
               className="w-full px-4 py-3 text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-all flex items-center gap-4 group cursor-pointer"
             >
               <LogOut size={18} className="shrink-0" />
               <span className="text-[10px] uppercase tracking-widest font-bold">Log Out</span>
-            </Link>
+            </button>
           </div>
         </motion.aside>
       </>

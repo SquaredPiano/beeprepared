@@ -34,7 +34,7 @@ export default function SignupPage() {
 
       if (error) throw error;
       
-      toast.success("Registration initiated. Please check your email for the confirmation cipher.");
+      toast.success("Account created! Please check your email to verify.");
     } catch (error: any) {
       toast.error(error.message || "Failed to register");
     } finally {
@@ -73,19 +73,20 @@ export default function SignupPage() {
               <Hexagon className="w-8 h-8 text-bee-black fill-bee-black/10" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-bee-black font-serif italic">Initialize Hive</h1>
-          <p className="text-sm text-bee-black/40 font-medium uppercase tracking-[0.1em]">Begin your knowledge architecture</p>
+          <h1 className="text-2xl font-bold tracking-tight text-bee-black font-serif italic">Create Your Account</h1>
+          <p className="text-sm text-bee-black/40 font-medium">Start building your knowledge today</p>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name" className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Identity Tag</Label>
+            <Label htmlFor="name" className="text-xs font-semibold text-bee-black/70 ml-1">Full Name</Label>
             <div className="relative group">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20 group-focus-within:text-honey transition-colors" />
               <Input 
                 id="name" 
                 type="text" 
-                placeholder="Worker 001" 
+                placeholder="Your name" 
+                autoComplete="name"
                 className="pl-10 h-12 bg-cream/30 border-wax focus:border-honey focus:ring-honey rounded-xl transition-all"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -94,13 +95,14 @@ export default function SignupPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Email Protocol</Label>
+            <Label htmlFor="email" className="text-xs font-semibold text-bee-black/70 ml-1">Email</Label>
             <div className="relative group">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20 group-focus-within:text-honey transition-colors" />
               <Input 
                 id="email" 
                 type="email" 
-                placeholder="worker@hive.com" 
+                placeholder="you@example.com" 
+                autoComplete="email"
                 className="pl-10 h-12 bg-cream/30 border-wax focus:border-honey focus:ring-honey rounded-xl transition-all"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -109,13 +111,14 @@ export default function SignupPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password" title="Password" className="text-[10px] font-bold uppercase tracking-widest text-bee-black/60 ml-1">Access Cipher</Label>
+            <Label htmlFor="password" className="text-xs font-semibold text-bee-black/70 ml-1">Password</Label>
             <div className="relative group">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20 group-focus-within:text-honey transition-colors" />
               <Input 
                 id="password" 
                 type="password" 
                 placeholder="••••••••" 
+                autoComplete="new-password"
                 className="pl-10 h-12 bg-cream/30 border-wax focus:border-honey focus:ring-honey rounded-xl transition-all"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -128,7 +131,7 @@ export default function SignupPage() {
             className="w-full h-12 bg-bee-black hover:bg-bee-black/90 text-cream font-bold rounded-xl gap-2 group transition-all active:scale-95"
             disabled={isLoading}
           >
-            {isLoading ? "Synchronizing..." : "Register Hive"}
+            {isLoading ? "Creating account..." : "Create Account"}
             {!isLoading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
           </Button>
         </form>
@@ -137,8 +140,8 @@ export default function SignupPage() {
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-wax"></div>
           </div>
-          <div className="relative flex justify-center text-[10px] font-bold uppercase tracking-widest">
-            <span className="bg-white px-4 text-bee-black/30">Or alternate relay</span>
+          <div className="relative flex justify-center text-xs font-medium">
+            <span className="bg-white px-4 text-bee-black/40">Or continue with</span>
           </div>
         </div>
 
@@ -152,8 +155,8 @@ export default function SignupPage() {
         </Button>
 
         <p className="text-center text-xs font-medium text-bee-black/40">
-          Already have a Hive?{" "}
-          <Link href="/auth/login" className="text-honey font-bold hover:underline">Synchronize Access</Link>
+          Already have an account?{" "}
+          <Link href="/auth/login" className="text-honey font-bold hover:underline">Sign in</Link>
         </p>
       </div>
     </motion.div>
