@@ -77,7 +77,7 @@ export function DeleteConfirmationDialog({
                 : "bg-honey text-bee-black hover:bg-honey-600 shadow-honey/20"
             )}
           >
-            {destructive ? "Decommission" : "Confirm"}
+            {destructive ? "Delete" : "Confirm"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

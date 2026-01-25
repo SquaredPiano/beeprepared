@@ -194,7 +194,7 @@ interface CanvasState {
             if (result.error) throw result.error;
   
             set({ currentProjectId: result.data.id });
-            toast.success("Architecture persisted to Hive");
+            toast.success("Project saved");
           } catch (error: any) {
             console.error("Save error:", error);
             toast.error(`Failed to save: ${error.message}`);
@@ -206,7 +206,7 @@ interface CanvasState {
         runFlow: async () => {
           const { nodes, edges, currentProjectId } = get();
           if (!currentProjectId) {
-            toast.error("Persist architecture before execution");
+            toast.error("Save your project first");
             return;
           }
   

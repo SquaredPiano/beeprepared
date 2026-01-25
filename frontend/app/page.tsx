@@ -25,10 +25,10 @@ if (typeof window !== "undefined") {
 // --- Components ---
 
 const SharpCard = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
-  <div className="sharp-card group bg-white border-2 border-bee-black p-8 relative transition-all duration-300 flex flex-col justify-between h-[400px] w-[320px] shrink-0 shadow-[6px_6px_0px_0px_#0F0F0F] hover:shadow-[10px_10px_0px_0px_#FFB800] hover:-translate-y-1">
+  <div className="sharp-card group bg-white border-2 border-bee-black p-8 relative transition-all duration-300 flex flex-col justify-between h-[400px] w-[320px] shrink-0 shadow-[6px_6px_0px_0px_#0F0F0F] hover:shadow-[10px_10px_0px_0px_#FFB800] hover:-translate-y-1 cursor-pointer">
     <div>
-      <div className="mb-6 p-3 bg-honey-100 inline-block border-2 border-bee-black">
-        {icon}
+      <div className="mb-6 p-3 bg-bee-black inline-block border-2 border-bee-black">
+        <div className="text-honey">{icon}</div>
       </div>
       <h3 className="text-2xl font-black uppercase tracking-tighter mb-3 text-bee-black leading-none">{title}</h3>
       <p className="text-bee-black/60 font-medium leading-snug text-sm">

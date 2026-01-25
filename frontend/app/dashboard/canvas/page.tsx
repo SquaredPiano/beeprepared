@@ -48,7 +48,7 @@ function CanvasHeader() {
               </div>
             )}
             <p className="text-[10px] text-bee-black/40 uppercase tracking-[0.1em] font-medium">
-              {projectId ? `Syncing with Node ID: ${projectId.slice(0, 8)}` : "Live Architectural Visualization"}
+              {projectId ? `Project ID: ${projectId.slice(0, 8)}` : "Editing workspace"}
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ function CanvasHeader() {
         <div className="h-4 w-px bg-wax" />
         <div className="text-right">
           <p className="text-[10px] font-bold text-honey uppercase tracking-wider">Status</p>
-          <p className="text-xs font-bold text-bee-black">Ready for Synthesis</p>
+          <p className="text-xs font-bold text-bee-black">Ready</p>
         </div>
       </div>
     </header>

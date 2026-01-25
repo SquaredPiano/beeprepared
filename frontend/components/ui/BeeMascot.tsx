@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useMascotStore } from '@/store/useMascotStore';
@@ -23,12 +23,66 @@ const hoverAnimation = {
   }
 };
 
-export const BeeMascot = () => {
-  const { mood, position, message, reset } = useMascotStore();
+// Random interval choices in ms (5, 15, or 60 minutes)
+const INTERVAL_OPTIONS = [5 * 60 * 1000, 15 * 60 * 1000, 60 * 60 * 1000];
 
+export const BeeMascot = () => {
+  const { mood, position, message, reset, say, flyTo } = useMascotStore();
+  const lastIntervalRef = useRef<number | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initial fly-in animation on mount
   useEffect(() => {
-    reset();
-  }, [reset]);
+    // Start hidden, then fly in
+    flyTo('hidden');
+    
+    const flyInTimer = setTimeout(() => {
+      flyTo('bottom-right');
+      say("Welcome back! Ready to study?", 4000);
+    }, 500);
+
+    return () => clearTimeout(flyInTimer);
+  }, []);
+
+  // Random interval appearances (no consecutive same interval)
+  useEffect(() => {
+    const scheduleNextAppearance = () => {
+      // Pick a random interval that's different from the last one
+      let availableIntervals = INTERVAL_OPTIONS.filter(i => i !== lastIntervalRef.current);
+      if (availableIntervals.length === 0) availableIntervals = INTERVAL_OPTIONS;
+      
+      const nextInterval = availableIntervals[Math.floor(Math.random() * availableIntervals.length)];
+      lastIntervalRef.current = nextInterval;
+
+      timeoutRef.current = setTimeout(() => {
+        // Fly in with a random message
+        const messages = [
+          "Taking a break? Don't forget to review!",
+          "You're doing great! Keep it up!",
+          "Pro tip: Space repetition helps memory!",
+          "Need help? I'm here for you!",
+          "Time flies when you're learning!"
+        ];
+        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+        
+        flyTo('bottom-right');
+        say(randomMessage, 5000);
+        
+        // Schedule next appearance
+        scheduleNextAppearance();
+      }, nextInterval);
+    };
+
+    // Start the interval cycle after initial fly-in
+    const startTimer = setTimeout(() => {
+      scheduleNextAppearance();
+    }, 10000);
+
+    return () => {
+      clearTimeout(startTimer);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [flyTo, say]);
 
   return (
     <div className="fixed top-0 left-0 pointer-events-none z-[100] w-32 h-32">

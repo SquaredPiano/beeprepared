@@ -177,7 +177,7 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
             {...agent}
             collapsed={isSidebarCollapsed}
             disabled={agent.type === 'result' && !hasProcess}
-            tooltip={agent.type === 'result' && !hasProcess ? "Add a synthesis layer first" : undefined}
+            tooltip={agent.type === 'result' && !hasProcess ? "Add a processor first" : undefined}
           />
         ))}
       </div>
