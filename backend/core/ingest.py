@@ -4,6 +4,7 @@ import time
 import logging
 import tempfile
 import boto3
+from botocore.config import Config
 import yt_dlp
 import ffmpeg
 from dotenv import load_dotenv
@@ -19,7 +20,7 @@ class IngestionService:
         self._setup_r2()
 
     def _setup_r2(self):
-        """Initialize Cloudflare R2 client."""
+        """Initialize Cloudflare R2 client with SigV4."""
         self.r2_endpoint = os.getenv("R2_ENDPOINT_URL")
         self.r2_key = os.getenv("R2_ACCESS_KEY_ID")
         self.r2_secret = os.getenv("R2_SECRET_ACCESS_KEY")
@@ -30,7 +31,9 @@ class IngestionService:
                 service_name='s3',
                 endpoint_url=self.r2_endpoint,
                 aws_access_key_id=self.r2_key,
-                aws_secret_access_key=self.r2_secret
+                aws_secret_access_key=self.r2_secret,
+                region_name='auto',
+                config=Config(signature_version='s3v4')
             )
         else:
             logger.warning("R2 credentials missing. Uploads will fail.")

@@ -360,11 +360,25 @@
 
 .notes-section {
     margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.notes-section:last-child {
+    border-bottom: none;
 }
 
 .notes-section h2 {
     color: #a5b4fc;
     margin-bottom: 0.75rem;
+    font-size: 1.4rem;
+}
+
+.notes-section .content-block {
+    color: #e2e8f0;
+    line-height: 1.8;
+    font-size: 1.05rem;
+    white-space: pre-wrap;
 }
 
 .notes-section p {
@@ -380,6 +394,76 @@
 .key-points li {
     color: #94a3b8;
     margin-bottom: 0.5rem;
+}
+
+/* Key Terms */
+.key-terms {
+    margin-top: 1rem;
+    color: #94a3b8;
+}
+
+.term-badge {
+    display: inline-block;
+    background: rgba(129, 140, 248, 0.15);
+    color: #a5b4fc;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    margin: 0.2rem 0.3rem;
+    font-size: 0.9rem;
+}
+
+/* Callouts */
+.callouts {
+    margin-top: 1rem;
+}
+
+.callout {
+    background: rgba(251, 191, 36, 0.1);
+    border-left: 3px solid #fbbf24;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    color: #fcd34d;
+    border-radius: 0 4px 4px 0;
+}
+
+/* Markdown content inside notes */
+.markdown-content h3 {
+    color: #c4b5fd;
+    margin: 1rem 0 0.5rem;
+}
+
+.markdown-content code {
+    background: rgba(30, 30, 50, 0.8);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.markdown-content pre {
+    background: rgba(20, 20, 40, 0.9);
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+/* Math inline wrapper - prevents block elements from breaking layout */
+.math-inline {
+    display: inline;
+}
+
+.math-inline p {
+    display: inline;
+    margin: 0;
+}
+
+/* KaTeX styling overrides */
+.katex {
+    font-size: 1.05em;
+}
+
+.katex-display {
+    margin: 1rem 0;
+    overflow-x: auto;
 }
 
 /* Slides Renderer */
