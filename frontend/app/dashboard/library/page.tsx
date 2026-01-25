@@ -21,20 +21,18 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { id: "pipelines", label: "Pipelines", icon: Workflow },
-  { id: "flashcards", label: "Flashcards", icon: Layout },
-  { id: "quizzes", label: "Quizzes", icon: Book },
-  { id: "exams", label: "Mock Exams", icon: FileBadge },
-  { id: "pptx", label: "PPTX", icon: Presentation },
-  { id: "history", label: "History", icon: History },
+  { id: "projects", label: "All Projects", icon: Workflow },
+  { id: "recent", label: "Recently Visited", icon: History },
 ];
 
+
 export default function LibraryPage() {
-  const [activeTab, setActiveTab] = useState("pipelines");
+  const [activeTab, setActiveTab] = useState("projects");
   const [projects, setProjects] = useState<any[]>([]);
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,16 +41,13 @@ export default function LibraryPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [projectsRes, artifactsRes] = await Promise.all([
-          supabase.from("projects").select("*").order("updated_at", { ascending: false }),
-          supabase.from("artifacts").select("*").order("created_at", { ascending: false })
+        const [projectsData, vaultData] = await Promise.all([
+          api.projects.list(),
+          api.vault.list("/")
         ]);
 
-        if (projectsRes.error) throw projectsRes.error;
-        if (artifactsRes.error) throw artifactsRes.error;
-
-        setProjects(projectsRes.data || []);
-        setArtifacts(artifactsRes.data || []);
+        setProjects(projectsData);
+        setArtifacts(vaultData.files || []);
       } catch (error: any) {
         console.error("Fetch error:", error);
         toast.error("Failed to load library data");
@@ -65,10 +60,10 @@ export default function LibraryPage() {
   }, []);
 
   const renderContent = () => {
-    if (activeTab === "pipelines") {
+    if (activeTab === "projects") {
       return (
         <motion.div
-          key="pipelines"
+          key="projects"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
@@ -83,10 +78,11 @@ export default function LibraryPage() {
                 <Plus className="w-8 h-8 text-honey-600" />
               </div>
               <div className="text-center space-y-2">
-                <h3 className="text-sm font-bold uppercase tracking-widest">Architect New Flow</h3>
+                <h3 className="text-sm font-bold uppercase tracking-widest">Create New Project</h3>
                 <p className="text-[10px] font-medium opacity-40 uppercase tracking-tighter">Start from a blank canvas</p>
               </div>
             </button>
+
 
             {isLoading ? (
               Array(2).fill(0).map((_, i) => (
@@ -125,8 +121,9 @@ export default function LibraryPage() {
                 {/* Dynamic activity indicator */}
                 <div className="flex items-center gap-2 pt-4">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Synchronized with Hive</span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Project Saved</span>
                 </div>
+
 
               </motion.div>
             ))}
@@ -161,17 +158,19 @@ export default function LibraryPage() {
               {activeTab === "pptx" && <Presentation size={48} />}
             </div>
             <div className="space-y-4">
-              <h3 className="text-4xl font-display font-bold uppercase tracking-tighter">Enter {activeTab} Deck</h3>
+              <h3 className="text-4xl font-display font-bold uppercase tracking-tighter">View {activeTab}</h3>
               <p className="text-xs font-medium opacity-40 max-w-md uppercase tracking-[0.2em] leading-relaxed mx-auto">
-                Access your full matrix of synthesized artifacts and training protocols.
+                Access your generated study materials and project outputs.
               </p>
             </div>
+
             <button 
               onClick={() => router.push(sectionRoutes[activeTab])}
               className="px-12 py-6 bg-bee-black text-white text-[10px] font-black uppercase tracking-[0.4em] rounded-[2rem] hover:bg-honey-600 transition-all shadow-2xl hover:scale-105 active:scale-95"
             >
-              Launch Session
+              Open View
             </button>
+
           </motion.div>
         );
       }
@@ -195,9 +194,10 @@ export default function LibraryPage() {
         <div className="text-center space-y-3">
           <h3 className="text-2xl font-display font-bold uppercase tracking-tight">No {activeTab} Generated Yet</h3>
           <p className="text-xs font-medium opacity-40 max-w-sm uppercase tracking-widest leading-relaxed">
-            Connect a content node to a {activeTab.slice(0, -1)} agent in the canvas to start architecting your knowledge.
+            Connect a content node to a process node in the canvas to start generating results.
           </p>
         </div>
+
         <button 
           onClick={() => router.push("/dashboard/canvas")}
           className="px-10 py-5 bg-bee-black text-white text-[10px] font-bold uppercase tracking-[0.3em] rounded-[2rem] hover:bg-honey-600 transition-all shadow-2xl"

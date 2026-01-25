@@ -53,10 +53,11 @@ export default function DashboardPage() {
       setProjects(projectsData);
       setBalance(balanceData);
     } catch (error: any) {
-      toast.error("Failed to sync with Hive network");
+      toast.error("Failed to sync with Project server");
     } finally {
       setIsLoading(false);
     }
+
   };
 
   useEffect(() => {
@@ -86,14 +87,15 @@ export default function DashboardPage() {
   const handleCreateProject = async () => {
     const name = generateProjectName();
     toast.promise(api.projects.create(name), {
-      loading: 'Initializing new cell...',
-      success: (data) => {
-        window.location.href = `/dashboard/canvas?id=${data.id}`;
-        return `Cell "${name}" initialized`;
+      loading: 'Creating new matrix...',
+      success: (newProj) => {
+        setProjects(prev => [newProj as Project, ...prev]);
+        return `Project "${name}" created`;
       },
-      error: 'Cell initialization failed'
+      error: 'Creation failed'
     });
   };
+
 
   const handleDeleteProject = async (id: string) => {
     try {

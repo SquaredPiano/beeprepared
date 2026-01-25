@@ -30,22 +30,35 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
   const [uploadProgress, setUploadProgress] = useState<string>("Uploading...");
   const [activeTab, setActiveTab] = useState<"upload" | "library">("upload");
   const [existingArtifacts, setExistingArtifacts] = useState<any[]>([]);
+  
+  // Vault / Folder State
+  const [folderPath, setFolderPath] = useState("/");
+  const [viewingPath, setViewingPath] = useState("/");
+
   const { currentProjectId, uploadFile, refreshArtifacts, setNodes, nodes, takeSnapshot } = useCanvasStore();
 
   useEffect(() => {
-    if (isOpen && currentProjectId && activeTab === "library") {
-      loadExistingArtifacts();
+    if (isOpen && activeTab === "library") {
+      loadVault();
     }
-  }, [isOpen, currentProjectId, activeTab]);
+  }, [isOpen, activeTab]);
 
-  const loadExistingArtifacts = async () => {
+  const loadVault = async () => {
     try {
-      const { artifacts } = await api.projects.getArtifacts(currentProjectId!);
-      setExistingArtifacts(artifacts);
+      // Fetch everything for the user (Global Vault)
+      const { files } = await api.vault.list("/");
+      setExistingArtifacts(files);
     } catch (error) {
-      console.error("Failed to load artifacts:", error);
+      console.error("Failed to load vault:", error);
+      toast.error("Could not load Knowledge Vault");
     }
   };
+
+  const filteredArtifacts = existingArtifacts.filter(a => {
+     if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix? 
+     // Simple exact match for "Folder" simulation
+     return a.folder_path === viewingPath;
+  });
 
   const selectExistingArtifact = (artifact: any) => {
     // Convert artifact to node and add to canvas
@@ -98,7 +111,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
       await api.upload.uploadAndIngest(
         projectId,
         file,
-
+        folderPath || "/",
         (job) => {
           if (job.status === "running") {
             setUploadProgress("Extracting knowledge...");
@@ -109,7 +122,8 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
       // Refresh the canvas to show new artifacts
       await refreshArtifacts();
       
-      toast.success(`${file.name} processed successfully`);
+      toast.success(`${file.name} uploaded successfully`);
+
       
       // Optional callback for legacy compatibility
       if (onUpload) {
@@ -179,7 +193,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                         activeTab === "upload" ? "text-bee-black" : "text-bee-black/20 hover:text-bee-black/40"
                       )}
                     >
-                      Upload New
+                      New Upload
                     </button>
                     <div className="w-px h-4 bg-wax" />
                     <button 
@@ -189,13 +203,15 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                         activeTab === "library" ? "text-bee-black" : "text-bee-black/20 hover:text-bee-black/40"
                       )}
                     >
-                      Library
+                      Knowledge Vault
                     </button>
+
                   </div>
                   <p className="text-[10px] uppercase tracking-widest font-bold text-bee-black/40">
-                    {activeTab === "upload" ? "Add fresh content to your hive" : "Bring existing assets to canvas"}
+                    {activeTab === "upload" ? "Add a new file to your project" : "Add existing project files to canvas"}
                   </p>
                 </div>
+
               </div>
               <button onClick={onClose} className="p-2 hover:bg-wax/50 rounded-full transition-colors cursor-pointer group">
                 <X className="w-6 h-6 text-bee-black/20 group-hover:text-bee-black transition-colors" />
@@ -203,13 +219,13 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
             </div>
 
 
-            <div className="p-8 flex flex-col gap-8 overflow-y-auto min-h-[400px]">
+            <div className="p-8 flex flex-col gap-6 overflow-y-auto min-h-[400px]">
               {activeTab === "upload" ? (
                 <>
                   <div
                     {...getRootProps()}
                     className={cn(
-                      "relative border-2 border-dashed rounded-[2rem] p-16 transition-all duration-500 flex flex-col items-center gap-6 cursor-pointer group",
+                      "relative border-2 border-dashed rounded-[2rem] p-12 transition-all duration-500 flex flex-col items-center gap-6 cursor-pointer group",
                       isDragActive ? 'border-honey bg-honey/5' : 'border-wax hover:border-honey/40 hover:bg-honey/5',
                       isUploading && 'pointer-events-none opacity-50'
                     )}
@@ -243,30 +259,57 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      { icon: FileText, label: 'Documents', sub: 'PDF, TXT, MD', color: 'bg-blue-50 text-blue-500' },
-                      { icon: Video, label: 'Media', sub: 'MP4, MP3, WAV', color: 'bg-purple-50 text-purple-500' },
-                      { icon: Presentation, label: 'Slides', sub: 'PPTX', color: 'bg-orange-50 text-orange-500' }
-                    ].map((item, i) => (
-                      <div key={i} className="p-6 rounded-3xl bg-white border border-wax hover:border-honey/20 transition-all duration-500 group">
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110",
-                          item.color
-                        )}>
-                          <item.icon className="w-5 h-5" />
-                        </div>
-                        <p className="text-[10px] font-bold text-bee-black uppercase tracking-widest mb-1">{item.label}</p>
-                        <p className="text-[9px] font-bold text-bee-black/30 uppercase tracking-widest">{item.sub}</p>
+                  {/* Folder Selection */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Target Folder</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-honey">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
                       </div>
-                    ))}
+                      <input 
+                        type="text" 
+                        value={folderPath}
+                        onChange={(e) => setFolderPath(e.target.value)}
+                        placeholder="/ (Root)"
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-wax rounded-2xl text-xs font-bold text-bee-black focus:outline-none focus:border-honey/40 transition-colors placeholder:text-bee-black/20"
+                      />
+                    </div>
                   </div>
                 </>
               ) : (
                 <div className="space-y-4">
-                  {existingArtifacts.length > 0 ? (
+                  {/* Folder Navigation / Filter */}
+                   <div className="flex items-center gap-2 pb-4 border-b border-wax/50 overflow-x-auto">
+                      <button 
+                        onClick={() => setViewingPath("/")}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2",
+                          viewingPath === "/" ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                        )}
+                      >
+                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                         Root
+                      </button>
+                      
+                      {/* Extract unique folders from artifacts to make quick filters */}
+                      {Array.from(new Set(existingArtifacts.map(a => a.folder_path || "/").filter(p => p !== "/"))).map(folder => (
+                         <button 
+                          key={folder}
+                          onClick={() => setViewingPath(folder)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors whitespace-nowrap",
+                            viewingPath === folder ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                          )}
+                        >
+                           {folder.replace('/', '')}
+                        </button>
+                      ))}
+                   </div>
+
+
+                  {filteredArtifacts.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3">
-                      {existingArtifacts.map((artifact) => (
+                      {filteredArtifacts.map((artifact) => (
                         <button
                           key={artifact.id}
                           onClick={() => selectExistingArtifact(artifact)}
@@ -277,8 +320,15 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                               {artifact.type === 'video' ? <Video size={18} /> : <FileText size={18} />}
                             </div>
                             <div className="text-left">
-                              <p className="text-sm font-bold text-bee-black truncate max-w-[300px]">{artifact.content?.title || 'Unnamed Asset'}</p>
-                              <p className="text-[9px] uppercase tracking-widest font-bold opacity-30">{artifact.type}</p>
+                              <p className="text-sm font-bold text-bee-black truncate max-w-[300px]">{artifact.name || artifact.content?.title || 'Unnamed File'}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[9px] uppercase tracking-widest font-bold opacity-30">{artifact.type}</p>
+                                {artifact.folder_path && artifact.folder_path !== "/" && (
+                                   <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-wax/20 text-bee-black/40">
+                                     {artifact.folder_path}
+                                   </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="px-3 py-1 rounded-full bg-wax/10 text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
@@ -292,12 +342,13 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                       <div className="w-16 h-16 bg-wax/20 rounded-full flex items-center justify-center mx-auto opacity-20">
                         <FileText size={32} />
                       </div>
-                      <p className="text-xs font-bold uppercase tracking-widest opacity-30">No artifacts found in this hive yet.</p>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-30">No files in this folder.</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
+
 
 
             {/* Footer */}

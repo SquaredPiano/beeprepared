@@ -37,11 +37,12 @@ export function Sidebar() {
 
   const navItems = [
     { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
-    { icon: Plus, label: "New Task", href: "/upload" },
+    { icon: Plus, label: "Add Content", href: "/upload" },
     { icon: Workflow, label: "Flow Canvas", href: "/dashboard/canvas" },
-    { icon: Library, label: "Library", href: "/dashboard/library" },
+    { icon: Library, label: "Project Library", href: "/dashboard/library" },
     { icon: Settings, label: "Settings", href: "/dashboard/settings" },
   ];
+
   
     return (
       <>
