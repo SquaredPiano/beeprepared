@@ -65,6 +65,13 @@ class NotesModel(BaseModel):
     title: str = Field(description="Title of the notes document")
     sections: List[NoteSection] = Field(description="List of note sections")
 
+# --- 4b. Markdown Notes Model (simpler, more reliable) ---
+class MarkdownNotesModel(BaseModel):
+    """Notes stored as pure markdown - simpler and more reliable than structured JSON."""
+    title: str = Field(description="Title of the notes document")
+    format: str = Field(default="markdown", description="Always 'markdown'")
+    body: str = Field(description="Full notes content in Markdown format")
+
 # --- 5. Slides Model ---
 class Slide(BaseModel):
     heading: str = Field(description="Slide headline")

@@ -24,6 +24,11 @@ class DBInterface:
         url = f"{self.rest_url}/rpc/{function_name}"
         resp = httpx.post(url, headers=self.headers, json=params)
         resp.raise_for_status()
+        
+        # Handle 204 No Content (common for void-returning RPCs like commit_job_bundle)
+        if resp.status_code == 204 or not resp.content:
+            return None
+        
         return resp.json()
 
     def claim_job(self) -> Optional[JobModel]:

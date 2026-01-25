@@ -1,6 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { useJobOrchestrator } from './hooks/useJobOrchestrator';
 import './workspace.css';
 
@@ -25,23 +30,52 @@ const TARGETS: { type: TargetType; label: string; icon: string }[] = [
 ];
 
 // ============================================================================
-// Text Sanitization - Strip markdown artifacts from LLM output
+// Text Sanitization - Strip markdown for plain text display (slides, exam preview)
 // ============================================================================
 function stripMarkdown(text: string | null | undefined): string {
     if (!text) return '';
     return text
-        // Remove bold/italic markers: **, *, __, _
-        .replace(/\*\*([^*]+)\*\*/g, '$1')  // **bold**
-        .replace(/\*([^*]+)\*/g, '$1')      // *italic*
-        .replace(/__([^_]+)__/g, '$1')      // __bold__
-        .replace(/_([^_]+)_/g, '$1')        // _italic_
-        // Remove headers: ##, ###, ####
-        .replace(/^#{1,6}\s*/gm, '')
-        // Remove bullet points: - or *
-        .replace(/^[\s]*[-*]\s+/gm, '• ')
-        // Clean up extra whitespace
-        .replace(/\n{3,}/g, '\n\n')
+        .replace(/!\[.*?\]\(.*?\)/g, '')           // images
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // links → just text
+        .replace(/\*\*([^*]+)\*\*/g, '$1')         // **bold**
+        .replace(/\*([^*]+)\*/g, '$1')             // *italic*
+        .replace(/__([^_]+)__/g, '$1')             // __bold__
+        .replace(/_([^_]+)_/g, '$1')               // _italic_
+        .replace(/^#{1,6}\s*/gm, '')               // headers
+        .replace(/`([^`]+)`/g, '$1')               // inline code
+        .replace(/\n+/g, ' ')                      // newlines → space
         .trim();
+}
+
+// ============================================================================
+// Math-aware Markdown Renderer
+// Uses remark-math + rehype-katex for LaTeX rendering ($...$ and $$...$$)
+// ============================================================================
+function MathText({ children }: { children: string | null | undefined }) {
+    if (!children) return null;
+    return (
+        <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+        >
+            {children}
+        </ReactMarkdown>
+    );
+}
+
+// Inline version for single-line content (strips block elements)
+function MathTextInline({ children }: { children: string | null | undefined }) {
+    if (!children) return <>{children}</>;
+    return (
+        <span className="math-inline">
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+            >
+                {children}
+            </ReactMarkdown>
+        </span>
+    );
 }
 
 // ============================================================================
@@ -75,6 +109,54 @@ function normalizeArtifact(type: TargetType, artifact: any): any {
         default:
             return null;
     }
+}
+
+// ============================================================================
+// Binary Download Helper
+// ============================================================================
+const API_BASE = 'http://localhost:8000';
+
+async function downloadBinary(artifactId: string, fallbackFilename: string): Promise<void> {
+    try {
+        console.log(`[Binary] Fetching download URL for artifact: ${artifactId}`);
+        const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}/download`);
+        
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({ detail: 'Unknown error' }));
+            throw new Error(error.detail || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        console.log(`[Binary] Got presigned URL with headers:`, {
+            filename: data.filename,
+            mime_type: data.mime_type,
+            format: data.format,
+        });
+        
+        // Force browser download using anchor with download attribute
+        // This tells Chrome: "Download this file, don't inline it"
+        const a = document.createElement('a');
+        a.href = data.download_url;
+        a.download = data.filename || fallbackFilename; // Forces download behavior
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        console.log(`[Binary] Download triggered: ${data.filename}`);
+    } catch (error) {
+        console.error('[Binary] Download failed:', error);
+        alert(`Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+function getBinaryInfo(artifact: any): { format: string; available: boolean } | null {
+    const binary = artifact?.content?.binary;
+    if (!binary) return null;
+    return {
+        format: binary.format || 'bin',
+        available: !!binary.storage_path,
+    };
 }
 
 // ============================================================================
@@ -130,7 +212,7 @@ function QuizRenderer({ data }: { data: any }) {
                 return (
                     <div key={q.id || idx} className="quiz-question">
                         <div className="question-text">
-                            <strong>{idx + 1}.</strong> {stripMarkdown(q.text)}
+                            <strong>{idx + 1}.</strong> <MathTextInline>{q.text}</MathTextInline>
                         </div>
                         <div className="options-grid">
                             {q.options?.map((opt: string, i: number) => (
@@ -140,13 +222,13 @@ function QuizRenderer({ data }: { data: any }) {
                                     onClick={() => !answered && setAnswers(p => ({ ...p, [q.id || idx]: i }))}
                                     disabled={answered}
                                 >
-                                    {stripMarkdown(opt)}
+                                    <MathTextInline>{opt}</MathTextInline>
                                 </button>
                             ))}
                         </div>
                         {answered && (
                             <div className={`feedback ${correct ? 'success' : 'error'}`}>
-                                {correct ? '✓ Correct!' : '✗ Incorrect.'} {stripMarkdown(q.explanation)}
+                                {correct ? '✓ Correct!' : '✗ Incorrect.'} <MathTextInline>{q.explanation}</MathTextInline>
                             </div>
                         )}
                     </div>
@@ -157,6 +239,19 @@ function QuizRenderer({ data }: { data: any }) {
 }
 
 function NotesRenderer({ data }: { data: any }) {
+    // NEW FORMAT: Pure markdown with { title, format, body }
+    if (data?.format === 'markdown' && data?.body) {
+        return (
+            <div className="notes-renderer markdown-notes">
+                <h1>{data.title || 'Notes'}</h1>
+                <div className="markdown-content">
+                    <MathText>{data.body}</MathText>
+                </div>
+            </div>
+        );
+    }
+    
+    // LEGACY FORMAT: Structured sections
     if (!data?.sections) return <div className="renderer-empty">No notes data</div>;
 
     return (
@@ -164,14 +259,41 @@ function NotesRenderer({ data }: { data: any }) {
             <h1>{data.title || 'Notes'}</h1>
             {data.sections.map((sec: any, i: number) => (
                 <div key={i} className="notes-section">
-                    <h2>{stripMarkdown(sec.heading)}</h2>
-                    <p>{stripMarkdown(sec.content_block)}</p>
-                    {sec.key_points && (
+                    <h2>{sec.heading}</h2>
+                    
+                    {/* Key Points (structured list with math support) */}
+                    {sec.key_points && sec.key_points.length > 0 && (
                         <ul className="key-points">
                             {sec.key_points.map((kp: string, k: number) => (
-                                <li key={k}>{stripMarkdown(kp)}</li>
+                                <li key={k}><MathTextInline>{kp}</MathTextInline></li>
                             ))}
                         </ul>
+                    )}
+                    
+                    {/* Content Block (markdown with math) */}
+                    {sec.content_block && (
+                        <div className="content-block markdown-content">
+                            <MathText>{sec.content_block}</MathText>
+                        </div>
+                    )}
+                    
+                    {/* Key Terms */}
+                    {sec.key_terms && sec.key_terms.length > 0 && (
+                        <div className="key-terms">
+                            <strong>Key Terms:</strong>{' '}
+                            {sec.key_terms.map((term: string, t: number) => (
+                                <span key={t} className="term-badge">{term}</span>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Callouts (with math support) */}
+                    {sec.callouts && sec.callouts.length > 0 && (
+                        <div className="callouts">
+                            {sec.callouts.map((callout: string, c: number) => (
+                                <div key={c} className="callout">⚠️ <MathTextInline>{callout}</MathTextInline></div>
+                            ))}
+                        </div>
                     )}
                 </div>
             ))}
@@ -179,8 +301,10 @@ function NotesRenderer({ data }: { data: any }) {
     );
 }
 
-function SlidesRenderer({ data }: { data: any }) {
+function SlidesRenderer({ data, artifact }: { data: any; artifact?: any }) {
     if (!data?.slides) return <div className="renderer-empty">No slides data</div>;
+
+    const binaryInfo = getBinaryInfo(artifact);
 
     const downloadJSON = () => {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -191,65 +315,15 @@ function SlidesRenderer({ data }: { data: any }) {
         a.click();
     };
 
-    const downloadPPTX = async () => {
-        // Dynamic import for client-side only
-        const pptxgen = (await import('pptxgenjs')).default;
-        const pres = new pptxgen();
-        pres.layout = "LAYOUT_16x9";
-
-        // Theme Colors
-        const COLOR_PRIMARY = "1e1b4b";
-        const COLOR_ACCENT = "6366f1";
-        const COLOR_TEXT = "363636";
-        const COLOR_BG_TITLE = "F1F5F9";
-
-        // Title Slide
-        let slide = pres.addSlide();
-        slide.background = { color: COLOR_PRIMARY };
-        slide.addText(stripMarkdown(data.title || 'Slides'), {
-            x: 0.5, y: 2.5, w: '90%', fontSize: 44, align: 'center', color: 'FFFFFF', bold: true
-        });
-        slide.addText(`Audience: ${data.audience_level || 'General'}`, {
-            x: 0.5, y: 4, w: '90%', fontSize: 20, align: 'center', color: 'CBD5E1'
-        });
-        slide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: { color: COLOR_ACCENT } });
-
-        // Content Slides
-        data.slides.forEach((sItem: any) => {
-            let s = pres.addSlide();
-
-            // Header Bar
-            s.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 1.2, fill: { color: COLOR_BG_TITLE } });
-            s.addText(stripMarkdown(sItem.heading), {
-                x: 0.5, y: 0.3, w: '90%', fontSize: 28, bold: true, color: COLOR_PRIMARY
-            });
-
-            // Main Idea Box
-            s.addShape(pres.ShapeType.rect, {
-                x: 0.5, y: 1.5, w: 9, h: 0.8,
-                fill: { color: "EEF2FF" },
-                line: { color: COLOR_ACCENT, width: 1 }
-            });
-            s.addText(stripMarkdown(sItem.main_idea), {
-                x: 0.7, y: 1.6, w: 8.6, fontSize: 16, color: "4338CA", italic: true
-            });
-
-            // Bullets
-            if (sItem.bullet_points) {
-                const bullets = sItem.bullet_points.map((bp: string) => ({
-                    text: stripMarkdown(bp),
-                    options: { fontSize: 18, bullet: { type: 'number', color: COLOR_ACCENT } }
-                }));
-                s.addText(bullets, { x: 0.5, y: 2.6, w: '90%', h: 4, color: COLOR_TEXT });
-            }
-
-            // Speaker Notes
-            if (sItem.speaker_notes) {
-                s.addNotes(stripMarkdown(sItem.speaker_notes));
-            }
-        });
-
-        pres.writeFile({ fileName: `${stripMarkdown(data.title || 'Slides')}.pptx` });
+    // Server-side PPTX download ONLY - no client-side fallback
+    const handleDownloadPPTX = () => {
+        if (!binaryInfo?.available) {
+            alert('PPTX not yet generated. Please wait for processing to complete.');
+            return;
+        }
+        if (artifact?.id) {
+            downloadBinary(artifact.id, 'slides.pptx');
+        }
     };
 
     return (
@@ -257,7 +331,13 @@ function SlidesRenderer({ data }: { data: any }) {
             <div className="slides-header">
                 <h2>{data.title || 'Slides'}</h2>
                 <div className="slides-actions">
-                    <button onClick={downloadPPTX} className="download-btn primary">📊 Download PPTX</button>
+                    <button 
+                        onClick={handleDownloadPPTX} 
+                        className={`download-btn primary ${!binaryInfo?.available ? 'disabled' : ''}`}
+                        disabled={!binaryInfo?.available}
+                    >
+                        📊 Download PPTX
+                    </button>
                     <button onClick={downloadJSON} className="download-btn">📄 Download JSON</button>
                 </div>
             </div>
@@ -294,11 +374,11 @@ function FlashcardRenderer({ data }: { data: any }) {
         <div className="flashcard-renderer">
             <div className={`flashcard ${flipped ? 'flipped' : ''}`} onClick={() => setFlipped(!flipped)}>
                 <div className="card-face front">
-                    <p>{stripMarkdown(card.front)}</p>
+                    <MathText>{card.front}</MathText>
                 </div>
                 <div className="card-face back">
-                    <p>{stripMarkdown(card.back)}</p>
-                    {card.hint && <small className="hint">💡 {stripMarkdown(card.hint)}</small>}
+                    <MathText>{card.back}</MathText>
+                    {card.hint && <small className="hint">💡 <MathTextInline>{card.hint}</MathTextInline></small>}
                 </div>
             </div>
             <div className="card-controls">
@@ -310,23 +390,37 @@ function FlashcardRenderer({ data }: { data: any }) {
     );
 }
 
-function ExamRenderer({ data }: { data: any }) {
+function ExamRenderer({ data, artifact }: { data: any; artifact: any }) {
     const [showAnswers, setShowAnswers] = useState(false);
+    const binaryInfo = getBinaryInfo(artifact);
 
     if (!data?.questions || data.questions.length === 0) {
         return <div className="renderer-empty">No exam questions generated</div>;
     }
 
+    const handleDownloadPDF = () => {
+        if (artifact?.id) {
+            downloadBinary(artifact.id, 'final_exam.pdf');
+        }
+    };
+
     return (
         <div className="exam-renderer">
             <div className="exam-header">
                 <h2>{data.title || 'Final Exam'}</h2>
-                <button
-                    onClick={() => setShowAnswers(!showAnswers)}
-                    className="download-btn"
-                >
-                    {showAnswers ? '🙈 Hide Answers' : '👁 Show Answers'}
-                </button>
+                <div className="exam-actions">
+                    {binaryInfo?.available && (
+                        <button onClick={handleDownloadPDF} className="download-btn primary">
+                            📄 Download PDF
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setShowAnswers(!showAnswers)}
+                        className="download-btn"
+                    >
+                        {showAnswers ? '🙈 Hide Answers' : '👁 Show Answers'}
+                    </button>
+                </div>
             </div>
 
             {data.instructions && (
@@ -502,9 +596,9 @@ export default function WorkspacePage() {
                         <>
                             {activeTab === 'quiz' && <QuizRenderer data={normalizedData} />}
                             {activeTab === 'notes' && <NotesRenderer data={normalizedData} />}
-                            {activeTab === 'slides' && <SlidesRenderer data={normalizedData} />}
+                            {activeTab === 'slides' && <SlidesRenderer data={normalizedData} artifact={activeArtifact} />}
                             {activeTab === 'flashcards' && <FlashcardRenderer data={normalizedData} />}
-                            {activeTab === 'exam' && <ExamRenderer data={normalizedData} />}
+                            {activeTab === 'exam' && <ExamRenderer data={normalizedData} artifact={activeArtifact} />}
                         </>
                     )}
                 </div>

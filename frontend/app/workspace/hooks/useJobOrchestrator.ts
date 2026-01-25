@@ -74,9 +74,12 @@ export function useJobOrchestrator() {
     };
 
     const fetchArtifact = async (artifactId: string): Promise<any> => {
+        console.log(`[Orchestrator] Fetching artifact: ${artifactId}`);
         const res = await fetch(`${API_BASE}/api/projects/${TEST_PROJECT_ID}/artifacts`);
         const data = await res.json();
-        return data.artifacts?.find((a: any) => a.id === artifactId) || null;
+        const artifact = data.artifacts?.find((a: any) => a.id === artifactId) || null;
+        console.log(`[Orchestrator] Found artifact:`, artifact ? { id: artifact.id, type: artifact.type, contentKeys: Object.keys(artifact.content || {}) } : 'NULL');
+        return artifact;
     };
 
     // =========================================================================

@@ -7,7 +7,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 
 from backend.models.artifacts import (
-    FinalExamModel, QuizModel, FlashcardModel, NotesModel, SlidesModel, ExamQuestion, ExamSpec
+    FinalExamModel, QuizModel, FlashcardModel, NotesModel, MarkdownNotesModel, SlidesModel, ExamQuestion, ExamSpec
 )
 from backend.core.knowledge_core import KnowledgeCore
 
@@ -399,37 +399,71 @@ class ArtifactGenerator:
             logger.error(f"Failed to generate Flashcards: {e}")
         return None
 
-    def generate_notes(self, core: KnowledgeCore) -> Optional[NotesModel]:
-        """Generates detailed Study Notes in Markdown."""
-        if not self.model: return None
-        core_json = core.model_dump_json(indent=2)
-        prompt = """
-        You are an expert Academic Note-Taker.
-        **Task**: Generate a NotesModel.
-        **Requirements**:
-        - **Structure**:
-            - "title": "Notes Title"
-            - "sections": List of objects:
-                - "heading": "Section Title"
-                - "key_points": ["Point 1", "Point 2"]
-                - "content_block": "Detailed markdown content..."
-                - "key_terms": ["Term 1", "Term 2"]
-                - "callouts": ["Important: ...", "Formula: ..."]
-        - **Math Formatting (CRITICAL)**:
-            - **DELIMITERS**: Wrap ALL math in $...$ (inline) or $$...$$ (block).
-            - **BACKSLASHES**: Double-escape backslashes: "\\\\int".
-            - **MARKDOWN**: Use standard Markdown headers and lists.
-        - Return strictly valid JSON.
+    def generate_notes(self, core: KnowledgeCore) -> Optional[MarkdownNotesModel]:
         """
+        Generates detailed Study Notes as pure Markdown.
+        
+        Notes are returned as markdown (not structured JSON) because:
+        - LLMs produce better quality markdown than escaped JSON
+        - Markdown is the natural format for readable notes
+        - Frontend can render with react-markdown directly
+        """
+        if not self.model:
+            logger.error("[Notes] No model available")
+            return None
+        
+        core_json = core.model_dump_json(indent=2)
+        prompt = f"""
+You are an expert Academic Note-Taker creating comprehensive study notes.
+
+**Task**: Generate detailed study notes in Markdown format.
+
+**Requirements**:
+- Start with a clear title as # heading
+- Organize content into logical ## sections
+- Include:
+  - Key concepts and definitions
+  - Important formulas (use $...$ for inline math, $$...$$ for display math)
+  - Bullet points for key takeaways
+  - Examples where helpful
+  - Callouts for important warnings or tips (use > blockquotes)
+- Make notes comprehensive but scannable
+- Use proper Markdown formatting throughout
+
+**Source Material Title**: {core.title}
+
+**Output**: Pure Markdown text (NOT JSON). Just write the notes directly.
+"""
         try:
-            logger.info("Generating Notes...")
-            response = self.model.generate_content([prompt, core_json], generation_config=genai.GenerationConfig(response_mime_type="application/json"))
-            if response.text:
-                data = json.loads(response.text)
-                if "title" not in data: data["title"] = f"Notes: {core.title}"
-                return NotesModel(**data)
+            logger.info("[Notes] Generating Markdown notes...")
+            
+            # Request plain text, not JSON - let the model write naturally
+            response = self.model.generate_content([prompt, core_json])
+            
+            if not response.text:
+                logger.error("[Notes] Empty response from model")
+                return None
+            
+            markdown_body = response.text.strip()
+            logger.info(f"[Notes] Generated {len(markdown_body)} chars of markdown")
+            logger.debug(f"[Notes] First 300 chars: {markdown_body[:300]}")
+            
+            # Extract title from first # heading if present
+            title = f"Notes: {core.title}"
+            lines = markdown_body.split('\n')
+            if lines and lines[0].startswith('# '):
+                title = lines[0][2:].strip()
+            
+            return MarkdownNotesModel(
+                title=title,
+                format="markdown",
+                body=markdown_body
+            )
+            
         except Exception as e:
-            logger.error(f"Failed to generate Notes: {e}")
+            logger.error(f"[Notes] Failed to generate Notes: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"[Notes] Stack trace:\n{traceback.format_exc()}")
         return None
 
     def generate_slides(self, core: KnowledgeCore) -> Optional[SlidesModel]:
