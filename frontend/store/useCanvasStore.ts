@@ -16,6 +16,61 @@ import {
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
+import { api, Artifact, ArtifactEdge } from "@/lib/api";
+
+// Maps artifact types to node display info
+const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  video: { label: "Video", color: "#8B5CF6", icon: "🎬" },
+  audio: { label: "Audio", color: "#EC4899", icon: "🎵" },
+  text: { label: "Raw Text", color: "#6B7280", icon: "📄" },
+  flat_text: { label: "Cleaned Text", color: "#10B981", icon: "✨" },
+  knowledge_core: { label: "Knowledge Core", color: "#F59E0B", icon: "🧠" },
+  quiz: { label: "Quiz", color: "#3B82F6", icon: "❓" },
+  flashcards: { label: "Flashcards", color: "#8B5CF6", icon: "🃏" },
+  notes: { label: "Notes", color: "#10B981", icon: "📝" },
+  slides: { label: "Slides", color: "#F97316", icon: "📊" },
+  exam: { label: "Exam", color: "#EF4444", icon: "📋" },
+};
+
+// Convert an artifact to a React Flow node
+function artifactToNode(artifact: Artifact, position: { x: number; y: number }): Node {
+  const config = ARTIFACT_TYPE_CONFIG[artifact.type] || { label: artifact.type, color: "#6B7280", icon: "📦" };
+  
+  return {
+    id: artifact.id,
+    type: "artifactNode",
+    position,
+    data: {
+      label: config.label,
+      type: artifact.type,
+      icon: config.icon,
+      color: config.color,
+      artifact,
+      status: "completed",
+    },
+  };
+}
+
+// Convert an artifact edge to a React Flow edge
+function artifactEdgeToFlowEdge(edge: ArtifactEdge): Edge {
+  return {
+    id: edge.id,
+    source: edge.parent_artifact_id,
+    target: edge.child_artifact_id,
+    animated: true,
+    markerEnd: { 
+      type: MarkerType.ArrowClosed, 
+      color: "#FCD34F",
+    },
+    style: { 
+      stroke: "#FCD34F", 
+      strokeWidth: 2,
+    },
+    data: {
+      relationship: edge.relationship_type,
+    },
+  };
+}
 
 interface CanvasState {
   nodes: Node[];
@@ -23,6 +78,7 @@ interface CanvasState {
   currentProjectId: string | null;
   projectName: string;
   isSaving: boolean;
+  isUploading: boolean;
   isDragging: boolean;
   isLocked: boolean;
   showMiniMap: boolean;
@@ -55,6 +111,8 @@ interface CanvasState {
     runFlow: () => Promise<void>;
     loadProject: (id: string) => Promise<void>;
     createNewProject: () => void;
+    uploadFile: (file: File) => Promise<void>;
+    refreshArtifacts: () => Promise<void>;
   }
   
   export const useCanvasStore = create<CanvasState>()(
@@ -65,6 +123,7 @@ interface CanvasState {
         currentProjectId: null,
         projectName: generateProjectName(),
         isSaving: false,
+        isUploading: false,
         isDragging: false,
         isLocked: false,
         showMiniMap: true,
@@ -160,40 +219,33 @@ interface CanvasState {
         },
   
         save: async () => {
-          const { nodes, edges, currentProjectId, projectName, viewport } = get();
+          const { nodes, currentProjectId, projectName, viewport } = get();
           set({ isSaving: true });
   
           try {
-            const { data: userData } = await supabase.auth.getUser();
+            // Build node positions map for canvas_state
+            const node_positions: Record<string, { x: number; y: number }> = {};
+            nodes.forEach((node) => {
+              node_positions[node.id] = { x: node.position.x, y: node.position.y };
+            });
             
-            const projectData = {
-              name: projectName,
-              nodes,
-              edges,
+            const canvas_state = {
               viewport,
-              user_id: userData.user?.id || null,
-              updated_at: new Date().toISOString(),
+              node_positions,
             };
   
-            let result;
             if (currentProjectId) {
-              result = await supabase
-                .from("projects")
-                .update(projectData)
-                .eq("id", currentProjectId)
-                .select()
-                .single();
+              // Update existing project
+              await api.projects.update(currentProjectId, {
+                name: projectName,
+                canvas_state,
+              });
             } else {
-              result = await supabase
-                .from("projects")
-                .insert({ ...projectData, name: projectName || generateProjectName() })
-                .select()
-                .single();
+              // Create new project
+              const project = await api.projects.create(projectName);
+              set({ currentProjectId: project.id });
             }
   
-            if (result.error) throw result.error;
-  
-            set({ currentProjectId: result.data.id });
             toast.success("Project saved");
           } catch (error: any) {
             console.error("Save error:", error);
@@ -240,26 +292,44 @@ interface CanvasState {
 
       loadProject: async (id: string) => {
         try {
-          const { data, error } = await supabase
-            .from("projects")
-            .select("*")
-            .eq("id", id)
-            .single();
-
-          if (error) throw error;
+          // 1. Load project metadata
+          const project = await api.projects.get(id);
+          
+          // 2. Load artifacts and edges from backend
+          const { artifacts, edges: artifactEdges } = await api.projects.getArtifacts(id);
+          
+          // 3. Get node positions from canvas_state or auto-layout
+          const nodePositions = project.canvas_state?.node_positions || {};
+          
+          // 4. Convert artifacts to React Flow nodes
+          const nodes: Node[] = artifacts.map((artifact, index) => {
+            // Use saved position or auto-generate one
+            const position = nodePositions[artifact.id] || {
+              x: 100 + (index % 4) * 250,
+              y: 100 + Math.floor(index / 4) * 150,
+            };
+            return artifactToNode(artifact, position);
+          });
+          
+          // 5. Convert artifact edges to React Flow edges
+          const edges: Edge[] = artifactEdges.map(artifactEdgeToFlowEdge);
+          
+          // 6. Get viewport from canvas_state
+          const viewport = project.canvas_state?.viewport || { x: 0, y: 0, zoom: 1 };
 
           set({
-            nodes: data.nodes || [],
-            edges: data.edges || [],
-            currentProjectId: data.id,
-            projectName: data.name,
-            viewport: data.viewport || { x: 0, y: 0, zoom: 1 },
+            nodes,
+            edges,
+            currentProjectId: project.id,
+            projectName: project.name,
+            viewport,
             history: [],
             historyIndex: -1,
           });
           
           get().takeSnapshot();
         } catch (error: any) {
+          console.error("Load project error:", error);
           toast.error(`Failed to load project: ${error.message}`);
         }
       },
@@ -275,6 +345,75 @@ interface CanvasState {
           historyIndex: -1,
         });
         get().takeSnapshot();
+      },
+
+      uploadFile: async (file: File) => {
+        const { currentProjectId } = get();
+        
+        if (!currentProjectId) {
+          toast.error("Save your project first");
+          return;
+        }
+        
+        set({ isUploading: true });
+        
+        try {
+          await api.upload.uploadAndIngest(
+            currentProjectId,
+            file,
+            (job) => {
+              // Optional: show progress updates
+              console.log(`Job ${job.id} status: ${job.status}`);
+            }
+          );
+          
+          toast.success(`${file.name} processed successfully`);
+          
+          // Refresh artifacts to show new nodes
+          await get().refreshArtifacts();
+        } catch (error: any) {
+          console.error("Upload error:", error);
+          toast.error(`Upload failed: ${error.message}`);
+        } finally {
+          set({ isUploading: false });
+        }
+      },
+
+      refreshArtifacts: async () => {
+        const { currentProjectId } = get();
+        
+        if (!currentProjectId) return;
+        
+        try {
+          const project = await api.projects.get(currentProjectId);
+          const { artifacts, edges: artifactEdges } = await api.projects.getArtifacts(currentProjectId);
+          
+          const nodePositions = project.canvas_state?.node_positions || {};
+          const existingNodes = get().nodes;
+          
+          // Merge existing positions with saved positions
+          const mergedPositions: Record<string, { x: number; y: number }> = { ...nodePositions };
+          existingNodes.forEach((node) => {
+            mergedPositions[node.id] = { x: node.position.x, y: node.position.y };
+          });
+          
+          // Convert artifacts to nodes
+          const nodes: Node[] = artifacts.map((artifact, index) => {
+            const position = mergedPositions[artifact.id] || {
+              x: 100 + (index % 4) * 250,
+              y: 100 + Math.floor(index / 4) * 150,
+            };
+            return artifactToNode(artifact, position);
+          });
+          
+          const edges: Edge[] = artifactEdges.map(artifactEdgeToFlowEdge);
+          
+          set({ nodes, edges });
+          get().takeSnapshot();
+        } catch (error: any) {
+          console.error("Refresh error:", error);
+          toast.error(`Failed to refresh: ${error.message}`);
+        }
       },
     }),
     {
