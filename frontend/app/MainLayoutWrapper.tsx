@@ -13,6 +13,9 @@ import { SupportModal } from "@/components/SupportModal";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 
+// Developer mode check - bypasses auth when NEXT_PUBLIC_DEV_MODE=true
+const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+
 export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebarStore();
   const pathname = usePathname();
@@ -30,10 +33,16 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const isAuthPage = pathname?.startsWith("/auth");
   const isLandingPage = pathname === "/";
   const isProtectedRoute = isDashboard || isProcessing || isUpload;
+  const isCanvasPage = pathname?.includes("/canvas");
 
   // Initial session check
   useEffect(() => {
     const checkSession = async () => {
+      // In dev mode, skip auth check
+      if (DEV_MODE) {
+        setIsLoading(false);
+        return;
+      }
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       setIsLoading(false);
@@ -41,8 +50,10 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     checkSession();
   }, [supabase]);
 
-  // Auth state change listener + redirects
+  // Auth state change listener + redirects (skip in dev mode)
   useEffect(() => {
+    if (DEV_MODE) return;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -59,9 +70,9 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [supabase, pathname, router, isLandingPage, isAuthPage, isProtectedRoute]);
 
-  // Immediate redirect check after loading
+  // Immediate redirect check after loading (skip in dev mode)
   useEffect(() => {
-    if (isLoading) return;
+    if (DEV_MODE || isLoading) return;
     
     if (user && (isLandingPage || isAuthPage)) {
       router.replace("/dashboard");
@@ -90,8 +101,8 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Show loading state while checking auth for protected routes
-  if (isLoading && isProtectedRoute) {
+  // Show loading state while checking auth for protected routes (skip in dev mode)
+  if (!DEV_MODE && isLoading && isProtectedRoute) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-cream">
         <div className="text-center space-y-4">
@@ -102,13 +113,13 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Block protected routes if not authenticated
-  if (!isLoading && !user && isProtectedRoute) {
+  // Block protected routes if not authenticated (skip in dev mode)
+  if (!DEV_MODE && !isLoading && !user && isProtectedRoute) {
     return null; // Will redirect via useEffect
   }
 
-  // Block landing/auth if authenticated
-  if (!isLoading && user && (isLandingPage || isAuthPage)) {
+  // Block landing/auth if authenticated (skip in dev mode)
+  if (!DEV_MODE && !isLoading && user && (isLandingPage || isAuthPage)) {
     return null; // Will redirect via useEffect
   }
 
@@ -127,7 +138,8 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
         >
           {children}
         </main>
-        {isDashboard && (
+        {/* Hide HoneyJar on canvas page */}
+        {isDashboard && !isCanvasPage && (
           <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
         )}
         <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />

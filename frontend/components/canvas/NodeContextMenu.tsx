@@ -116,8 +116,8 @@ export function NodeContextMenu({
           >
             <div className="p-1.5 bg-red-100 rounded-lg"><Trash2 size={14} /></div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold">Decommission</span>
-              <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">Permanent Removal</span>
+              <span className="text-sm font-bold">Delete</span>
+              <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest leading-none mt-1">Remove from canvas</span>
             </div>
           </ContextMenuItem>
         )}

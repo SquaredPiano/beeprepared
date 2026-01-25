@@ -9,7 +9,8 @@ import {
   Lock, 
   Unlock, 
   Undo2, 
-  Redo2 
+  Redo2,
+  Map
 } from "lucide-react";
 import { useCanvasStore } from "@/store/useCanvasStore";
 import { useReactFlow } from "@xyflow/react";
@@ -23,7 +24,9 @@ export function CanvasControls() {
     undo, 
     redo, 
     historyIndex, 
-    history 
+    history,
+    showMiniMap,
+    setShowMiniMap
   } = useCanvasStore();
 
   const canUndo = historyIndex > 0;
@@ -61,6 +64,19 @@ export function CanvasControls() {
         >
           <Maximize2 size={18} className="text-bee-black/60" />
         </Button>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => setShowMiniMap(!showMiniMap)} 
+          className={cn(
+            "w-10 h-10 rounded-xl transition-all cursor-pointer",
+            showMiniMap ? "bg-honey text-bee-black" : "hover:bg-honey/10 text-bee-black/60"
+          )}
+          title={showMiniMap ? "Hide Mini Map" : "Show Mini Map"}
+        >
+          <Map size={18} />
+        </Button>
+        <div className="w-full h-px bg-wax my-1" />
         <Button 
           variant="ghost" 
           size="icon" 

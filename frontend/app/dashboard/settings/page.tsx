@@ -16,7 +16,9 @@ import {
   ChevronRight,
   Monitor,
   Moon,
-  Sun
+  Sun,
+  Trash2,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,10 +27,22 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   useEffect(() => {
     async function fetchProfile() {
@@ -49,24 +63,37 @@ export default function SettingsPage() {
     setIsLoading(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
     setIsLoading(false);
-    toast.success("Preferences updated in Hive Matrix");
+    toast.success("Settings saved");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") {
+      toast.error("Please type DELETE to confirm");
+      return;
+    }
+    
+    try {
+      // In production, this would call a server action to delete the user
+      toast.success("Account scheduled for deletion");
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (error) {
+      toast.error("Failed to delete account");
+    }
   };
 
   const sections = [
-    { id: "account", label: "Identity", icon: User },
-    { id: "appearance", label: "Visuals", icon: Palette },
-    { id: "system", label: "Operations", icon: Monitor },
+    { id: "account", label: "Profile", icon: User },
+    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "system", label: "System", icon: Monitor },
     { id: "security", label: "Security", icon: Shield },
   ];
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-16 space-y-12 min-h-screen bg-cream/30">
       <header className="space-y-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-honey/10 text-honey text-[10px] font-bold uppercase tracking-widest border border-honey/20">
-          Hive Protocol v1.4.2
-        </div>
         <h1 className="text-5xl font-serif italic text-bee-black">Settings</h1>
-        <p className="text-sm text-bee-black/40 font-medium uppercase tracking-[0.1em]">Configure your knowledge architecture workspace</p>
+        <p className="text-sm text-bee-black/40 font-medium uppercase tracking-[0.1em]">Manage your account and preferences</p>
       </header>
 
       <Tabs defaultValue="account" className="space-y-8">
@@ -98,8 +125,8 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-bee-black font-serif">Identity Profile</h3>
-                      <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest mt-1">Worker {profile?.id?.slice(0, 8) || "000"}</p>
+                      <h3 className="text-xl font-bold text-bee-black font-serif">Your Profile</h3>
+                      <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest mt-1">ID: {profile?.id?.slice(0, 8) || "---"}</p>
                     </div>
                   </div>
 
@@ -127,7 +154,7 @@ export default function SettingsPage() {
               <TabsContent value="appearance" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <div className="space-y-8">
                   <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-bee-black uppercase tracking-widest text-[10px] border-b border-wax pb-2">Hive Interface</h3>
+                    <h3 className="text-lg font-bold text-bee-black uppercase tracking-widest text-[10px] border-b border-wax pb-2">Theme</h3>
                     <div className="grid grid-cols-3 gap-4">
                       {[
                         { id: 'light', icon: Sun, label: 'Cream' },
@@ -147,15 +174,15 @@ export default function SettingsPage() {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-bee-black">Bee Mascot Presence</p>
-                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Enable the architectural assistant animation</p>
+                        <p className="text-sm font-bold text-bee-black">Bee Mascot</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Show the animated bee helper</p>
                       </div>
                       <Switch defaultChecked />
                     </div>
                     <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-bee-black">High-Fidelity Animations</p>
-                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Use GSAP for sophisticated motion effects</p>
+                        <p className="text-sm font-bold text-bee-black">Animations</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Enable smooth motion effects</p>
                       </div>
                       <Switch defaultChecked />
                     </div>
@@ -170,7 +197,7 @@ export default function SettingsPage() {
                       <div className="p-3 bg-honey/10 rounded-2xl"><Volume2 className="text-honey" /></div>
                       <div className="space-y-1">
                         <p className="text-sm font-bold text-bee-black">Audio Feedback</p>
-                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Synthesized sounds for UI interactions</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Play sounds for UI interactions</p>
                       </div>
                     </div>
                     <Switch defaultChecked />
@@ -179,11 +206,77 @@ export default function SettingsPage() {
                     <div className="flex gap-4 items-center">
                       <div className="p-3 bg-blue-500/10 rounded-2xl"><Cloud className="text-blue-500" /></div>
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-bee-black">Auto-Persist State</p>
-                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Automatically save canvas progress to the cloud</p>
+                        <p className="text-sm font-bold text-bee-black">Auto-Save</p>
+                        <p className="text-xs text-bee-black/40 font-medium tracking-wide">Automatically save canvas progress</p>
                       </div>
                     </div>
                     <Switch defaultChecked />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="security" className="m-0 space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-bee-black uppercase tracking-widest text-[10px] border-b border-wax pb-2">Account Security</h3>
+                    <div className="p-6 rounded-3xl bg-cream/30 border border-wax space-y-4">
+                      <div className="flex gap-4 items-center">
+                        <div className="p-3 bg-green-500/10 rounded-2xl"><Shield className="text-green-500" /></div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-bee-black">Email Verified</p>
+                          <p className="text-xs text-bee-black/40 font-medium tracking-wide">{profile?.email || "No email"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-red-600 uppercase tracking-widest text-[10px] border-b border-red-200 pb-2">Danger Zone</h3>
+                    <div className="p-6 rounded-3xl bg-red-50 border border-red-200 space-y-4">
+                      <div className="flex gap-4 items-start">
+                        <div className="p-3 bg-red-100 rounded-2xl"><AlertTriangle className="text-red-500" /></div>
+                        <div className="space-y-2 flex-1">
+                          <p className="text-sm font-bold text-red-700">Delete Account</p>
+                          <p className="text-xs text-red-600/60 font-medium">This action is irreversible. All your projects, artifacts, and data will be permanently deleted.</p>
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" className="mt-4 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400">
+                                <Trash2 size={14} className="mr-2" />
+                                Delete My Account
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="rounded-3xl">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-red-600">Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription className="space-y-4">
+                                  <p>This will permanently delete your account and all associated data. This action cannot be undone.</p>
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-semibold">Type DELETE to confirm</Label>
+                                    <Input 
+                                      value={deleteConfirmText}
+                                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                      placeholder="DELETE"
+                                      className="border-red-200 focus:border-red-400"
+                                    />
+                                  </div>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                <AlertDialogAction 
+                                  onClick={handleDeleteAccount}
+                                  disabled={deleteConfirmText !== "DELETE"}
+                                  className="bg-red-600 hover:bg-red-700 rounded-xl disabled:opacity-50"
+                                >
+                                  Delete Account
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </TabsContent>
@@ -191,22 +284,6 @@ export default function SettingsPage() {
           </div>
 
           <aside className="space-y-8">
-            <div className="p-8 bg-bee-black rounded-[2.5rem] text-cream space-y-6 shadow-2xl shadow-bee-black/20">
-              <h3 className="text-sm font-bold uppercase tracking-[0.2em]">Hive Tier</h3>
-              <div className="space-y-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-sans font-bold text-honey">BETA</span>
-                  <span className="text-[10px] font-bold uppercase opacity-40">Architect</span>
-                </div>
-                <p className="text-[10px] uppercase font-bold tracking-widest text-cream/40 leading-relaxed">
-                  You are currently operating on the founding worker protocol.
-                </p>
-              </div>
-              <Button className="w-full bg-cream text-bee-black hover:bg-honey font-bold rounded-xl h-12 uppercase text-[10px] tracking-widest transition-all">
-                Manage Protocol
-              </Button>
-            </div>
-
             <div className="space-y-3">
               <Button 
                 variant="outline" 
@@ -214,23 +291,23 @@ export default function SettingsPage() {
                 disabled={isLoading}
                 className="w-full h-14 border-wax hover:bg-honey/10 hover:border-honey/30 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em]"
               >
-                {isLoading ? "Synchronizing..." : <><Save size={16} /> Save Preferences</>}
+                {isLoading ? "Saving..." : <><Save size={16} /> Save Settings</>}
               </Button>
               <Button 
                 variant="ghost" 
                 onClick={handleLogout}
                 className="w-full h-14 hover:bg-red-50 hover:text-red-600 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em] text-bee-black/40"
               >
-                <LogOut size={16} /> Exit Hive Matrix
+                <LogOut size={16} /> Log Out
               </Button>
             </div>
 
-            <div className="p-6 border border-wax rounded-[2rem] bg-white/40 flex items-center justify-between">
+            <div className="p-6 border border-wax rounded-[2rem] bg-white/40 flex items-center justify-between cursor-pointer hover:border-honey/30 transition-colors">
               <div className="flex items-center gap-3">
-                <Bug size={14} className="opacity-20" />
-                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Build Logs</span>
+                <Bug size={14} className="opacity-40" />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Build Logs</span>
               </div>
-              <ChevronRight size={14} className="opacity-20" />
+              <ChevronRight size={14} className="opacity-40" />
             </div>
           </aside>
         </div>

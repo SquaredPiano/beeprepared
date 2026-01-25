@@ -153,7 +153,7 @@ function BeeCanvasInner() {
         };
         setEdges([...edges, edge]);
         playConnect();
-        toast.success(`Artifact linked to synthesis layer`);
+        toast.success(`Output connected to processor`);
       }
     }
   }, [nodes, edges, setEdges, playConnect]);
@@ -176,16 +176,16 @@ function BeeCanvasInner() {
     const hasProcess = nodes.some(n => n.type === 'process');
 
     if (nodeData.type === 'process' && !hasSource) {
-      toast.warning("Ingest Source First", {
-        description: "An architectural source must exist before synthesis layers.",
+      toast.warning("Add a Source First", {
+        description: "Upload a file before adding processors.",
         icon: <AlertCircle className="h-4 w-4" />,
       });
       return;
     }
 
     if (nodeData.type === 'result' && !hasProcess) {
-      toast.warning("Synthesize Knowledge First", {
-        description: "Add a synthesis layer to process your sources before creating artifacts.",
+      toast.warning("Add a Processor First", {
+        description: "Add a processor to handle your files before creating outputs.",
         icon: <AlertCircle className="h-4 w-4" />,
       });
       return;
@@ -327,8 +327,8 @@ function BeeCanvasInner() {
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={confirmDelete}
-        title="Decommission Node?"
-        description="This will permanently sever all architectural links and remove synthesized artifacts."
+        title="Delete Node?"
+        description="This will remove the node and all its connections."
         itemName={nodesToDelete.map(n => n.data.label).join(', ')}
       />
 

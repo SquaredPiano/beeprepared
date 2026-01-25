@@ -295,9 +295,9 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                                   try {
                                     await api.assets.delete(asset.id);
                                     setExistingAssets(prev => prev.filter(a => asset.id !== a.id));
-                                    toast.success("Asset decommissioned");
+                                    toast.success("File deleted");
                                   } catch (error) {
-                                    toast.error("Decommissioning failed");
+                                    toast.error("Failed to delete");
                                   }
                                 }}
                               >

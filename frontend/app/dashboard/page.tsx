@@ -94,16 +94,16 @@ export default function DashboardPage() {
     try {
       await api.projects.delete(id);
       setProjects(prev => prev.filter(p => p.id !== id));
-      toast.success("Cell decommissioned");
+      toast.success("Project deleted");
     } catch (error) {
-      toast.error("Decommissioning failed");
+      toast.error("Failed to delete project");
     }
   };
 
   const stats = [
-    { label: "Cells Active", value: projects.length.toString(), icon: LayoutGrid },
-    { label: "Honey Drops", value: balance.toLocaleString(), icon: BookOpen },
-    { label: "Hive Uptime", value: "99.9%", icon: Clock },
+    { label: "Projects", value: projects.length.toString(), icon: LayoutGrid },
+    { label: "Honey Points", value: balance.toLocaleString(), icon: BookOpen },
+    { label: "Status", value: "Active", icon: Clock },
   ];
 
   return (
@@ -113,11 +113,10 @@ export default function DashboardPage() {
         <div className="space-y-4 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-honey/10 text-honey text-[10px] font-bold uppercase tracking-widest border border-honey/20">
             <div className="w-1.5 h-1.5 rounded-full bg-honey animate-pulse" />
-            Hive Matrix: Operational
+            System Online
           </div>
           <h1 className="text-5xl md:text-6xl font-serif italic leading-[0.9] tracking-tighter text-bee-black">
-            Knowledge <br />
-            <span className="font-sans font-bold uppercase opacity-60 pr-4 tracking-tighter text-honey drop-shadow-sm">Architecture</span>
+            Dashboard
           </h1>
         </div>
         <div>
@@ -125,7 +124,7 @@ export default function DashboardPage() {
             onClick={handleCreateProject}
             className="group flex items-center gap-4 bg-bee-black text-white px-8 py-7 rounded-2xl hover:bg-honey hover:text-bee-black transition-all duration-500 cursor-pointer shadow-xl shadow-bee-black/10 active:scale-95 border-none"
           >
-            <span className="text-sm uppercase tracking-widest font-bold">Initialize Cell</span>
+            <span className="text-sm uppercase tracking-widest font-bold">New Project</span>
             <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center group-hover:rotate-90 transition-transform duration-500">
               <Plus className="w-5 h-5" />
             </div>
@@ -159,9 +158,9 @@ export default function DashboardPage() {
         {/* Project Grid */}
         <section className="lg:col-span-2 space-y-8 min-w-0">
           <div className="flex items-center justify-between border-b border-wax/40 pb-4 reveal">
-            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Active Projections</h2>
+            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Recent Projects</h2>
             <Link href="/dashboard/library" className="text-[10px] uppercase tracking-widest font-bold hover:text-honey transition-colors cursor-pointer flex items-center gap-2">
-              Deep Archive <ExternalLink size={10} />
+              View All <ExternalLink size={10} />
             </Link>
           </div>
           
@@ -194,7 +193,7 @@ export default function DashboardPage() {
                             e.preventDefault();
                             handleDeleteProject(project.id);
                           }}>
-                            <Trash2 size={14} /> Decommission
+                            <Trash2 size={14} /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -231,16 +230,16 @@ export default function DashboardPage() {
 
         {/* Sidebar Controls */}
         <aside className="space-y-12">
-          {/* Gamification Section */}
+          {/* Points Section */}
           <div className="space-y-6 reveal">
-            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Hive Economy</h2>
+            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Your Progress</h2>
             <div className="p-8 bg-bee-black rounded-[2.5rem] space-y-8 relative overflow-hidden group shadow-2xl shadow-bee-black/20">
               <div className="flex items-center justify-between relative z-10">
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Total Nectar</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Total Points</p>
                   <div className="flex items-baseline gap-2 text-white">
                     <span className="text-4xl font-sans font-bold">{balance}</span>
-                    <span className="text-honey text-xs font-bold uppercase tracking-widest">Drops</span>
+                    <span className="text-honey text-xs font-bold uppercase tracking-widest">pts</span>
                   </div>
                 </div>
                 <div className="w-16 h-16 bg-honey/10 rounded-3xl flex items-center justify-center border border-honey/20 group-hover:rotate-12 transition-transform duration-500 backdrop-blur-md">
@@ -250,8 +249,8 @@ export default function DashboardPage() {
 
               <div className="space-y-4 relative z-10">
                 <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-white/60">
-                  <span>Rank: Worker</span>
-                  <span className="text-honey">Next Goal: 1,000</span>
+                  <span>Level: Starter</span>
+                  <span className="text-honey">Next: 1,000</span>
                 </div>
                 <div className="h-2 bg-white/10 rounded-full overflow-hidden border border-white/5">
                   <motion.div 
@@ -268,44 +267,18 @@ export default function DashboardPage() {
           </div>
 
           <div className="space-y-6 reveal">
-            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">System Access</h2>
+            <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Quick Access</h2>
             <div className="space-y-3">
               <Link href="/dashboard/settings" className="w-full flex items-center justify-between p-5 rounded-[1.5rem] bg-white border border-wax/50 hover:border-honey/30 hover:bg-honey/5 transition-all group cursor-pointer shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="p-2 bg-cream rounded-xl group-hover:bg-white transition-colors">
                     <Settings className="w-4 h-4 opacity-40 group-hover:text-honey transition-colors" />
                   </div>
-                  <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-bee-black/60">Hive Configuration</span>
+                  <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-bee-black/60">Settings</span>
                 </div>
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
               </Link>
             </div>
-          </div>
-
-          {/* Beta Notice */}
-          <div className="p-8 bg-gradient-to-br from-honey/20 to-amber-100 rounded-[2.5rem] border border-honey/20 space-y-6 relative overflow-hidden group reveal">
-            <div className="relative z-10 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/50 rounded-xl backdrop-blur-md">
-                  <BookOpen size={16} className="text-honey" />
-                </div>
-                <h3 className="text-sm font-bold uppercase tracking-widest text-bee-black">Beta Synthesis</h3>
-              </div>
-              <p className="text-[10px] uppercase tracking-[0.15em] text-bee-black/60 font-bold leading-relaxed">
-                As an early worker, you have unlimited access to the architectural suite.
-              </p>
-              <div className="pt-2 flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest font-extrabold text-honey-700/60">
-                  <div className="w-1 h-1 rounded-full bg-honey" />
-                  Infinite Storage
-                </div>
-                <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest font-extrabold text-honey-700/60">
-                  <div className="w-1 h-1 rounded-full bg-honey" />
-                  Priority Pipelines
-                </div>
-              </div>
-            </div>
-            <Hexagon className="absolute -bottom-8 -right-8 w-32 h-32 text-honey/5 fill-honey/5" />
           </div>
         </aside>
       </div>

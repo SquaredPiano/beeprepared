@@ -14,11 +14,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "@/store/useCanvasStore";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
 export function CanvasHeader() {
+  const router = useRouter();
   const { 
     projectName, 
     setProjectName, 
@@ -38,13 +39,13 @@ export function CanvasHeader() {
       className="absolute top-0 left-0 right-0 z-[60] bg-white/80 backdrop-blur-xl border-b border-wax flex items-center px-8 shadow-sm transition-all"
     >
       <div className="flex-1 flex items-center gap-8">
-        <Link 
-          href="/dashboard"
-          className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/40 hover:text-bee-black transition-colors"
+        <button 
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/40 hover:text-bee-black transition-colors cursor-pointer"
         >
           <ArrowLeft size={14} />
-          Exit Hive
-        </Link>
+          Go Back
+        </button>
 
         <div className="flex items-center gap-4 flex-1">
           <div className="w-10 h-10 rounded-xl bg-honey/10 flex items-center justify-center border border-honey/20">
@@ -71,7 +72,7 @@ export function CanvasHeader() {
             )}
             {!isHeaderCollapsed && (
               <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-bee-black/30">
-                Architectural Visualization Workspace
+                Project Workspace
               </p>
             )}
           </div>
@@ -94,10 +95,10 @@ export function CanvasHeader() {
         
         <Button 
           onClick={runFlow}
-          className="h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg bg-bee-black hover:bg-bee-black/90 text-honey group"
+          className="h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg bg-honey hover:bg-honey-600 text-bee-black group"
         >
-          <Play size={14} className="mr-2 fill-honey group-hover:scale-110 transition-transform" />
-          Activate Pipeline
+          <Play size={14} className="mr-2 fill-bee-black group-hover:scale-110 transition-transform" />
+          Run Pipeline
         </Button>
 
         <Button 
@@ -105,11 +106,11 @@ export function CanvasHeader() {
           disabled={isSaving}
           className={cn(
             "h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg",
-            isSaving ? "bg-honey/50" : "bg-honey hover:bg-honey-600 text-bee-black"
+            isSaving ? "bg-wax/50 text-bee-black/50" : "bg-white border border-wax hover:bg-cream text-bee-black"
           )}
         >
           <Save size={14} className={cn("mr-2", isSaving && "animate-pulse")} />
-          {isSaving ? "Persisting..." : "Persist Architecture"}
+          {isSaving ? "Saving..." : "Save"}
         </Button>
 
         <button

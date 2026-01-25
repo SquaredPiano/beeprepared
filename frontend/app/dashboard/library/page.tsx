@@ -77,7 +77,7 @@ export default function LibraryPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <button
               onClick={() => router.push("/dashboard/canvas")}
-              className="group p-8 rounded-[3rem] border-2 border-dashed border-border/40 hover:border-honey-500 transition-all flex flex-col items-center justify-center gap-6 min-h-[320px] bg-honey-50/5 hover:bg-honey-50/20"
+              className="group p-8 rounded-[3rem] border-2 border-dashed border-border/40 hover:border-honey-500 transition-all flex flex-col items-center justify-center gap-6 min-h-[320px] bg-honey-50/5 hover:bg-honey-50/20 cursor-pointer"
             >
               <div className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Plus className="w-8 h-8 text-honey-600" />
@@ -224,7 +224,7 @@ export default function LibraryPage() {
         </div>
         
         <div className="flex gap-4">
-          <div className="glass flex p-1 rounded-2xl border border-border/40 overflow-x-auto scrollbar-hide">
+          <div className="glass flex p-1 rounded-2xl border border-border/40 overflow-x-auto scrollbar-none">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -232,7 +232,7 @@ export default function LibraryPage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-3 px-6 py-3 rounded-xl transition-all duration-500 text-[10px] font-bold uppercase tracking-widest shrink-0",
+                    "flex items-center gap-3 px-6 py-3 rounded-xl transition-all duration-500 text-[10px] font-bold uppercase tracking-widest shrink-0 cursor-pointer",
                     activeTab === tab.id 
                       ? "bg-bee-black text-white shadow-xl" 
                       : "text-bee-black/40 hover:text-bee-black hover:bg-honey-50"

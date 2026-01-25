@@ -88,11 +88,11 @@ export function ArtifactPreviewModal({ isOpen, onClose, artifact }: ArtifactPrev
         <div className="bg-bee-black/5 border-t border-wax p-6 flex justify-between items-center px-12">
           <div className="flex gap-4">
             <button className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 hover:text-bee-black transition-colors flex items-center gap-2 cursor-pointer">
-              <Share2 size={14} /> Share Artifact
+              <Share2 size={14} /> Share
             </button>
           </div>
           <button className="text-[10px] font-bold uppercase tracking-widest text-red-600/40 hover:text-red-600 transition-colors flex items-center gap-2 cursor-pointer">
-            <Trash2 size={14} /> Decommission
+            <Trash2 size={14} /> Delete
           </button>
         </div>
       </DialogContent>

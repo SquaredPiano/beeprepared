@@ -143,6 +143,15 @@
   .dark ::-webkit-scrollbar-thumb {
     @apply bg-white/10 border-bee-black hover:bg-honey-400;
   }
+  
+  /* Hide scrollbar utility */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 
   /* React Flow Attribution Fix */
   .react-flow__attribution {

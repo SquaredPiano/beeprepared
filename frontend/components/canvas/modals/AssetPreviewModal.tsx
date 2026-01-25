@@ -88,10 +88,9 @@ export function AssetPreviewModal({ isOpen, onClose, asset }: AssetPreviewModalP
           </div>
 
           <div className="bg-honey/5 border border-honey/10 rounded-2xl p-6">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-honey-700 mb-3">Logical Connections</h4>
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-honey-700 mb-3">Connections</h4>
             <p className="text-sm text-honey-900/60 leading-relaxed">
-              This asset is currently serving as the primary knowledge source for the active pipeline. 
-              Downstream synthesis layers are extracting core concepts based on architectural constraints.
+              This file is connected to your pipeline. Processors will extract and transform its content into study materials.
             </p>
           </div>
         </div>
