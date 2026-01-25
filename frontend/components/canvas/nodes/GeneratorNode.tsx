@@ -1,11 +1,11 @@
 "use client";
 
 import { Handle, Position, type NodeProps, useReactFlow } from "@xyflow/react";
-import { 
-  BookOpen, 
-  HelpCircle, 
-  Layers, 
-  Presentation, 
+import {
+  BookOpen,
+  HelpCircle,
+  Layers,
+  Presentation,
   ClipboardCheck,
   Play,
   RefreshCw,
@@ -57,9 +57,10 @@ export interface GeneratorNodeData {
   artifact?: Artifact | null;
   progress?: number;
   error?: string | null;
+  [key: string]: unknown; // Index signature for @xyflow/react compatibility
 }
 
-interface GeneratorNodeProps extends NodeProps {
+interface GeneratorNodeProps {
   id: string;
   data: GeneratorNodeData;
 }
@@ -68,7 +69,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
   const { setNodes, getNodes, getEdges } = useReactFlow();
   const { takeSnapshot, currentProjectId, refreshArtifacts } = useCanvasStore();
   const { states, generate, cancel } = useArtifactGenerator();
-  
+
   const [showPreview, setShowPreview] = useState(false);
   const [localArtifact, setLocalArtifact] = useState<Artifact | null>(data.artifact || null);
 
@@ -93,9 +94,9 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
   // Update node data helper
   const updateNodeData = useCallback((updates: Partial<GeneratorNodeData>) => {
-    setNodes(nodes => 
-      nodes.map(n => 
-        n.id === id 
+    setNodes(nodes =>
+      nodes.map(n =>
+        n.id === id
           ? { ...n, data: { ...n.data, ...updates } }
           : n
       )
@@ -107,12 +108,13 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     // First, check incoming edges for a knowledge_core connection
     const edges = getEdges();
     const nodes = getNodes();
-    
+
     const incomingEdge = edges.find(e => e.target === id);
     if (incomingEdge) {
       const sourceNode = nodes.find(n => n.id === incomingEdge.source);
-      if (sourceNode?.data?.type === "knowledge_core" && sourceNode?.data?.artifact?.id) {
-        return sourceNode.data.artifact.id;
+      const nodeData = sourceNode?.data as Record<string, unknown> | undefined;
+      if (nodeData?.type === "knowledge_core" && (nodeData?.artifact as { id?: string })?.id) {
+        return (nodeData.artifact as { id: string }).id;
       }
     }
 
@@ -133,7 +135,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     }
 
     const knowledgeCoreId = await findConnectedKnowledgeCore();
-    
+
     if (!knowledgeCoreId) {
       toast.error("No Knowledge Core found", {
         description: "Upload and process a source file first to create a Knowledge Core.",
@@ -147,19 +149,19 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
     if (result) {
       setLocalArtifact(result);
-      updateNodeData({ 
-        status: "completed", 
-        artifact: result, 
-        progress: 100 
+      updateNodeData({
+        status: "completed",
+        artifact: result,
+        progress: 100
       });
-      
+
       // Refresh canvas artifacts to sync
       await refreshArtifacts();
     } else if (generatorState?.error) {
-      updateNodeData({ 
-        status: "failed", 
+      updateNodeData({
+        status: "failed",
         error: generatorState.error,
-        progress: 0 
+        progress: 0
       });
     }
   }, [currentProjectId, findConnectedKnowledgeCore, generate, generatorType, updateNodeData, refreshArtifacts, generatorState?.error]);
@@ -183,12 +185,12 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
   return (
     <>
-      <NodeContextMenu 
+      <NodeContextMenu
         nodeType="result"
         onDelete={handleDelete}
         onPractice={isCompleted ? () => setShowPreview(true) : undefined}
       >
-        <motion.div 
+        <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className={`
@@ -199,7 +201,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
         >
           {/* Progress bar */}
           {isGenerating && (
-            <motion.div 
+            <motion.div
               className={`absolute top-0 left-0 h-1 ${colors.accent}`}
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
@@ -242,9 +244,9 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
             {/* Action buttons */}
             <div className="mt-3 pt-3 border-t border-wax flex gap-2">
               {isGenerating ? (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleCancel}
                   className="flex-1 h-8 text-[10px] uppercase tracking-widest font-bold"
                 >
@@ -252,16 +254,16 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
                 </Button>
               ) : isCompleted ? (
                 <>
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     onClick={() => setShowPreview(true)}
                     className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
                   >
                     <Eye className="w-3 h-3 mr-1" /> View
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={handleGenerate}
                     className="h-8 px-2"
                     title="Regenerate"
@@ -270,8 +272,8 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
                   </Button>
                 </>
               ) : (
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={handleGenerate}
                   className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
                 >
@@ -282,16 +284,16 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
           </div>
 
           {/* Input handle */}
-          <Handle 
-            type="target" 
-            position={Position.Left} 
+          <Handle
+            type="target"
+            position={Position.Left}
             className={`w-3 h-3 border-2 border-white !-left-1.5 ${isCompleted ? colors.accent : "bg-wax"}`}
           />
 
           {/* Output handle (for chaining) */}
-          <Handle 
-            type="source" 
-            position={Position.Right} 
+          <Handle
+            type="source"
+            position={Position.Right}
             className={`w-3 h-3 border-2 border-white !-right-1.5 ${isCompleted ? "bg-honey" : "bg-wax"}`}
           />
         </motion.div>

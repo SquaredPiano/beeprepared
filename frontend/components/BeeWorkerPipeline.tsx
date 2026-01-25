@@ -100,7 +100,7 @@ export function BeeWorkerPipeline() {
         nodesConnectable={false}
         elementsSelectable={false}
       >
-        <Background color="#F59E0B" gap={20} size={1} opacity={0.05} />
+        <Background color="#F59E0B" gap={20} size={1} />
       </ReactFlow>
     </div>
   );

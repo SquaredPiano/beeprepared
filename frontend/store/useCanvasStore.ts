@@ -13,7 +13,7 @@ import {
   MarkerType,
   Viewport
 } from "@xyflow/react";
-import { supabase } from "@/lib/supabase";
+import { getMockAccessToken } from "@/lib/mockAuth";
 import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
 import { api, Artifact, ArtifactEdge } from "@/lib/api";
@@ -287,12 +287,12 @@ export const useCanvasStore = create<CanvasState>()(
         }
 
         toast.promise(async () => {
-          const { data: { session } } = await supabase.auth.getSession();
+          const token = await getMockAccessToken();
           const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/run`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session?.access_token}`
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
               project_id: currentProjectId,
@@ -520,6 +520,56 @@ export const useCanvasStore = create<CanvasState>()(
 
         } catch (error) {
           console.error("Refresh error", error);
+        }
+      },
+
+      createNewProject: async () => {
+        const projectName = generateProjectName();
+        try {
+          const project = await api.projects.create(projectName, "");
+          set({
+            currentProjectId: project.id,
+            projectName: project.name,
+            nodes: [],
+            edges: [],
+            history: [],
+            historyIndex: -1
+          });
+
+          // Update URL
+          const url = new URL(window.location.href);
+          url.searchParams.set("id", project.id);
+          window.history.pushState({}, "", url.toString());
+
+          toast.success("New project created!");
+        } catch (error: any) {
+          console.error("Create project error:", error);
+          toast.error(`Failed to create project: ${error.message}`);
+        }
+      },
+
+      uploadFile: async (file: File) => {
+        const { currentProjectId } = get();
+        if (!currentProjectId) {
+          toast.error("Create a project first");
+          return;
+        }
+
+        set({ isUploading: true });
+        try {
+          await api.upload.uploadAndIngest(currentProjectId, file, "/", (job) => {
+            console.log("Upload job status:", job.status);
+          });
+
+          toast.success(`Uploaded ${file.name}`);
+
+          // Reload project to get new artifacts
+          await get().loadProject(currentProjectId);
+        } catch (error: any) {
+          console.error("Upload error:", error);
+          toast.error(`Upload failed: ${error.message}`);
+        } finally {
+          set({ isUploading: false });
         }
       },
 

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -30,9 +31,18 @@ interface UploadingFile {
 }
 
 export default function UploadPage() {
+  const searchParams = useSearchParams();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadingFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Read projectId from URL search params and auto-select it
+  useEffect(() => {
+    const projectIdFromUrl = searchParams.get("projectId");
+    if (projectIdFromUrl && !selectedProjectId) {
+      setSelectedProjectId(projectIdFromUrl);
+    }
+  }, [searchParams, selectedProjectId]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map(file => ({

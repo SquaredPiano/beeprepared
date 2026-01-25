@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getMockAccessToken } from '@/lib/mockAuth';
 import { api, Artifact } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -57,11 +57,11 @@ export function useArtifactGenerator() {
   }, []);
 
   /**
-   * Get auth token for backend requests
+   * Get auth token for backend requests (uses mock auth for demo)
    */
   const getAuthToken = async (): Promise<string | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    // Using mock auth - backend accepts any token or no token for /api/jobs
+    return getMockAccessToken();
   };
 
   /**
@@ -73,7 +73,7 @@ export function useArtifactGenerator() {
     targetType: TargetType
   ): Promise<string> => {
     const token = await getAuthToken();
-    
+
     const res = await fetch(`${API_BASE}/api/jobs`, {
       method: 'POST',
       headers: {
@@ -121,7 +121,7 @@ export function useArtifactGenerator() {
       }
 
       const data = await res.json();
-      
+
       // Update progress estimate
       const progressMap: Record<string, number> = {
         'pending': 10,
@@ -228,7 +228,7 @@ export function useArtifactGenerator() {
 
     } catch (error: any) {
       const message = error.message || 'Unknown error';
-      
+
       if (message === 'Generation cancelled') {
         updateState(targetType, { ...initialState });
         toast.dismiss(toastId);

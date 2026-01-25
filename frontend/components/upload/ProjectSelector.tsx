@@ -22,33 +22,43 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
   const [newProjectName, setNewProjectName] = useState("");
 
 
-
+  // Fetch projects on mount - only auto-select if no selectedId was provided
   useEffect(() => {
+    let mounted = true;
+
     async function fetchProjects() {
       try {
         const data = await api.projects.list();
+        if (!mounted) return;
+
         setProjects(data);
-        
-        // If we have a selectedId that is NOT in the new list, or if we have no selectedId
-        // but we DO have projects, auto-select the first one.
-        if (data.length > 0) {
-          const currentExists = data.find(p => p.id === selectedId);
-          if (!selectedId || !currentExists) {
-            onSelect(data[0].id);
-          }
+
+        // Only auto-select if no selectedId was provided and we have projects
+        if (!selectedId && data.length > 0) {
+          onSelect(data[0].id);
         }
       } catch (error) {
         console.error("Failed to fetch projects:", error);
+        if (mounted) {
+          toast.error("Failed to load projects");
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     }
+
     fetchProjects();
-  }, [selectedId, onSelect]);
+
+    return () => { mounted = false; };
+    // Only run on mount, not when selectedId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreateInline = async () => {
     if (!newProjectName.trim() || isLoading) return;
-    
+
     setIsLoading(true);
     try {
       const newProj = await api.projects.create(newProjectName.trim());
@@ -70,7 +80,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
   return (
     <div className="relative w-full max-w-md">
       <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-bee-black/30 mb-3 ml-4">Target Project</p>
-      
+
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between px-6 py-4 bg-white border border-wax rounded-2xl hover:border-honey-500/50 transition-all shadow-sm group cursor-pointer"
@@ -111,7 +121,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
               <div className="p-4 border-b border-wax">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-bee-black/20" />
-                  <input 
+                  <input
                     placeholder="Search projects..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -120,7 +130,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                 </div>
               </div>
 
-              
+
               <div className="overflow-y-auto p-2 space-y-1">
                 {projects.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase())).length > 0 ? (
                   projects.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase())).map((project) => (
@@ -156,7 +166,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">No Projects Found</p>
                       <p className="text-[8px] uppercase tracking-widest opacity-20">Create or sync your first matrix</p>
                     </div>
-                    <Button 
+                    <Button
                       onClick={() => setIsCreating(true)}
                       variant="outline"
                       className="rounded-full border-wax hover:bg-honey/10 transition-all text-[9px] font-bold uppercase tracking-widest px-6"
@@ -167,7 +177,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                 )}
               </div>
 
-              
+
               <div className="p-4 bg-white border-t border-wax shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
                 {isCreating ? (
                   <div className="flex items-center gap-2">
@@ -188,8 +198,8 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                         className="w-full px-4 py-2.5 bg-cream/30 border-2 border-wax rounded-xl text-xs font-bold text-bee-black focus:outline-none focus:border-honey transition-all placeholder:text-bee-black/20"
                       />
                     </div>
-                    
-                    <button 
+
+                    <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCreateInline();
@@ -201,7 +211,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                       {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={18} strokeWidth={4} />}
                     </button>
 
-                    <button 
+                    <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsCreating(false);
@@ -213,7 +223,7 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                     </button>
                   </div>
                 ) : (
-                  <button 
+                  <button
                     className="w-full h-12 flex items-center justify-center gap-3 text-[10px] font-bold uppercase tracking-widest text-honey border-2 border-dashed border-honey/20 hover:border-honey hover:bg-honey/5 rounded-2xl transition-all"
                     onClick={() => setIsCreating(true)}
                   >

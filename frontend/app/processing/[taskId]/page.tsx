@@ -6,9 +6,9 @@ import { useTaskPolling } from "@/hooks/useTaskPolling";
 import { FlowCanvas } from "@/components/canvas/FlowCanvas";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ArrowRight, 
-  Clock, 
+import {
+  ArrowRight,
+  Clock,
   Workflow,
   Sparkles,
   Search,
@@ -29,7 +29,7 @@ export default function ProcessingPage() {
   useGSAP(() => {
     // Set initial state to avoid flicker now that CSS is visible by default
     gsap.set(".reveal", { opacity: 0, y: 30 });
-    
+
     gsap.to(".reveal", {
       y: 0,
       opacity: 1,
@@ -76,12 +76,12 @@ export default function ProcessingPage() {
             <div className="h-px w-8 bg-border/60" />
             <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Task ID: {taskId.slice(0, 8)}</span>
           </div>
-          
+
           <h1 className="reveal text-5xl md:text-7xl font-display uppercase leading-none tracking-tighter">
             Processing <br />
             <span className="font-serif italic lowercase opacity-40">Content</span>
           </h1>
-          
+
           <p className="reveal text-lg text-muted-foreground font-medium uppercase tracking-tight max-w-md opacity-60">
             Analyzing your file. We're building your study materials and organizing them for your library.
           </p>
@@ -111,17 +111,17 @@ export default function ProcessingPage() {
               </div>
 
               <div className="space-y-6">
-                  <div className="flex items-center gap-4 p-5 rounded-2xl bg-stone-50/50 border border-border/20">
-                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                      <Clock className="w-5 h-5 text-honey-600" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 leading-none mb-1">Time Remaining</p>
-                      <p className="text-sm font-bold uppercase tracking-tight">~{data?.eta_seconds || "Calculating"}s</p>
-                    </div>
+                <div className="flex items-center gap-4 p-5 rounded-2xl bg-stone-50/50 border border-border/20">
+                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                    <Clock className="w-5 h-5 text-honey-600" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 leading-none mb-1">Time Remaining</p>
+                    <p className="text-sm font-bold uppercase tracking-tight">~{data?.eta_seconds || "Calculating"}s</p>
                   </div>
                 </div>
               </div>
+            </div>
 
             {status === "complete" && (
               <motion.div
@@ -129,8 +129,8 @@ export default function ProcessingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, ease: "circOut" }}
               >
-                <Link 
-                  href={`/artifacts/${data.artifact_id}`}
+                <Link
+                  href={`/artifacts/${data?.artifact_id}`}
                   className="group flex items-center justify-between w-full bg-bee-black text-white p-6 rounded-full hover:bg-honey-500 transition-all duration-500 shadow-2xl cursor-pointer"
                 >
                   <span className="font-display text-sm uppercase tracking-widest font-bold ml-4">Access Library</span>

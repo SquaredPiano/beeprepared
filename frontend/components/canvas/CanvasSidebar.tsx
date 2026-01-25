@@ -2,15 +2,15 @@
 
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Search, 
-  Eraser, 
-  Sparkles, 
-  Layers, 
-  HelpCircle, 
-  FileText, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Eraser,
+  Sparkles,
+  Layers,
+  HelpCircle,
+  FileText,
   Presentation,
   Map,
   Share2,
@@ -23,30 +23,6 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 
 const agents = [
-  {
-    type: 'process',
-    subType: 'extraction',
-    icon: Search,
-    label: 'Extract',
-    description: 'Extract content from source',
-    color: 'blue' as const,
-  },
-  {
-    type: 'process',
-    subType: 'cleaning',
-    icon: Eraser,
-    label: 'Clean',
-    description: 'Clean and normalize text',
-    color: 'green' as const,
-  },
-  {
-    type: 'process',
-    subType: 'synthesis',
-    icon: Sparkles,
-    label: 'Synthesize',
-    description: 'Generate knowledge core',
-    color: 'purple' as const,
-  },
   {
     type: 'generator',
     subType: 'flashcards',
@@ -94,17 +70,17 @@ interface CanvasSidebarProps {
 }
 
 export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
-  const { 
-    isSidebarCollapsed, 
-    setIsSidebarCollapsed, 
-    nodes, 
-    showMiniMap, 
-    setShowMiniMap 
+  const {
+    isSidebarCollapsed,
+    setIsSidebarCollapsed,
+    nodes,
+    showMiniMap,
+    setShowMiniMap
   } = useCanvasStore();
 
   const hasSource = useMemo(() => nodes.some(n => n.type === 'asset'), [nodes]);
   const hasProcess = useMemo(() => nodes.some(n => n.type === 'process'), [nodes]);
-  const hasKnowledgeCore = useMemo(() => nodes.some(n => 
+  const hasKnowledgeCore = useMemo(() => nodes.some(n =>
     n.type === 'artifactNode' && n.data?.type === 'knowledge_core'
   ), [nodes]);
 
@@ -138,13 +114,13 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {!isSidebarCollapsed && (
           <div className="px-2 pt-2 pb-1">
-            <Button 
+            <Button
               onClick={onIngestClick}
               className="w-full h-12 rounded-2xl bg-bee-black text-white hover:bg-honey hover:text-bee-black font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg mb-6"
             >
               <Plus size={16} className="mr-2" /> Ingest Source
             </Button>
-            
+
             <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/20">
               Logic Layers
             </p>
@@ -152,38 +128,18 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
         )}
 
         {isSidebarCollapsed && (
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onIngestClick}
             className="w-12 h-12 mx-auto mb-4 rounded-xl bg-bee-black text-white hover:bg-honey hover:text-bee-black flex items-center justify-center cursor-pointer shadow-md"
           >
             <Plus size={18} />
           </Button>
         )}
-        
-        {agents.slice(0, 3).map((agent) => (
-          <DraggableAgent 
-            key={agent.subType}
-            {...agent}
-            collapsed={isSidebarCollapsed}
-            disabled={agent.type === 'process' && !hasSource}
-            tooltip={agent.type === 'process' && !hasSource ? "Ingest an asset first" : undefined}
-          />
-        ))}
 
-        <Separator className="bg-wax/50 my-6" />
-
-        {!isSidebarCollapsed && (
-          <div className="px-2 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/20">
-              Artifact Synthesis
-            </p>
-          </div>
-        )}
-
-        {agents.slice(3).map((agent) => (
-          <DraggableAgent 
+        {agents.map((agent) => (
+          <DraggableAgent
             key={agent.subType}
             {...agent}
             collapsed={isSidebarCollapsed}
@@ -200,16 +156,16 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
               <Map size={14} /> Mini-map
             </span>
           )}
-          <Switch 
-            checked={showMiniMap} 
+          <Switch
+            checked={showMiniMap}
             onCheckedChange={setShowMiniMap}
             className="data-[state=checked]:bg-honey"
           />
         </div>
-        
+
         {!isSidebarCollapsed && (
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full h-12 rounded-2xl border-wax font-display text-[10px] font-bold uppercase tracking-widest hover:bg-honey hover:border-honey transition-all cursor-pointer"
           >
             <Share2 size={14} className="mr-2" /> Share Canvas

@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  RotateCcw, 
-  Plus, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Plus,
   Search,
   MoreVertical,
   Layout,
@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
 interface Flashcard {
@@ -48,10 +49,10 @@ export default function FlashcardsPage() {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        
+
         if (data && data.length > 0) {
           // Transform artifact data to Flashcard interface
-          const transformed: Flashcard[] = data.flatMap(a => 
+          const transformed: Flashcard[] = data.flatMap(a =>
             (a.content.cards || []).map((c: any, i: number) => ({
               id: `${a.id}-${i}`,
               front: c.question || c.front,
@@ -95,7 +96,7 @@ export default function FlashcardsPage() {
     <div className="p-12 space-y-12 max-w-7xl mx-auto min-h-screen">
       <header className="flex items-end justify-between">
         <div className="space-y-4">
-          <Link 
+          <Link
             href="/dashboard/library"
             className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity flex items-center gap-2"
           >
@@ -103,7 +104,7 @@ export default function FlashcardsPage() {
             Back to Library
           </Link>
           <h1 className="text-6xl font-display uppercase tracking-tighter leading-[0.8]">
-            Flashcard <br /> 
+            Flashcard <br />
             <span className="italic lowercase opacity-40">Matrix</span>
           </h1>
         </div>
@@ -111,8 +112,8 @@ export default function FlashcardsPage() {
         <div className="flex gap-4">
           <div className="glass px-6 py-3 rounded-2xl border border-border/40 flex items-center gap-4">
             <Search size={16} className="opacity-20" />
-            <input 
-              placeholder="Search concepts..." 
+            <input
+              placeholder="Search concepts..."
               className="bg-transparent border-none focus:outline-none text-[10px] font-bold uppercase tracking-widest w-48"
             />
           </div>
@@ -171,13 +172,13 @@ export default function FlashcardsPage() {
 
           <div className="flex items-center justify-between px-12">
             <div className="flex gap-4">
-              <button 
+              <button
                 onClick={prevCard}
                 className="w-16 h-16 rounded-full border border-border/40 flex items-center justify-center hover:bg-honey-50 transition-all active:scale-95"
               >
                 <ChevronLeft size={24} />
               </button>
-              <button 
+              <button
                 onClick={nextCard}
                 className="w-16 h-16 rounded-full bg-bee-black text-white flex items-center justify-center hover:bg-honey-500 transition-all active:scale-95 shadow-xl"
               >
@@ -193,7 +194,7 @@ export default function FlashcardsPage() {
                 </p>
               </div>
               <div className="w-px h-10 bg-border/20" />
-              <button 
+              <button
                 onClick={() => { setCurrentIndex(0); setIsFlipped(false); playSound("complete"); }}
                 className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] opacity-40 hover:opacity-100 transition-opacity"
               >
@@ -208,16 +209,16 @@ export default function FlashcardsPage() {
         <div className="col-span-4 space-y-8">
           <div className="glass rounded-[3rem] border border-border/40 p-10 space-y-8">
             <h3 className="text-xs font-bold uppercase tracking-[0.3em] opacity-40">Active Deck</h3>
-            
+
             <div className="space-y-4">
               {cards.map((card, i) => (
-                <div 
+                <div
                   key={card.id}
                   onClick={() => { setCurrentIndex(i); setIsFlipped(false); }}
                   className={cn(
                     "p-6 rounded-3xl border transition-all cursor-pointer group",
-                    currentIndex === i 
-                      ? "bg-honey-500 border-honey-400 text-white shadow-lg shadow-honey-500/20" 
+                    currentIndex === i
+                      ? "bg-honey-500 border-honey-400 text-white shadow-lg shadow-honey-500/20"
                       : "bg-stone-50/50 border-border/10 hover:border-honey-300"
                   )}
                 >

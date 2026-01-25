@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import { 
-  Dialog, 
-  DialogContent, 
+import {
+  Dialog,
+  DialogContent,
 } from "@/components/ui/dialog";
-import { 
+import {
   Activity,
   CheckCircle2,
   Circle,
@@ -62,7 +62,7 @@ export function ProcessStatusModal({ isOpen, onClose, process }: ProcessStatusMo
               <span className="text-bee-black/40">Collective Progress</span>
               <span className="text-honey-600">{process.progress}%</span>
             </div>
-            <Progress value={process.progress} className="h-2 bg-bee-black/5" indicatorClassName="bg-honey" />
+            <Progress value={process.progress} className="h-2 bg-bee-black/5" />
           </div>
 
           <div className="grid grid-cols-1 gap-3">
@@ -72,7 +72,7 @@ export function ProcessStatusModal({ isOpen, onClose, process }: ProcessStatusMo
               const Icon = stage.icon;
 
               return (
-                <div 
+                <div
                   key={stage.id}
                   className={cn(
                     "flex items-center gap-4 p-4 rounded-2xl border transition-all",
