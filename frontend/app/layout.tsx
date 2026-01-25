@@ -20,13 +20,6 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "BeePrepared — Intentional Study Architecture",
   description: "Architectural study tools for high-performance learning.",
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon.ico?v=2", sizes: "32x32", type: "image/x-icon" },
-    ],
-    apple: "/favicon.ico",
-  },
 };
 
 export default function RootLayout({

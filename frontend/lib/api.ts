@@ -1,110 +1,319 @@
 import { supabase } from "./supabase";
 
+// Backend API base URL
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
 export interface Project {
   id: string;
   name: string;
   description?: string;
-  nodes: any[];
-  edges: any[];
   user_id: string;
+  canvas_state?: {
+    viewport: { x: number; y: number; zoom: number };
+    nodes: any[];
+    edges: any[];
+  };
+
   created_at: string;
   updated_at: string;
 }
 
-export interface Asset {
+export interface Artifact {
   id: string;
-  filename: string;
-  file_type: string;
-  file_size: number;
-  storage_url?: string;
-  status: 'staged' | 'processing' | 'ready' | 'error';
-  project_id?: string;
+  project_id: string;
+  type: "video" | "audio" | "text" | "flat_text" | "knowledge_core" | "quiz" | "flashcards" | "notes" | "slides" | "exam";
+  content: any;
+  created_at: string;
+  created_by_job_id?: string;
+}
+
+export interface ArtifactEdge {
+  id: string;
+  project_id: string;
+  parent_artifact_id: string;
+  child_artifact_id: string;
+  relationship_type: "derived_from" | "contains" | "references";
   created_at: string;
 }
 
-export interface Artifact {
+export interface Job {
   id: string;
-  type: 'flashcard' | 'quiz' | 'exam' | 'pptx';
-  content: any;
-  metadata?: any;
-  asset_id: string;
+  project_id: string;
+  type: "ingest" | "extract" | "clean" | "generate" | "render";
+  status: "pending" | "running" | "completed" | "failed";
+  payload: any;
+  result?: any;
+  error_message?: string;
   created_at: string;
 }
 
 export const api = {
   projects: {
-    async list() {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('updated_at', { ascending: false });
-      if (error) throw error;
-      return data as Project[];
+    async list(): Promise<Project[]> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      const response = await fetch(`${BACKEND_URL}/api/projects`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Failed to fetch projects" }));
+        throw new Error(err.detail || "Failed to fetch projects");
+      }
+      return response.json();
     },
-    async create(name: string, description?: string) {
-      const { data: userData } = await supabase.auth.getUser();
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({
-          name,
-          description,
-          user_id: userData.user?.id,
-          nodes: [],
-          edges: []
+
+    async get(id: string): Promise<Project> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      const response = await fetch(`${BACKEND_URL}/api/projects/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Failed to fetch project" }));
+        throw new Error(err.detail || "Failed to fetch project");
+      }
+      
+      return response.json();
+    },
+
+
+    async create(name: string, description?: string): Promise<Project> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      const response = await fetch(`${BACKEND_URL}/api/projects`, {
+        method: "POST",
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, description })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Creation failed" }));
+        throw new Error(err.detail || "Creation failed");
+      }
+      return response.json();
+    },
+
+
+    async update(id: string, updates: Partial<Pick<Project, "name" | "description" | "canvas_state">>): Promise<Project> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      const response = await fetch(`${BACKEND_URL}/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Update failed" }));
+        throw new Error(err.detail || "Update failed");
+      }
+      return response.json();
+    },
+
+    async delete(id: string): Promise<void> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      const response = await fetch(`${BACKEND_URL}/api/projects/${id}`, {
+        method: "DELETE",
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Delete failed" }));
+        throw new Error(err.detail || "Delete failed");
+      }
+    },
+
+    async getArtifacts(projectId: string): Promise<{ artifacts: Artifact[]; edges: ArtifactEdge[] }> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      // Use the backend API to get artifacts and edges
+      const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/artifacts`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Failed to fetch artifacts" }));
+        throw new Error(err.detail || "Failed to fetch artifacts");
+      }
+      return response.json();
+    }
+  },
+
+  vault: {
+    async list(path: string = "/"): Promise<{ files: Artifact[] }> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const response = await fetch(`${BACKEND_URL}/api/vault?path=${encodeURIComponent(path)}`, {
+          headers: {
+              'Authorization': `Bearer ${token}`
+          }
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load vault");
+      }
+      return response.json();
+    }
+  },
+
+  jobs: {
+    async create(projectId: string, type: "ingest" | "generate", payload: any): Promise<{ job_id: string }> {
+      const response = await fetch(`${BACKEND_URL}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          type,
+          payload
         })
-        .select()
-        .single();
-      if (error) throw error;
-      return data as Project;
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Failed to create job" }));
+        throw new Error(err.detail || "Failed to create job");
+      }
+      return response.json();
     },
-    async delete(id: string) {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+
+    async getStatus(jobId: string): Promise<Job> {
+      const response = await fetch(`${BACKEND_URL}/api/jobs/${jobId}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Failed to get job status" }));
+        throw new Error(err.detail || "Failed to get job status");
+      }
+      return response.json();
+    },
+
+    async poll(jobId: string, onUpdate: (job: Job) => void, intervalMs = 1000): Promise<Job> {
+      return new Promise((resolve, reject) => {
+        const check = async () => {
+          try {
+            const job = await this.getStatus(jobId);
+            onUpdate(job);
+            
+            if (job.status === "completed") {
+              resolve(job);
+            } else if (job.status === "failed") {
+              reject(new Error(job.error_message || "Job failed"));
+            } else {
+              setTimeout(check, intervalMs);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        };
+        check();
+      });
     }
   },
-  assets: {
-    async list(projectId?: string) {
-      let query = supabase.from('assets').select('*');
-      if (projectId) {
-        query = query.eq('project_id', projectId);
+
+  upload: {
+    async uploadAndIngest(
+      projectId: string, 
+      file: File, 
+      folder: string = "/",
+      onProgress?: (job: Job) => void
+    ): Promise<{ job_id: string; job: Job }> {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+      
+      // Determine source type from file
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      let sourceType: string;
+      
+      if (["mp3", "wav", "m4a", "ogg", "flac"].includes(ext)) {
+        sourceType = "audio";
+      } else if (["mp4", "mov", "avi", "webm", "mkv"].includes(ext)) {
+        sourceType = "video";
+      } else if (ext === "pdf") {
+        sourceType = "pdf";
+      } else if (ext === "pptx") {
+        sourceType = "pptx";
+      } else if (["md", "txt"].includes(ext)) {
+        sourceType = "md";
       } else {
-        query = query.is('project_id', null);
+        throw new Error(`Unsupported file type: ${ext}`);
       }
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
-      return data as Asset[];
-    },
-    async delete(id: string) {
-      const { error } = await supabase
-        .from('assets')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      
+      // Create form data
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("source_type", sourceType);
+      formData.append("folder", folder);
+      
+      // Upload and create ingest job (include auth token)
+      const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/upload`, {
+        method: "POST",
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(err.detail || "Upload failed");
+      }
+      
+      const { job_id } = await response.json();
+      
+      // Poll for completion
+      const job = await api.jobs.poll(job_id, onProgress || (() => {}));
+      
+      return { job_id, job };
     }
   },
-  artifacts: {
-    async list(type?: string) {
-      let query = supabase.from('artifacts').select('*');
-      if (type) {
-        query = query.eq('type', type);
-      }
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
-      return data as Artifact[];
-    }
-  },
+
   points: {
-    async getBalance() {
+    async getBalance(): Promise<number> {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return 0;
+      
       const { data, error } = await supabase
-        .from('honey_points')
-        .select('amount')
-        .eq('user_id', userData.user.id);
-      if (error) throw error;
+        .from("honey_points")
+        .select("amount")
+        .eq("user_id", userData.user.id);
+      
+      if (error) {
+        // Table might not exist yet, return 0
+        console.warn("Could not fetch honey points:", error.message);
+        return 0;
+      }
+      
       return data.reduce((sum, entry) => sum + entry.amount, 0);
     }
   }
