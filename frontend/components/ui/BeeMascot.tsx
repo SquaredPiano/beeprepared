@@ -19,7 +19,7 @@ const hoverAnimation = {
   transition: {
     duration: 3,
     repeat: Infinity,
-    ease: "easeInOut"
+    ease: "easeInOut" as const
   }
 };
 
@@ -35,7 +35,7 @@ export const BeeMascot = () => {
   useEffect(() => {
     // Start hidden, then fly in
     flyTo('hidden');
-    
+
     const flyInTimer = setTimeout(() => {
       flyTo('bottom-right');
       say("Welcome back! Ready to study?", 4000);
@@ -50,7 +50,7 @@ export const BeeMascot = () => {
       // Pick a random interval that's different from the last one
       let availableIntervals = INTERVAL_OPTIONS.filter(i => i !== lastIntervalRef.current);
       if (availableIntervals.length === 0) availableIntervals = INTERVAL_OPTIONS;
-      
+
       const nextInterval = availableIntervals[Math.floor(Math.random() * availableIntervals.length)];
       lastIntervalRef.current = nextInterval;
 
@@ -64,10 +64,10 @@ export const BeeMascot = () => {
           "Time flies when you're learning!"
         ];
         const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-        
+
         flyTo('bottom-right');
         say(randomMessage, 5000);
-        
+
         // Schedule next appearance
         scheduleNextAppearance();
       }, nextInterval);
@@ -90,11 +90,11 @@ export const BeeMascot = () => {
         initial="hidden"
         animate={position}
         variants={positionVariants}
-        transition={{ 
-          type: "spring", 
-          stiffness: 60, 
-          damping: 15, 
-          mass: 1.2 
+        transition={{
+          type: "spring",
+          stiffness: 60,
+          damping: 15,
+          mass: 1.2
         }}
         className="relative w-full h-full"
       >
@@ -130,8 +130,8 @@ export const BeeMascot = () => {
           onClick={() => useMascotStore.getState().say("Keep up the great work!")}
         >
           <div className="absolute -bottom-4 left-1/4 w-1/2 h-2 bg-black/20 blur-md rounded-full" />
-          
-          <Image 
+
+          <Image
             src="/logo.png"
             alt="BeePrepared Mascot"
             width={128}
@@ -141,7 +141,7 @@ export const BeeMascot = () => {
             onError={(e) => {
               // Fallback if image is missing
               const target = e.target as HTMLImageElement;
-              target.src = "https://img.icons8.com/color/96/bee.png"; 
+              target.src = "https://img.icons8.com/color/96/bee.png";
             }}
           />
         </motion.div>

@@ -7,21 +7,23 @@ import { useCanvasStore } from '@/store/useCanvasStore'
 
 export function ResultNode({ id, data }: NodeProps & { id: string }) {
   const Icon = data.type === 'flashcards' ? BookOpen : data.type === 'quiz' ? Trophy : GraduationCap
-  const { deleteNodes } = useReactFlow()
+  const { setNodes, getNodes } = useReactFlow()
   const { takeSnapshot } = useCanvasStore()
 
+  const handleDelete = () => {
+    setNodes(getNodes().filter(node => node.id !== id))
+    takeSnapshot()
+  }
+
   return (
-    <NodeContextMenu 
+    <NodeContextMenu
       nodeType="result"
-      onDelete={() => {
-        deleteNodes([{ id }])
-        takeSnapshot()
-      }}
+      onDelete={handleDelete}
       onPractice={() => {
         // Practice logic
       }}
     >
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="px-4 py-3 shadow-2xl rounded-2xl bg-white border-2 border-honey min-w-[200px] group relative"
@@ -32,23 +34,23 @@ export function ResultNode({ id, data }: NodeProps & { id: string }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-bold text-honey uppercase tracking-[0.2em]">Result</p>
-            <p className="text-sm font-bold text-bee-black truncate">{data.label || 'Artifact'}</p>
+            <p className="text-sm font-bold text-bee-black truncate">{String(data.label || 'Artifact')}</p>
           </div>
         </div>
-        
+
         <div className="mt-3 pt-3 border-t border-wax flex justify-between items-center">
           <span className="text-[10px] font-medium text-bee-black/40 italic">Ready for review</span>
-          <Link 
+          <Link
             href={data.href || `/artifacts/${id}`}
             className="flex items-center gap-1.5 text-[10px] font-bold text-honey hover:text-bee-black transition-colors"
           >
             VIEW <Eye className="w-3 h-3" />
           </Link>
         </div>
-  
-        <Handle 
-          type="target" 
-          position={Position.Left} 
+
+        <Handle
+          type="target"
+          position={Position.Left}
           className="w-3 h-3 bg-honey border-2 border-white !-left-1.5"
         />
       </motion.div>

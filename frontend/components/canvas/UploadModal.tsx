@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { 
-  X, 
-  Upload, 
-  File, 
-  CheckCircle2, 
-  Loader2, 
+import {
+  X,
+  Upload,
+  File,
+  CheckCircle2,
+  Loader2,
   AlertCircle,
   FileText,
   Video,
@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
 import { useIngestionStore } from "@/store/ingestionStore";
+import { useCanvasStore } from "@/store/useCanvasStore";
 import { useMascotAI } from "@/hooks/useMascotAI";
 
 interface UploadModalProps {
@@ -30,7 +31,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addFile } = useIngestionStore();
+  const { uploadFile } = useCanvasStore();
   const { triggerReaction } = useMascotAI();
 
   const handleDrag = (e: React.DragEvent) => {
@@ -71,22 +72,20 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
 
   const handleUpload = async () => {
     if (files.length === 0) return;
-    
+
     setUploading(true);
     playSound("complete");
-    
-    // Simulate upload progress
-    for (let i = 0; i <= 100; i += 10) {
-      setProgress(i);
-      await new Promise(r => setTimeout(r, 100));
-    }
 
-    // Add to ingestion store
-    files.forEach(file => {
-      // Logic to add to ingestion store and eventually create a node
-      // For now we'll just simulate it
-      console.log("Uploading file:", file.name);
-    });
+    // Upload files directly via store action which calls backend API
+    for (const file of files) {
+      try {
+        await uploadFile(file);
+        // Simulate some progress for UI feedback
+        setProgress(100);
+      } catch (err) {
+        console.error("Failed to upload", file.name, err);
+      }
+    }
 
     // Mascot reaction to upload complete
     if (files.length > 0) {
@@ -117,7 +116,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
             onClick={onClose}
             className="absolute inset-0 bg-bee-black/60 backdrop-blur-sm"
           />
-          
+
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -130,7 +129,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                 <h2 className="text-2xl font-display font-bold uppercase tracking-tight">Ingest Artifacts</h2>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">Support for PDF, MP4, MP3, PPTX</p>
               </div>
-              <button 
+              <button
                 onClick={onClose}
                 className="p-3 hover:bg-honey-100 rounded-2xl transition-colors opacity-40 hover:opacity-100"
               >
@@ -160,7 +159,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                       onChange={handleChange}
                       className="hidden"
                     />
-                    
+
                     <div className="flex flex-col items-center gap-6 text-center relative z-10">
                       <div className="w-20 h-20 rounded-[1.5rem] bg-honey-100 flex items-center justify-center text-honey-600 group-hover:scale-110 transition-transform duration-500">
                         <Upload size={32} />
@@ -195,16 +194,16 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                           >
                             <div className="flex items-center gap-4">
                               <div className="w-10 h-10 rounded-xl bg-honey-100 flex items-center justify-center text-honey-600">
-                                {file.type.includes("video") ? <Video size={18} /> : 
-                                 file.type.includes("audio") ? <Music size={18} /> : 
-                                 <FileText size={18} />}
+                                {file.type.includes("video") ? <Video size={18} /> :
+                                  file.type.includes("audio") ? <Music size={18} /> :
+                                    <FileText size={18} />}
                               </div>
                               <div className="text-left">
                                 <p className="text-xs font-bold uppercase tracking-widest truncate max-w-[200px]">{file.name}</p>
                                 <p className="text-[10px] opacity-40 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
                               </div>
                             </div>
-                            <button 
+                            <button
                               onClick={(e) => { e.stopPropagation(); removeFile(index); }}
                               className="p-2 hover:bg-red-50 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
                             >
@@ -221,8 +220,8 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                     onClick={handleUpload}
                     className={cn(
                       "w-full py-6 rounded-[2rem] text-xs font-bold uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-4 shadow-xl",
-                      files.length > 0 
-                        ? "bg-bee-black text-white hover:bg-honey-600 hover:scale-[1.02] active:scale-[0.98]" 
+                      files.length > 0
+                        ? "bg-bee-black text-white hover:bg-honey-600 hover:scale-[1.02] active:scale-[0.98]"
                         : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
                     )}
                   >
