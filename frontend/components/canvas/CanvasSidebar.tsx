@@ -48,7 +48,7 @@ const agents = [
     color: 'purple' as const,
   },
   {
-    type: 'result',
+    type: 'generator',
     subType: 'flashcards',
     icon: Layers,
     label: 'Flashcards',
@@ -56,7 +56,7 @@ const agents = [
     color: 'honey' as const,
   },
   {
-    type: 'result',
+    type: 'generator',
     subType: 'quiz',
     icon: HelpCircle,
     label: 'Quiz',
@@ -64,7 +64,7 @@ const agents = [
     color: 'orange' as const,
   },
   {
-    type: 'result',
+    type: 'generator',
     subType: 'exam',
     icon: FileText,
     label: 'Exam',
@@ -72,12 +72,20 @@ const agents = [
     color: 'red' as const,
   },
   {
-    type: 'result',
-    subType: 'pptx',
+    type: 'generator',
+    subType: 'slides',
     icon: Presentation,
     label: 'Slides',
     description: 'Generate presentation',
     color: 'indigo' as const,
+  },
+  {
+    type: 'generator',
+    subType: 'notes',
+    icon: FileText,
+    label: 'Notes',
+    description: 'Generate study notes',
+    color: 'green' as const,
   },
 ];
 
@@ -96,6 +104,9 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
 
   const hasSource = useMemo(() => nodes.some(n => n.type === 'asset'), [nodes]);
   const hasProcess = useMemo(() => nodes.some(n => n.type === 'process'), [nodes]);
+  const hasKnowledgeCore = useMemo(() => nodes.some(n => 
+    n.type === 'artifactNode' && n.data?.type === 'knowledge_core'
+  ), [nodes]);
 
   return (
     <motion.aside
@@ -176,8 +187,8 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
             key={agent.subType}
             {...agent}
             collapsed={isSidebarCollapsed}
-            disabled={agent.type === 'result' && !hasProcess}
-            tooltip={agent.type === 'result' && !hasProcess ? "Add a processor first" : undefined}
+            disabled={agent.type === 'generator' && !hasKnowledgeCore}
+            tooltip={agent.type === 'generator' && !hasKnowledgeCore ? "Upload a source first to create a Knowledge Core" : undefined}
           />
         ))}
       </div>
