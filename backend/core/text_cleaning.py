@@ -74,7 +74,7 @@ class TextCleaningService:
         logger.info("Sending text to Gemini for refinement...")
         
         prompt = f"""
-        You are an expert editor processing raw audio transcripts.
+        You are an expert editor processing raw transcripts and documents.
         Your goal is to IMPROVE clarity and correctness WITHOUT summarizing or changing the meaning.
 
         Instructions:
@@ -84,7 +84,14 @@ class TextCleaningService:
         4. Fix grammar/sentence structure for readability.
         5. DO NOT summarize. Output length should be roughly same as input.
         6. Return ONLY the cleaned text.
-
+        
+        CRITICAL FORMATTING RULES:
+        - Output MUST be PLAIN TEXT only
+        - NO markdown formatting: no *, **, _, `, #, - (bullet markers), or numbered lists like "1."
+        - NO special characters: no $, %, ^, or LaTeX
+        - Write bullets as complete sentences separated by periods
+        - Write lists as flowing prose
+        
         Raw Text:
         {text}
         """
@@ -92,11 +99,42 @@ class TextCleaningService:
         try:
             response = self.model.generate_content(prompt)
             if response.text:
-                return response.text.strip()
+                cleaned = response.text.strip()
+                # Post-process to remove any remaining markdown artifacts
+                cleaned = self._strip_markdown_artifacts(cleaned)
+                return cleaned
             return text
         except Exception as e:
             logger.error(f"Gemini cleaning failed: {e}")
             return text
+    
+    def _strip_markdown_artifacts(self, text: str) -> str:
+        """
+        Post-process to remove any markdown formatting that slipped through.
+        """
+        import re
+        
+        # Remove bold/italic markers (**, *, __, _)
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)       # *italic*
+        text = re.sub(r'__([^_]+)__', r'\1', text)       # __bold__
+        text = re.sub(r'_([^_]+)_', r'\1', text)         # _italic_
+        
+        # Remove code markers (` and ```)
+        text = re.sub(r'```[^`]*```', '', text)          # code blocks
+        text = re.sub(r'`([^`]+)`', r'\1', text)         # inline code
+        
+        # Remove headers (#, ##, ###, etc.)
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove remaining standalone asterisks/underscores at word boundaries
+        text = re.sub(r'(?<!\w)\*+(?!\w)', ' ', text)
+        text = re.sub(r'(?<!\w)_+(?!\w)', ' ', text)
+        
+        # Clean up any doubled spaces
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
 
     def clean_text(self, text: str, use_llm: bool = True) -> str:
         """
