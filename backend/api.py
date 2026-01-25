@@ -12,10 +12,11 @@ Core logic is executed by JobRunner in async loop.
 
 import os
 import logging
+import tempfile
 from uuid import UUID
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from supabase import create_client, Client
@@ -65,6 +66,21 @@ class JobStatusResponse(BaseModel):
     payload: dict
     result: Optional[dict] = None
     error_message: Optional[str] = None
+
+
+class ProjectCreate(BaseModel):
+    """Request body for POST /api/projects."""
+    name: str
+    description: Optional[str] = None
+    user_id: str
+
+
+class ProjectResponse(BaseModel):
+    """Response for project creation."""
+    id: str
+    name: str
+    description: Optional[str] = None
+    user_id: str
 
 
 # ============================================================================
@@ -217,6 +233,104 @@ async def list_project_artifacts(project_id: str):
         
     except Exception as e:
         logger.error(f"Failed to list artifacts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project(request: ProjectCreate):
+    """
+    Create a new project.
+    """
+    logger.info(f"Creating project: {request.name} for user {request.user_id}")
+    
+    try:
+        supabase = get_supabase()
+        response = supabase.table("projects").insert({
+            "name": request.name,
+            "description": request.description,
+            "user_id": request.user_id,
+            "canvas_state": {
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+                "node_positions": {}
+            }
+        }).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create project")
+        
+        project = response.data[0]
+        logger.info(f"Created project: {project['id']}")
+        
+        return ProjectResponse(
+            id=project["id"],
+            name=project["name"],
+            description=project.get("description"),
+            user_id=project["user_id"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects/{project_id}/upload")
+async def upload_and_ingest(
+    project_id: str,
+    file: UploadFile = File(...),
+    source_type: str = Form(...)
+):
+    """
+    Upload a file and create an ingest job.
+    
+    This endpoint:
+    1. Saves the uploaded file temporarily
+    2. Creates an ingest job with the file path
+    3. Returns the job_id for polling
+    
+    source_type must be one of: audio, video, pdf, pptx, md
+    """
+    logger.info(f"Upload request: project={project_id}, file={file.filename}, type={source_type}")
+    
+    if source_type not in {"audio", "video", "pdf", "pptx", "md"}:
+        raise HTTPException(status_code=400, detail=f"Invalid source_type: {source_type}")
+    
+    try:
+        # Save file to temp directory
+        suffix = f".{file.filename.split('.')[-1]}" if '.' in file.filename else ""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        logger.info(f"Saved uploaded file to: {tmp_path}")
+        
+        # Create ingest job
+        supabase = get_supabase()
+        response = supabase.table("jobs").insert({
+            "project_id": project_id,
+            "type": "ingest",
+            "status": "pending",
+            "payload": {
+                "source_type": source_type,
+                "source_ref": tmp_path,
+                "original_name": file.filename
+            }
+        }).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to create ingest job")
+        
+        job_id = response.data[0]["id"]
+        logger.info(f"Created ingest job: {job_id}")
+        
+        return {"job_id": job_id, "filename": file.filename}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

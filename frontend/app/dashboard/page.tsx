@@ -202,8 +202,6 @@ export default function DashboardPage() {
                       <h3 className="font-bold text-xl tracking-tight text-bee-black group-hover:text-honey transition-colors uppercase leading-none mb-2">{project.name}</h3>
                       <p className="text-[10px] text-bee-black/40 font-bold uppercase tracking-widest flex items-center gap-2">
                         Updated {new Date(project.updated_at).toLocaleDateString()}
-                        <span className="w-1 h-1 rounded-full bg-wax" />
-                        {project.nodes?.length || 0} Nodes
                       </p>
                     </div>
                   </Link>

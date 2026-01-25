@@ -29,6 +29,7 @@ import { useCanvasStore } from "@/store/useCanvasStore";
 import { AssetNode } from "./nodes/AssetNode";
 import { ProcessNode } from "./nodes/ProcessNode";
 import { ResultNode } from "./nodes/ResultNode";
+import { ArtifactNode } from "./nodes/ArtifactNode";
 
 import { CanvasHeader } from "./CanvasHeader";
 import { CanvasSidebar } from "./CanvasSidebar";
@@ -46,6 +47,7 @@ const nodeTypes = {
   asset: AssetNode,
   process: ProcessNode,
   result: ResultNode,
+  artifactNode: ArtifactNode,
 };
 
 function BeeCanvasInner() {
