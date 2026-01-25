@@ -16,6 +16,62 @@ import {
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
+import { api, Artifact, ArtifactEdge } from "@/lib/api";
+
+// Maps artifact types to node display info
+const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  video: { label: "Video", color: "#8B5CF6", icon: "🎬" },
+  audio: { label: "Audio", color: "#EC4899", icon: "🎵" },
+  text: { label: "Standard Text", color: "#6B7280", icon: "📄" },
+  flat_text: { label: "Refined Text", color: "#10B981", icon: "✨" },
+  knowledge_core: { label: "Project Core", color: "#F59E0B", icon: "🧠" },
+
+  quiz: { label: "Quiz", color: "#3B82F6", icon: "❓" },
+  flashcards: { label: "Flashcards", color: "#8B5CF6", icon: "🃏" },
+  notes: { label: "Notes", color: "#10B981", icon: "📝" },
+  slides: { label: "Slides", color: "#F97316", icon: "📊" },
+  exam: { label: "Exam", color: "#EF4444", icon: "📋" },
+};
+
+// Convert an artifact to a React Flow node
+function artifactToNode(artifact: Artifact, position: { x: number; y: number }): Node {
+  const config = ARTIFACT_TYPE_CONFIG[artifact.type] || { label: artifact.type, color: "#6B7280", icon: "📦" };
+  
+  return {
+    id: artifact.id,
+    type: "artifactNode",
+    position,
+    data: {
+      label: config.label,
+      type: artifact.type,
+      icon: config.icon,
+      color: config.color,
+      artifact,
+      status: "completed",
+    },
+  };
+}
+
+// Convert an artifact edge to a React Flow edge
+function artifactEdgeToFlowEdge(edge: ArtifactEdge): Edge {
+  return {
+    id: edge.id,
+    source: edge.parent_artifact_id,
+    target: edge.child_artifact_id,
+    animated: true,
+    markerEnd: { 
+      type: MarkerType.ArrowClosed, 
+      color: "#FCD34F",
+    },
+    style: { 
+      stroke: "#FCD34F", 
+      strokeWidth: 2,
+    },
+    data: {
+      relationship: edge.relationship_type,
+    },
+  };
+}
 
 interface CanvasState {
   nodes: Node[];
@@ -23,6 +79,7 @@ interface CanvasState {
   currentProjectId: string | null;
   projectName: string;
   isSaving: boolean;
+  isUploading: boolean;
   isDragging: boolean;
   isLocked: boolean;
   showMiniMap: boolean;
@@ -52,9 +109,13 @@ interface CanvasState {
   takeSnapshot: () => void;
   
     save: () => Promise<void>;
+    autoSave: () => void;
     runFlow: () => Promise<void>;
+
     loadProject: (id: string) => Promise<void>;
     createNewProject: () => void;
+    uploadFile: (file: File) => Promise<void>;
+    refreshArtifacts: () => Promise<void>;
   }
   
   export const useCanvasStore = create<CanvasState>()(
@@ -65,6 +126,7 @@ interface CanvasState {
         currentProjectId: null,
         projectName: generateProjectName(),
         isSaving: false,
+        isUploading: false,
         isDragging: false,
         isLocked: false,
         showMiniMap: true,
@@ -99,13 +161,17 @@ interface CanvasState {
         setIsHeaderCollapsed: (isHeaderCollapsed) => set({ isHeaderCollapsed }),
         setIsSidebarCollapsed: (isSidebarCollapsed) => set({ isSidebarCollapsed }),
         setViewport: (viewport) => set({ viewport }),
-        setProjectName: (projectName) => set({ projectName }),
+        setProjectName: (projectName) => {
+          set({ projectName });
+          get().autoSave();
+        },
   
         onNodesChange: (changes) => {
           if (get().isLocked) return;
           set({
             nodes: applyNodeChanges(changes, get().nodes),
           });
+          get().autoSave();
         },
   
         onEdgesChange: (changes) => {
@@ -113,6 +179,7 @@ interface CanvasState {
           set({
             edges: applyEdgeChanges(changes, get().edges),
           });
+          get().autoSave();
         },
   
         onConnect: (connection: Connection) => {
@@ -159,49 +226,58 @@ interface CanvasState {
           }
         },
   
+        autoSave: () => {
+          const { currentProjectId, isSaving } = get();
+          if (!currentProjectId || isSaving) return;
+          
+          // Use a simple timer-based debounce for auto-save
+          const timeoutId = (window as any)._autoSaveTimeout;
+          if (timeoutId) clearTimeout(timeoutId);
+          
+          (window as any)._autoSaveTimeout = setTimeout(() => {
+            get().save();
+          }, 3000); // Save after 3s of inactivity
+        },
+
         save: async () => {
           const { nodes, edges, currentProjectId, projectName, viewport } = get();
           set({ isSaving: true });
   
           try {
-            const { data: userData } = await supabase.auth.getUser();
-            
-            const projectData = {
-              name: projectName,
-              nodes,
-              edges,
+            const canvas_state = {
               viewport,
-              user_id: userData.user?.id || null,
-              updated_at: new Date().toISOString(),
+              nodes, 
+              edges,
             };
+
+
   
-            let result;
             if (currentProjectId) {
-              result = await supabase
-                .from("projects")
-                .update(projectData)
-                .eq("id", currentProjectId)
-                .select()
-                .single();
+              const updatedProject = await api.projects.update(currentProjectId, {
+                name: projectName,
+                canvas_state,
+              });
+              // Sync back in case server modified it
+              set({ projectName: updatedProject.name });
             } else {
-              result = await supabase
-                .from("projects")
-                .insert({ ...projectData, name: projectName || generateProjectName() })
-                .select()
-                .single();
+              const project = await api.projects.create(projectName, "");
+              set({ currentProjectId: project.id });
+              
+              const url = new URL(window.location.href);
+              url.searchParams.set("id", project.id);
+              window.history.pushState({}, "", url.toString());
             }
+
   
-            if (result.error) throw result.error;
-  
-            set({ currentProjectId: result.data.id });
-            toast.success("Project saved");
+            // toast.success("Hive saved successfully"); // Disable toast for auto-save to be silent
           } catch (error: any) {
             console.error("Save error:", error);
-            toast.error(`Failed to save: ${error.message}`);
+            // toast.error(`Failed to save: ${error.message}`);
           } finally {
             set({ isSaving: false });
           }
         },
+
   
         runFlow: async () => {
           const { nodes, edges, currentProjectId } = get();
@@ -240,42 +316,185 @@ interface CanvasState {
 
       loadProject: async (id: string) => {
         try {
-          const { data, error } = await supabase
-            .from("projects")
-            .select("*")
-            .eq("id", id)
-            .single();
+          // 1. Load project metadata (master source of UI state)
+          const project = await api.projects.get(id);
+          
+          // 2. Load artifacts for data sync
+          const { artifacts, edges: artifactEdges } = await api.projects.getArtifacts(id);
+          
+          // 3. Get UI structure from canvas_state
+          let nodes: Node[] = project.canvas_state?.nodes || [];
+          let edges: Edge[] = project.canvas_state?.edges || [];
+          
+          // 4. If legacy project (no nodes in canvas_state), use artifact mapping
+          if (nodes.length === 0 && artifacts.length > 0) {
+            nodes = artifacts.map((artifact, index) => {
+              return artifactToNode(artifact, {
+                x: 100 + (index % 4) * 250,
+                y: 100 + Math.floor(index / 4) * 150,
+              });
+            });
+            edges = artifactEdges.map(artifactEdgeToFlowEdge);
+          } else {
+            // Sync status/data from actual artifacts into saved nodes
+            nodes = nodes.map(node => {
+              if (node.type === 'artifactNode' || node.type === 'asset' || node.type === 'result') {
+                const artifact = artifacts.find((a: any) => a.id === node.id || (node.data as any)?.artifact?.id === a.id);
+                if (artifact) {
+                  return {
+                    ...node,
+                    data: { ...node.data, artifact, status: 'completed' }
+                  };
+                }
+              }
+              return node;
+            });
 
-          if (error) throw error;
+
+          }
+          
+          const viewport = project.canvas_state?.viewport || { x: 0, y: 0, zoom: 1 };
 
           set({
-            nodes: data.nodes || [],
-            edges: data.edges || [],
-            currentProjectId: data.id,
-            projectName: data.name,
-            viewport: data.viewport || { x: 0, y: 0, zoom: 1 },
+            nodes,
+            edges,
+            currentProjectId: project.id,
+            projectName: project.name,
+            viewport,
             history: [],
             historyIndex: -1,
           });
           
           get().takeSnapshot();
         } catch (error: any) {
+          console.error("Load project error:", error);
           toast.error(`Failed to load project: ${error.message}`);
         }
       },
 
-      createNewProject: () => {
+
+      createNewProject: async () => {
+        const newName = generateProjectName();
         set({
           nodes: [],
           edges: [],
           currentProjectId: null,
-          projectName: generateProjectName(),
+          projectName: newName,
           viewport: { x: 0, y: 0, zoom: 1 },
           history: [],
           historyIndex: -1,
         });
         get().takeSnapshot();
+        
+        // Immediately persist to avoid ID null issues
+        try {
+          const project = await api.projects.create(newName, "");
+          set({ currentProjectId: project.id });
+          const url = new URL(window.location.href);
+          url.searchParams.set("id", project.id);
+          window.history.pushState({}, "", url.toString());
+        } catch (err) {
+          console.error("Failed to persist new project:", err);
+        }
       },
+
+
+      uploadFile: async (file: File) => {
+        const { currentProjectId } = get();
+        
+        if (!currentProjectId) {
+          toast.error("Save your project first");
+          return;
+        }
+        
+        set({ isUploading: true });
+        
+        try {
+          await api.upload.uploadAndIngest(
+            currentProjectId,
+            file,
+            (job) => {
+              // Optional: show progress updates
+              console.log(`Job ${job.id} status: ${job.status}`);
+            }
+          );
+          
+          toast.success(`${file.name} processed successfully`);
+          
+          // Refresh artifacts to show new nodes
+          await get().refreshArtifacts();
+        } catch (error: any) {
+          console.error("Upload error:", error);
+          toast.error(`Upload failed: ${error.message}`);
+        } finally {
+          set({ isUploading: false });
+        }
+      },
+
+      refreshArtifacts: async () => {
+        const { currentProjectId } = get();
+        
+        if (!currentProjectId) return;
+        
+        try {
+          const project = await api.projects.get(currentProjectId);
+          const { artifacts, edges: artifactEdges } = await api.projects.getArtifacts(currentProjectId);
+          
+          let nodes: Node[] = project.canvas_state?.nodes || get().nodes;
+          let edges: Edge[] = project.canvas_state?.edges || get().edges;
+          
+          // If no nodes yet, map from artifacts (safety for new/empty projects)
+          if (nodes.length === 0 && artifacts.length > 0) {
+            nodes = artifacts.map((artifact, index) => artifactToNode(artifact, {
+              x: 100 + (index % 4) * 250,
+              y: 100 + Math.floor(index / 4) * 150,
+            }));
+            edges = artifactEdges.map(artifactEdgeToFlowEdge);
+          } else {
+            // Sync artifact data into nodes
+            nodes = nodes.map(node => {
+              if (node.type === 'artifactNode' || node.type === 'asset' || node.type === 'result') {
+                const artifact = artifacts.find((a: any) => a.id === node.id || (node.data as any)?.artifact?.id === a.id);
+                if (artifact) {
+                  return {
+                    ...node,
+                    data: { ...node.data, artifact, status: 'completed' }
+                  };
+                }
+              }
+              return node;
+            });
+
+            
+            // Add any new artifacts that aren't on canvas yet
+            const existingIds = new Set(nodes.map(n => n.id));
+            let newAdded = false;
+            
+            artifacts.forEach((artifact, index) => {
+              if (!existingIds.has(artifact.id)) {
+                nodes.push(artifactToNode(artifact, {
+                  x: 100 + (nodes.length % 4) * 250,
+                   y: 100 + Math.floor(nodes.length / 4) * 150,
+                }));
+                newAdded = true;
+              }
+            });
+
+            if (newAdded) {
+               // If we added new nodes, try to auto-save the position
+               set({ nodes });
+            }
+
+          }
+          
+          set({ nodes, edges });
+          get().takeSnapshot();
+        } catch (error: any) {
+          console.error("Refresh error:", error);
+          toast.error(`Failed to refresh: ${error.message}`);
+        }
+      },
+
     }),
     {
       name: "bee-canvas-storage",

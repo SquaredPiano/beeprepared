@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 interface NodeContextMenuProps {
   children: React.ReactNode;
-  nodeType: 'asset' | 'process' | 'result';
+  nodeType: 'asset' | 'process' | 'result' | 'artifact';
   onPreview?: () => void;
   onDelete?: () => void;
   onDisconnect?: () => void;

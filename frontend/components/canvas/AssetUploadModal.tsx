@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
 import { 
   X, 
   Upload, 
@@ -10,117 +12,153 @@ import {
   Video, 
   Presentation, 
   Loader2, 
-  Database, 
-  Check, 
-  Plus,
-  ArrowRight,
-  Search,
-  Trash2
+  Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
-import { api, Asset } from "@/lib/api";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { api } from "@/lib/api";
+import { useCanvasStore } from "@/store/useCanvasStore";
 
 interface AssetUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpload: (asset: { label: string; type: "pdf" | "video" | "pptx"; id: string }) => void;
+  onUpload?: (asset: { label: string; type: "pdf" | "video" | "pptx"; id: string }) => void;
 }
 
 export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModalProps) {
   const [isUploading, setIsUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState("upload");
-  const [existingAssets, setExistingAssets] = useState<Asset[]>([]);
-  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<string>("Uploading...");
+  const [activeTab, setActiveTab] = useState<"upload" | "library">("upload");
+  const [existingArtifacts, setExistingArtifacts] = useState<any[]>([]);
+  
+  // Vault / Folder State
+  const [folderPath, setFolderPath] = useState("/");
+  const [viewingPath, setViewingPath] = useState("/");
 
-  const fetchAssets = useCallback(async () => {
-    setIsLoadingAssets(true);
-    try {
-      const assets = await api.assets.list();
-      setExistingAssets(assets);
-    } catch (error) {
-      console.error("Failed to fetch assets:", error);
-    } finally {
-      setIsLoadingAssets(false);
-    }
-  }, []);
+  const { currentProjectId, uploadFile, refreshArtifacts, setNodes, nodes, takeSnapshot } = useCanvasStore();
 
   useEffect(() => {
-    if (isOpen && activeTab === "workspace") {
-      fetchAssets();
+    if (isOpen && activeTab === "library") {
+      loadVault();
     }
-  }, [isOpen, activeTab, fetchAssets]);
+  }, [isOpen, activeTab]);
+
+  const loadVault = async () => {
+    try {
+      // Fetch everything for the user (Global Vault)
+      const { files } = await api.vault.list("/");
+      setExistingArtifacts(files);
+    } catch (error) {
+      console.error("Failed to load vault:", error);
+      toast.error("Could not load Knowledge Vault");
+    }
+  };
+
+  const filteredArtifacts = existingArtifacts.filter(a => {
+     if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix? 
+     // Simple exact match for "Folder" simulation
+     return a.folder_path === viewingPath;
+  });
+
+  const selectExistingArtifact = (artifact: any) => {
+    // Convert artifact to node and add to canvas
+    const newNode = {
+      id: artifact.id,
+      type: "artifactNode",
+      position: { x: 100, y: 100 },
+      data: {
+        label: artifact.type.toUpperCase(),
+        type: artifact.type,
+        artifact: artifact,
+        status: "completed"
+      }
+    };
+    
+    setNodes([...nodes, newNode as any]);
+    takeSnapshot();
+    onClose();
+    toast.success("Artifact added to canvas");
+  };
+
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
-    setIsUploading(true);
     const file = acceptedFiles[0];
     
+    let projectId = currentProjectId;
+    
+    if (!projectId) {
+      setUploadProgress("Initializing project...");
+      try {
+        await useCanvasStore.getState().save();
+        projectId = useCanvasStore.getState().currentProjectId;
+        if (!projectId) throw new Error("Failed to initialize project");
+      } catch (err: any) {
+        toast.error("Could not initialize project for upload");
+        setIsUploading(false);
+        return;
+      }
+    }
+
+    setIsUploading(true);
+    setUploadProgress("Uploading file...");
+    
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error("Authentication protocol required");
+      // Use the canvas store's uploadFile which handles the full pipeline
+      setUploadProgress("Processing...");
+      
+      await api.upload.uploadAndIngest(
+        projectId,
+        file,
+        folderPath || "/",
+        (job) => {
+          if (job.status === "running") {
+            setUploadProgress("Extracting knowledge...");
+          }
+        }
+      );
+      
+      // Refresh the canvas to show new artifacts
+      await refreshArtifacts();
+      
+      toast.success(`${file.name} uploaded successfully`);
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `${userData.user.id}/${fileName}`;
-
-      const { error: uploadError, data } = await supabase.storage
-        .from('assets')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const type = file.type.includes('pdf') ? 'pdf' : 
-                   file.type.includes('video') ? 'video' : 
-                   file.type.includes('presentation') || file.name.endsWith('pptx') ? 'pptx' : 'pdf';
-
-      const { data: assetData, error: dbError } = await supabase
-        .from('assets')
-        .insert({
-          filename: file.name,
-          file_type: type,
-          file_size: file.size,
-          storage_url: data.path,
-          user_id: userData.user.id,
-          status: 'ready'
-        })
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
-
-      toast.success(`${file.name} ingested into Hive`);
-      onUpload({
-        label: file.name,
-        type: type as 'pdf' | 'video' | 'pptx',
-        id: assetData.id
-      });
+      
+      // Optional callback for legacy compatibility
+      if (onUpload) {
+        const type = file.type.includes('pdf') ? 'pdf' : 
+                     file.type.includes('video') ? 'video' : 
+                     file.type.includes('presentation') || file.name.endsWith('pptx') ? 'pptx' : 'pdf';
+        onUpload({
+          label: file.name,
+          type: type as 'pdf' | 'video' | 'pptx',
+          id: 'processed'
+        });
+      }
+      
       onClose();
     } catch (error: any) {
-      toast.error(error.message || "Ingestion protocol failure");
+      console.error("Upload error:", error);
+      toast.error(error.message || "Upload failed");
     } finally {
       setIsUploading(false);
+      setUploadProgress("Uploading...");
     }
-  }, [onUpload, onClose]);
+  }, [currentProjectId, refreshArtifacts, onUpload, onClose]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
       "video/*": [".mp4", ".mov", ".avi"],
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"]
+      "audio/*": [".mp3", ".wav", ".m4a"],
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+      "text/markdown": [".md"],
+      "text/plain": [".txt"]
     },
     multiple: false
   });
-
-  const filteredAssets = existingAssets.filter(asset => 
-    asset.filename.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <AnimatePresence>
@@ -138,55 +176,66 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="relative w-full max-w-3xl bg-cream rounded-[2.5rem] shadow-2xl border border-wax overflow-hidden flex flex-col max-h-[85vh]"
+            className="relative w-full max-w-2xl bg-cream rounded-[2.5rem] shadow-2xl border border-wax overflow-hidden flex flex-col max-h-[85vh]"
           >
             {/* Header */}
             <div className="p-8 border-b border-wax flex justify-between items-center bg-white/50 backdrop-blur-xl shrink-0">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div className="p-3 bg-honey/10 rounded-2xl">
-                  <Database className="w-6 h-6 text-honey" />
+                  <Upload className="w-6 h-6 text-honey" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-serif font-bold text-bee-black">Hive Assets</h2>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-bee-black/40">Knowledge Source Management</p>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setActiveTab("upload")}
+                      className={cn(
+                        "text-xl font-serif font-bold transition-all",
+                        activeTab === "upload" ? "text-bee-black" : "text-bee-black/20 hover:text-bee-black/40"
+                      )}
+                    >
+                      New Upload
+                    </button>
+                    <div className="w-px h-4 bg-wax" />
+                    <button 
+                      onClick={() => setActiveTab("library")}
+                      className={cn(
+                        "text-xl font-serif font-bold transition-all",
+                        activeTab === "library" ? "text-bee-black" : "text-bee-black/20 hover:text-bee-black/40"
+                      )}
+                    >
+                      Knowledge Vault
+                    </button>
+
+                  </div>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-bee-black/40">
+                    {activeTab === "upload" ? "Add a new file to your project" : "Add existing project files to canvas"}
+                  </p>
                 </div>
+
               </div>
               <button onClick={onClose} className="p-2 hover:bg-wax/50 rounded-full transition-colors cursor-pointer group">
                 <X className="w-6 h-6 text-bee-black/20 group-hover:text-bee-black transition-colors" />
               </button>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-              <div className="px-8 bg-white/30 border-b border-wax">
-                <TabsList className="bg-transparent gap-8 h-14 p-0">
-                  <TabsTrigger 
-                    value="upload" 
-                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-honey rounded-none h-full px-0 font-bold uppercase text-[10px] tracking-widest text-bee-black/40 data-[state=active]:text-bee-black"
-                  >
-                    Ingest New
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="workspace" 
-                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-honey rounded-none h-full px-0 font-bold uppercase text-[10px] tracking-widest text-bee-black/40 data-[state=active]:text-bee-black"
-                  >
-                    Hive Library
-                  </TabsTrigger>
-                </TabsList>
-              </div>
 
-              <div className="flex-1 overflow-hidden">
-                <TabsContent value="upload" className="h-full m-0 p-8 flex flex-col gap-8 overflow-y-auto">
+            <div className="p-8 flex flex-col gap-6 overflow-y-auto min-h-[400px]">
+              {activeTab === "upload" ? (
+                <>
                   <div
                     {...getRootProps()}
-                    className={`
-                      relative border-2 border-dashed rounded-[2rem] p-16 transition-all duration-500 flex flex-col items-center gap-6 cursor-pointer group
-                      ${isDragActive ? 'border-honey bg-honey/5' : 'border-wax hover:border-honey/40 hover:bg-honey/5'}
-                      ${isUploading ? 'pointer-events-none opacity-50' : ''}
-                    `}
+                    className={cn(
+                      "relative border-2 border-dashed rounded-[2rem] p-12 transition-all duration-500 flex flex-col items-center gap-6 cursor-pointer group",
+                      isDragActive ? 'border-honey bg-honey/5' : 'border-wax hover:border-honey/40 hover:bg-honey/5',
+                      isUploading && 'pointer-events-none opacity-50'
+                    )}
                   >
                     <input {...getInputProps()} />
                     
-                    <div className={`p-6 rounded-3xl bg-white shadow-xl text-honey transition-all duration-700 ${isDragActive ? 'scale-110 rotate-12 shadow-honey/20' : 'group-hover:scale-105'}`}>
+                    <div className={cn(
+                      "p-6 rounded-3xl bg-white shadow-xl text-honey transition-all duration-700",
+                      isDragActive ? 'scale-110 rotate-12 shadow-honey/20' : 'group-hover:scale-105'
+                    )}>
                       {isUploading ? (
                         <Loader2 className="w-10 h-10 animate-spin" />
                       ) : (
@@ -196,144 +245,118 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
 
                     <div className="text-center space-y-2">
                       <p className="text-xl font-bold text-bee-black">
-                        {isUploading ? 'Processing knowledge layers...' : 'Drop source into the Hive'}
+                        {isUploading ? uploadProgress : 'Drop your file here'}
                       </p>
                       <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest">
-                        PDF • MP4 • PPTX • (MAX 50MB)
+                        PDF • MP4 • MP3 • PPTX • TXT • MD
                       </p>
                     </div>
 
                     {!isUploading && (
                       <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bee-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-bee-black/40">
-                        <Check size={10} className="text-green-500" /> Secure Protocol Active
+                        <Check size={10} className="text-green-500" /> Ready to process
                       </div>
-                    )}
-
-                    {isDragActive && (
-                      <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="absolute inset-0 bg-honey/10 rounded-[2rem] pointer-events-none border-2 border-honey"
-                      />
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      { icon: FileText, label: 'Scientific Docs', sub: 'Technical Analysis', color: 'bg-blue-50 text-blue-500' },
-                      { icon: Video, label: 'Lecture Visuals', sub: 'Visual Extraction', color: 'bg-purple-50 text-purple-500' },
-                      { icon: Presentation, label: 'Architecture Decks', sub: 'Slide Synthesis', color: 'bg-orange-50 text-orange-500' }
-                    ].map((item, i) => (
-                      <div key={i} className="p-6 rounded-3xl bg-white border border-wax hover:border-honey/20 transition-all duration-500 group">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${item.color}`}>
-                          <item.icon className="w-5 h-5" />
-                        </div>
-                        <p className="text-[10px] font-bold text-bee-black uppercase tracking-widest mb-1">{item.label}</p>
-                        <p className="text-[9px] font-bold text-bee-black/30 uppercase tracking-widest">{item.sub}</p>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="workspace" className="h-full m-0 flex flex-col min-h-0">
-                  <div className="p-8 pb-4 shrink-0">
+                  {/* Folder Selection */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Target Folder</label>
                     <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-bee-black/20" />
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-honey">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                      </div>
                       <input 
                         type="text" 
-                        placeholder="Search Hive assets..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full h-12 pl-12 pr-4 bg-white/50 border border-wax rounded-2xl text-sm focus:outline-none focus:border-honey focus:ring-1 focus:ring-honey transition-all font-medium"
+                        value={folderPath}
+                        onChange={(e) => setFolderPath(e.target.value)}
+                        placeholder="/ (Root)"
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-wax rounded-2xl text-xs font-bold text-bee-black focus:outline-none focus:border-honey/40 transition-colors placeholder:text-bee-black/20"
                       />
                     </div>
                   </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  {/* Folder Navigation / Filter */}
+                   <div className="flex items-center gap-2 pb-4 border-b border-wax/50 overflow-x-auto">
+                      <button 
+                        onClick={() => setViewingPath("/")}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2",
+                          viewingPath === "/" ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                        )}
+                      >
+                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                         Root
+                      </button>
+                      
+                      {/* Extract unique folders from artifacts to make quick filters */}
+                      {Array.from(new Set(existingArtifacts.map(a => a.folder_path || "/").filter(p => p !== "/"))).map(folder => (
+                         <button 
+                          key={folder}
+                          onClick={() => setViewingPath(folder)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors whitespace-nowrap",
+                            viewingPath === folder ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                          )}
+                        >
+                           {folder.replace('/', '')}
+                        </button>
+                      ))}
+                   </div>
 
-                  <ScrollArea className="flex-1 px-8">
-                    <div className="grid grid-cols-1 gap-3 py-4 pb-8">
-                      {isLoadingAssets ? (
-                        <div className="py-20 flex flex-col items-center justify-center gap-4 text-bee-black/20">
-                          <Loader2 className="w-8 h-8 animate-spin" />
-                          <p className="text-[10px] uppercase tracking-widest font-bold">Querying Archive...</p>
-                        </div>
-                      ) : filteredAssets.length > 0 ? (
-                        filteredAssets.map((asset) => (
-                          <div 
-                            key={asset.id}
-                            className="group flex items-center justify-between p-4 bg-white hover:bg-honey/5 border border-wax hover:border-honey/20 rounded-[1.5rem] transition-all duration-300 cursor-pointer shadow-sm"
-                            onClick={() => {
-                              onUpload({
-                                label: asset.filename,
-                                type: asset.file_type as 'pdf' | 'video' | 'pptx',
-                                id: asset.id
-                              });
-                              onClose();
-                            }}
-                          >
-                            <div className="flex items-center gap-4 min-w-0">
-                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border border-wax bg-cream group-hover:bg-white transition-colors`}>
-                                {asset.file_type === 'pdf' ? <FileText className="w-5 h-5 text-blue-500" /> :
-                                 asset.file_type === 'video' ? <Video className="w-5 h-5 text-purple-500" /> :
-                                 <Presentation className="w-5 h-5 text-orange-500" />}
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-sm font-bold text-bee-black truncate uppercase tracking-tight">{asset.filename}</h4>
-                                <div className="flex items-center gap-3 text-[9px] font-bold text-bee-black/30 uppercase tracking-widest mt-1">
-                                  <span>{(asset.file_size / (1024 * 1024)).toFixed(1)} MB</span>
-                                  <div className="w-1 h-1 rounded-full bg-wax" />
-                                  <span>{new Date(asset.created_at).toLocaleDateString()}</span>
-                                </div>
-                              </div>
+
+                  {filteredArtifacts.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3">
+                      {filteredArtifacts.map((artifact) => (
+                        <button
+                          key={artifact.id}
+                          onClick={() => selectExistingArtifact(artifact)}
+                          className="flex items-center justify-between p-4 rounded-2xl bg-white border border-wax hover:border-honey/40 hover:bg-honey/5 transition-all group group cursor-pointer"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-wax/20 flex items-center justify-center text-bee-black/40 group-hover:bg-honey/10 group-hover:text-honey transition-colors">
+                              {artifact.type === 'video' ? <Video size={18} /> : <FileText size={18} />}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-10 w-10 rounded-xl hover:bg-red-50 hover:text-red-500 text-bee-black/20 transition-colors"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  try {
-                                    await api.assets.delete(asset.id);
-                                    setExistingAssets(prev => prev.filter(a => asset.id !== a.id));
-                                    toast.success("File deleted");
-                                  } catch (error) {
-                                    toast.error("Failed to delete");
-                                  }
-                                }}
-                              >
-                                <Trash2 size={16} />
-                              </Button>
-                              <div className="w-10 h-10 rounded-xl bg-honey/10 text-honey flex items-center justify-center group-hover:bg-honey group-hover:text-bee-black transition-all">
-                                <Plus size={18} />
+                            <div className="text-left">
+                              <p className="text-sm font-bold text-bee-black truncate max-w-[300px]">{artifact.name || artifact.content?.title || 'Unnamed File'}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[9px] uppercase tracking-widest font-bold opacity-30">{artifact.type}</p>
+                                {artifact.folder_path && artifact.folder_path !== "/" && (
+                                   <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-wax/20 text-bee-black/40">
+                                     {artifact.folder_path}
+                                   </span>
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))
-                      ) : (
-                        <div className="py-20 text-center space-y-4 opacity-30">
-                          <Database className="w-12 h-12 mx-auto" />
-                          <p className="text-[10px] font-bold uppercase tracking-widest">Archive is currently empty</p>
-                        </div>
-                      )}
+                          <div className="px-3 py-1 rounded-full bg-wax/10 text-[8px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                            Add to Canvas
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </ScrollArea>
-                </TabsContent>
-              </div>
+                  ) : (
+                    <div className="py-20 text-center space-y-4 border-2 border-dashed border-wax rounded-[2rem]">
+                      <div className="w-16 h-16 bg-wax/20 rounded-full flex items-center justify-center mx-auto opacity-20">
+                        <FileText size={32} />
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-30">No files in this folder.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-              {/* Footer */}
-              <div className="p-8 border-t border-wax bg-cream/50 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-2 text-bee-black/40">
-                  <Check size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">End-to-End Encryption Active</span>
-                </div>
-                <div className="flex gap-3">
-                  <Button variant="ghost" onClick={onClose} className="rounded-xl font-bold uppercase text-[10px] tracking-widest px-6 h-12">Decline</Button>
-                  <Button className="rounded-xl bg-bee-black text-cream hover:bg-bee-black/90 font-bold uppercase text-[10px] tracking-widest px-8 h-12 gap-2 group">
-                    Analyze Pipeline <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </div>
-              </div>
-            </Tabs>
+
+
+            {/* Footer */}
+            <div className="p-8 border-t border-wax bg-cream/50 flex justify-end items-center shrink-0">
+              <Button variant="ghost" onClick={onClose} className="rounded-xl font-bold uppercase text-[10px] tracking-widest px-6 h-12">
+                Cancel
+              </Button>
+            </div>
           </motion.div>
         </div>
       )}
