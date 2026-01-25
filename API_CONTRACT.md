@@ -7,6 +7,19 @@
 
 ## Endpoints
 
+### 0. Health Check
+
+```http
+GET /health
+```
+
+**Response (200):**
+```json
+{ "status": "healthy" }
+```
+
+---
+
 ### 1. Create Job
 
 ```http
@@ -14,7 +27,7 @@ POST /api/jobs
 Content-Type: application/json
 ```
 
-**Request:**
+**Request (Ingest):**
 ```json
 {
   "project_id": "00000000-0000-0000-0000-000000000001",
@@ -27,7 +40,7 @@ Content-Type: application/json
 }
 ```
 
-**Or for generate:**
+**Request (Generate):**
 ```json
 {
   "project_id": "00000000-0000-0000-0000-000000000001",
@@ -45,6 +58,17 @@ Content-Type: application/json
   "job_id": "eccb334d-dc1b-4e91-90ea-daed20f22de0"
 }
 ```
+
+**Error Responses:**
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 400 | Invalid job type | `{"detail": "Invalid job type: foo"}` |
+| 400 | Missing payload field | `{"detail": "Invalid ingest payload: ..."}` |
+| 400 | Invalid source_type | `{"detail": "Invalid source_type: abc"}` |
+| 400 | Invalid target_type | `{"detail": "Invalid target_type: xyz"}` |
+| 400 | Artifact not found | `{"detail": "Source artifact not found"}` |
+| 400 | Illegal generation | `{"detail": "Cannot generate exam from quiz"}` |
 
 ---
 
@@ -76,6 +100,12 @@ GET /api/jobs/{job_id}
 - `running` — Job is being processed
 - `completed` — Job finished successfully
 - `failed` — Job failed (check `error_message`)
+
+**Error Responses:**
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 404 | Job not found | `{"detail": "Job not found"}` |
 
 ---
 
@@ -162,20 +192,49 @@ GET /api/projects/{project_id}/artifacts
 
 `quiz`, `exam`, `notes`, `slides`, `flashcards`
 
+## Allowed Generation Paths
+
+| Source Type | Can Generate |
+|-------------|--------------|
+| `knowledge_core` | quiz, exam, notes, slides, flashcards |
+| `quiz` | flashcards |
+
+All other generation paths are **ILLEGAL** and will return 400.
+
+---
+
+## Error Handling (Frontend)
+
+```typescript
+try {
+  const jobId = await createJob(...);
+  const result = await pollUntilComplete(jobId);
+} catch (err) {
+  if (err.message.includes('400')) {
+    // Bad request - show field-level validation error
+  } else if (err.message.includes('Job failed')) {
+    // Backend processing failed - show error_message
+  } else {
+    // Network/server error - show retry option
+  }
+}
+```
+
 ---
 
 ## Starting the Backend
 
 ```bash
 # Terminal 1: API server
-cd backend
-source venv/bin/activate
-uvicorn api:app --reload --port 8000
+cd /Users/vishnu/Documents/beeprepared
+source backend/venv/bin/activate
+uvicorn backend.api:app --reload --port 8000
 
 # Terminal 2: Job runner
-cd backend  
-source venv/bin/activate
-python job_runner.py
+cd /Users/vishnu/Documents/beeprepared
+source backend/venv/bin/activate
+PYTHONPATH=. python backend/job_runner.py
 ```
 
 Both must be running.
+

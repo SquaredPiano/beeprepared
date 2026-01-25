@@ -5,6 +5,7 @@ INVARIANTS:
 - ONLY accepts artifacts whose type is in ALLOWED_GENERATIONS
 - Fail fast if source type is invalid
 - Produces exactly 1 artifact + 1 edge
+- Binary outputs (PDF, PPTX) are generated and uploaded to R2
 """
 
 import uuid
@@ -16,6 +17,7 @@ from backend.models.protocol import JobBundle, ArtifactPayload, EdgePayload
 from backend.handlers.base import JobHandler
 from backend.services.db_interface import DBInterface
 from backend.services.generators import ArtifactGenerator
+from backend.services.binary_renderer import BinaryRenderer
 from backend.core.knowledge_core import KnowledgeCore
 
 logger = logging.getLogger(__name__)
@@ -48,11 +50,52 @@ class GenerateHandler(JobHandler):
     Output:
     - Artifact: kind=generated, type=<target_type>
     - Edge: source_artifact_id → new_artifact_id
+    - Binary: PDF/PPTX uploaded to R2 (for exam/slides)
     """
 
     def __init__(self):
         self.db = DBInterface()
         self.generator = ArtifactGenerator()
+        self.binary_renderer = BinaryRenderer()
+
+    def _validate_artifact_semantics(self, target_type: str, model) -> None:
+        """
+        Enforce minimum content requirements for each artifact type.
+        Raises RuntimeError if validation fails.
+        """
+        # INVARIANT: Completed jobs must produce usable artifacts
+        data = model.model_dump() if hasattr(model, 'model_dump') else model
+        
+        # Notes are now pure markdown - validate body length, not sections
+        if target_type == "notes":
+            body = data.get("body", "")
+            if len(body) < 200:
+                raise RuntimeError(
+                    f"Semantic validation failed for notes: "
+                    f"expected at least 200 characters, got {len(body)}"
+                )
+            return
+        
+        MIN_REQUIREMENTS = {
+            "quiz": ("questions", 5, "questions"),
+            "flashcards": ("cards", 5, "cards"),
+            "slides": ("slides", 3, "slides"),
+            "exam": ("questions", 10, "questions"),
+        }
+        
+        if target_type not in MIN_REQUIREMENTS:
+            return  # Unknown type, skip validation
+        
+        field, min_count, label = MIN_REQUIREMENTS[target_type]
+        
+        items = data.get(field, [])
+        count = len(items) if items else 0
+        
+        if count < min_count:
+            raise RuntimeError(
+                f"Semantic validation failed for {target_type}: "
+                f"expected at least {min_count} {label}, got {count}"
+            )
 
     async def run(self, job: JobModel) -> JobBundle:
         logger.info(f"[GenerateHandler] Processing job {job.id}")
@@ -129,19 +172,70 @@ class GenerateHandler(JobHandler):
         if not generated_model:
             raise RuntimeError(f"Generation failed for {target_type}")
         
+        # --- Semantic Validation: Ensure artifact has minimum content ---
+        self._validate_artifact_semantics(target_type, generated_model)
+        
         logger.info(f"[GenerateHandler] Generated {target_type} successfully")
         
         # --- Build JobBundle ---
         new_artifact_id = uuid.uuid4()
         
+        # --- Binary Rendering (PDF/PPTX) ---
+        # INVARIANT: For exam and slides, binary MUST exist or job FAILS.
+        # A COMPLETED artifact means "fully usable and downloadable".
+        binary_metadata = None
+        
+        if target_type == "exam":
+            logger.info(f"[GenerateHandler] Starting PDF render for exam artifact {new_artifact_id}")
+            binary_metadata = self.binary_renderer.render_exam_pdf(
+                generated_model, 
+                job.project_id, 
+                new_artifact_id
+            )
+            if binary_metadata and binary_metadata.get("storage_path"):
+                logger.info(f"[GenerateHandler] Exam PDF uploaded to R2: {binary_metadata['storage_path']}")
+                logger.info(f"[GenerateHandler] Artifact {new_artifact_id} has binary - ready for COMPLETED status")
+            else:
+                # HARD FAIL: Exam without PDF is not usable
+                raise RuntimeError(
+                    f"Exam binary rendering failed. "
+                    f"R2 available: {self.binary_renderer.r2_available}. "
+                    f"Artifact {new_artifact_id} cannot be marked COMPLETED without binary."
+                )
+        
+        elif target_type == "slides":
+            logger.info(f"[GenerateHandler] Starting PPTX render for slides artifact {new_artifact_id}")
+            binary_metadata = self.binary_renderer.render_slides_pptx(
+                generated_model, 
+                job.project_id, 
+                new_artifact_id
+            )
+            if binary_metadata and binary_metadata.get("storage_path"):
+                logger.info(f"[GenerateHandler] Slides PPTX uploaded to R2: {binary_metadata['storage_path']}")
+                logger.info(f"[GenerateHandler] Artifact {new_artifact_id} has binary - ready for COMPLETED status")
+            else:
+                # HARD FAIL: Slides without PPTX is not usable
+                raise RuntimeError(
+                    f"Slides binary rendering failed. "
+                    f"R2 available: {self.binary_renderer.r2_available}. "
+                    f"Artifact {new_artifact_id} cannot be marked COMPLETED without binary."
+                )
+        
+        # --- Build artifact content ---
+        artifact_content = {
+            "kind": "generated",
+            "data": generated_model.model_dump(),
+        }
+        
+        # Add binary metadata if available
+        if binary_metadata:
+            artifact_content["binary"] = binary_metadata
+        
         artifact = ArtifactPayload(
             id=new_artifact_id,
             project_id=job.project_id,
             type=target_type,
-            content={
-                "kind": "generated",
-                "data": generated_model.model_dump(),
-            }
+            content=artifact_content
         )
         
         edge = EdgePayload(

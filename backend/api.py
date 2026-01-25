@@ -60,7 +60,7 @@ class SupabaseTable:
         self.client = client
         self.table_name = table_name
         self.url = f"{client.rest_url}/{table_name}"
-        self._filters = []
+        self._params = []  # List of (key, value) tuples
         self._select = "*"
         self._insert_data = None
         self._update_data = None
@@ -71,7 +71,16 @@ class SupabaseTable:
         return self
     
     def eq(self, column: str, value):
-        self._filters.append(f"{column}=eq.{value}")
+        self._params.append((column, f"eq.{value}"))
+        return self
+    
+    def in_(self, column: str, values: list):
+        """Filter by column value in list of values."""
+        if not values:
+            return self
+        # Supabase REST API format: column=in.(val1,val2,val3)
+        values_str = ",".join(str(v) for v in values)
+        self._params.append((column, f"in.({values_str})"))
         return self
     
     def insert(self, data: dict):
@@ -93,9 +102,9 @@ class SupabaseTable:
         """Execute the queued operation."""
         url = self.url
         
-        # Add filters to URL
-        if self._filters:
-            url += "?" + "&".join(self._filters)
+        # Base params (select)
+        # We start with the filters
+        query_params = self._params.copy()
         
         with httpx.Client() as http:
             if self._insert_data is not None:
@@ -103,19 +112,26 @@ class SupabaseTable:
                 response = http.post(self.url, headers=self.client.headers, json=self._insert_data)
             elif self._update_data is not None:
                 # UPDATE
-                response = http.patch(url, headers=self.client.headers, json=self._update_data)
+                # For update, we must apply filters to URL or params
+                # Supabase expects filters as query params
+                response = http.patch(url, headers=self.client.headers, json=self._update_data, params=query_params)
             elif self._is_delete:
                 # DELETE
-                response = http.delete(url, headers=self.client.headers)
+                response = http.delete(url, headers=self.client.headers, params=query_params)
             else:
                 # SELECT
-                params = {"select": self._select}
-                response = http.get(url, headers=self.client.headers, params=params)
+                query_params.append(("select", self._select))
+                response = http.get(url, headers=self.client.headers, params=query_params)
             
             if response.status_code >= 400:
                 raise Exception(f"Supabase error: {response.text}")
             
-            data = response.json() if response.text else None
+            # Handle 204 No Content
+            if response.status_code == 204 or not response.content:
+                 data = None
+            else:
+                 data = response.json()
+            
             return type('Response', (), {'data': data})()
 
 
@@ -266,8 +282,9 @@ async def create_job(request: JobRequest):
     
     This endpoint:
     1. Validates input
-    2. Inserts job into DB with status='pending'
-    3. Returns job_id
+    2. Checks for idempotency (don't duplicate completed work)
+    3. Inserts job into DB with status='pending'
+    4. Returns job_id
     
     The JobRunner will pick up the job asynchronously.
     """
@@ -289,9 +306,45 @@ async def create_job(request: JobRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid generate payload: {e}")
     
-    # Insert job
+    supabase = get_supabase()
+    
+    # =========================================================================
+    # IDEMPOTENCY CHECK: Don't duplicate completed work
+    # =========================================================================
+    if request.type == "generate":
+        source_id = request.payload.get("source_artifact_id")
+        target_type = request.payload.get("target_type")
+        
+        # Check if a completed or running job already exists for this exact work
+        existing = supabase.table("jobs").select("id,status,result").eq(
+            "project_id", request.project_id
+        ).eq("type", "generate").in_(
+            "status", ["completed", "running", "pending"]
+        ).execute()
+        
+        for job in existing.data:
+            payload = job.get("result", {}) if job["status"] == "completed" else {}
+            job_source = job.get("payload", {}).get("source_artifact_id") if "payload" in job else None
+            job_target = job.get("payload", {}).get("target_type") if "payload" in job else None
+            
+            # Need to re-fetch to get payload
+            if job_source is None:
+                full_job = supabase.table("jobs").select("payload").eq("id", job["id"]).execute()
+                if full_job.data:
+                    job_payload = full_job.data[0].get("payload", {})
+                    job_source = job_payload.get("source_artifact_id")
+                    job_target = job_payload.get("target_type")
+            
+            if job_source == source_id and job_target == target_type:
+                if job["status"] == "completed":
+                    logger.info(f"Idempotency: Returning existing completed job {job['id']}")
+                    return JobResponse(job_id=job["id"])
+                elif job["status"] in ["running", "pending"]:
+                    logger.info(f"Idempotency: Returning existing in-progress job {job['id']}")
+                    return JobResponse(job_id=job["id"])
+    
+    # Insert new job
     try:
-        supabase = get_supabase()
         response = supabase.table("jobs").insert({
             "project_id": request.project_id,
             "type": request.type,
@@ -370,6 +423,91 @@ async def list_project_artifacts(project_id: str):
         
     except Exception as e:
         logger.error(f"Failed to list artifacts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artifacts/{artifact_id}/download")
+async def download_artifact_binary(artifact_id: str):
+    """
+    Get a presigned URL for downloading a binary artifact (PDF, PPTX).
+    
+    Returns:
+        { "download_url": "...", "format": "pdf|pptx", "filename": "..." }
+    """
+    import boto3
+    
+    try:
+        supabase = get_supabase()
+        
+        # Fetch artifact
+        response = supabase.table("artifacts").select("*").eq("id", artifact_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        
+        artifact = response.data[0]
+        content = artifact.get("content", {})
+        binary = content.get("binary")
+        
+        if not binary:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Artifact {artifact_id} has no binary attachment"
+            )
+        
+        storage_path = binary.get("storage_path")
+        if not storage_path:
+            raise HTTPException(status_code=400, detail="Binary missing storage_path")
+        
+        # Generate presigned URL
+        r2_endpoint = os.environ.get("R2_ENDPOINT_URL")
+        r2_key = os.environ.get("R2_ACCESS_KEY_ID")
+        r2_secret = os.environ.get("R2_SECRET_ACCESS_KEY")
+        r2_bucket = os.environ.get("R2_BUCKET_NAME")
+        
+        if not all([r2_endpoint, r2_key, r2_secret, r2_bucket]):
+            raise HTTPException(status_code=500, detail="R2 not configured")
+        
+        from botocore.config import Config
+        s3_client = boto3.client(
+            service_name='s3',
+            endpoint_url=r2_endpoint,
+            aws_access_key_id=r2_key,
+            aws_secret_access_key=r2_secret,
+            region_name='auto',
+            config=Config(signature_version='s3v4')
+        )
+        
+        # Determine filename and content type
+        artifact_type = artifact.get("type", "artifact")
+        file_format = binary.get("format", "bin")
+        mime_type = binary.get("mime_type", "application/octet-stream")
+        filename = f"{artifact_type}_{artifact_id[:8]}.{file_format}"
+        
+        # Generate presigned URL with proper response headers
+        # This forces the browser to download with correct Content-Type and filename
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': r2_bucket, 
+                'Key': storage_path,
+                'ResponseContentType': mime_type,
+                'ResponseContentDisposition': f'attachment; filename="{filename}"',
+            },
+            ExpiresIn=3600
+        )
+        
+        return {
+            "download_url": presigned_url,
+            "format": file_format,
+            "mime_type": mime_type,
+            "filename": filename,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate download URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
