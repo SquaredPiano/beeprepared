@@ -2,10 +2,15 @@
 
 import React, { useState } from "react";
 import { LegalModals } from "./LegalModals";
+import { Hexagon } from "lucide-react";
 
 type ModalTab = "privacy" | "terms" | "docs";
 
-export function Footer() {
+interface FooterProps {
+  variant?: "light" | "dark";
+}
+
+export function Footer({ variant = "light" }: FooterProps) {
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
     tab: ModalTab;
@@ -22,47 +27,48 @@ export function Footer() {
     setModalState((prev) => ({ ...prev, isOpen: false }));
   };
 
-  const currentYear = new Date().getFullYear();
+  const isDark = variant === "dark";
 
   return (
-    <footer className="relative z-10 py-24 border-t border-bee-black/5 bg-background overflow-hidden">
-      {/* Texture and Grid Background */}
-      <div className="absolute inset-0 z-[-1] pointer-events-none opacity-[0.6] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] brightness-100 contrast-150 mix-blend-multiply" />
-      <div className="absolute inset-0 z-[-2] pointer-events-none opacity-[0.05] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:4rem_4rem]" />
-      
-      {/* Honey Accents */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-honey-400/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-honey-600/5 blur-[100px] rounded-full pointer-events-none" />
-
-      <div className="container mx-auto px-6">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex flex-col items-center md:items-start gap-2">
-            <h3 className="font-display uppercase tracking-widest text-sm font-bold text-bee-black">
-              BeePrepared
-            </h3>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-bee-black/30">
-              © {currentYear} Cognitive Hive Architecture
-            </p>
+    <footer className={`relative z-10 px-8 md:px-16 lg:px-24 py-16 md:py-20 border-t-4 ${
+      isDark 
+        ? "bg-bee-black text-white border-white/5" 
+        : "bg-bee-black text-white border-white/5"
+    }`}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12">
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Hexagon size={36} className="text-honey fill-honey" />
+            <span className="font-black uppercase tracking-tighter text-2xl md:text-3xl">BeePrepared</span>
           </div>
-
-          <div className="flex items-center gap-8">
-            <button
-              onClick={() => openModal("docs")}
-              className="text-[10px] uppercase tracking-[0.2em] font-bold text-bee-black/40 hover:text-honey-600 transition-colors"
-            >
-              Documentation
-            </button>
-            <button
-              onClick={() => openModal("privacy")}
-              className="text-[10px] uppercase tracking-[0.2em] font-bold text-bee-black/40 hover:text-honey-600 transition-colors"
+          <div className="max-w-xs text-honey/40 font-bold uppercase tracking-widest text-[9px] leading-relaxed cursor-text">
+            Design for Mastery. Engineered for High-Fidelity Knowledge Synthesis. 
+            The Intentional Workspace for Students.
+          </div>
+          <p className="text-honey/20 font-bold uppercase tracking-widest text-[8px]">
+            Knowledge Architecture © 2026
+          </p>
+        </div>
+        
+        <div className="flex flex-col items-start md:items-end gap-8">
+          <div className="flex flex-wrap gap-6">
+            <button 
+              onClick={() => openModal("privacy")} 
+              className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
             >
               Privacy
             </button>
-            <button
-              onClick={() => openModal("terms")}
-              className="text-[10px] uppercase tracking-[0.2em] font-bold text-bee-black/40 hover:text-honey-600 transition-colors"
+            <button 
+              onClick={() => openModal("terms")} 
+              className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
             >
               Terms
+            </button>
+            <button 
+              onClick={() => openModal("docs")} 
+              className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
+            >
+              Support
             </button>
           </div>
         </div>
