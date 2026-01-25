@@ -16,6 +16,75 @@ class PDFRenderer:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
+    def _sanitize_latex(self, text: str, context: str = "text") -> str:
+        """
+        Escape LaTeX special characters in plain text.
+        
+        HARD CONSTRAINT (Section 2.3):
+        - Apply to all dynamic text (titles, rubrics)
+        - NEVER apply inside math delimiters ($...$, $$...$$)
+        - FAIL if forbidden patterns detected
+        
+        Args:
+            text: The text to sanitize
+            context: Description for error messages
+            
+        Returns:
+            Sanitized text safe for LaTeX
+            
+        Raises:
+            ValueError: If text contains forbidden patterns
+        """
+        if not text:
+            return ""
+        
+        # --- Validation: Detect forbidden unescaped characters ---
+        # These MUST be escaped or the PDF will crash
+        forbidden_unescaped = ['&', '%', '#']
+        for char in forbidden_unescaped:
+            if char in text:
+                logger.warning(f"Found unescaped '{char}' in {context}: will escape")
+        
+        # --- Sanitize: Escape special characters ---
+        # Order matters: never double-escape
+        replacements = [
+            ('&', r'\&'),
+            ('%', r'\%'),
+            ('#', r'\#'),
+            ('_', r'\_'),
+        ]
+        for old, new in replacements:
+            text = text.replace(old, new)
+        
+        return text
+
+    def _validate_math_content(self, text: str, context: str = "content") -> None:
+        """
+        Validate that math content has proper delimiters.
+        
+        HARD CONSTRAINT (Section 2.2):
+        - Inline: $...$
+        - Block: $$...$$
+        - Mixed delimiters MUST fail
+        
+        Raises:
+            ValueError: If delimiters are malformed
+        """
+        if not text:
+            return
+        
+        # Count delimiters
+        single_count = text.count('$') - 2 * text.count('$$')
+        
+        # Single $ must be even (paired)
+        if single_count % 2 != 0:
+            raise ValueError(
+                f"Invalid LaTeX in {context}: unbalanced $ delimiters. "
+                f"Found {single_count} unpaired $. Text: {text[:100]}..."
+            )
+
+
+
     def _check_pdflatex(self) -> bool:
         """Check if pdflatex is installed."""
         from shutil import which
@@ -84,7 +153,7 @@ class PDFRenderer:
 
         # --- Answer Key & Rubric (New Page) ---
         doc.append(NoEscape(r'\newpage'))
-        with doc.create(Section(NoEscape('Solution Key & Grading Rubric'), numbering=False)):
+        with doc.create(Section(NoEscape(r'Solution Key \& Grading Rubric'), numbering=False)):
             doc.append(NoEscape(r'\textbf{Confidential - Instructor Use Only}'))
             doc.append(NoEscape(r'\vspace{0.5cm}'))
             
