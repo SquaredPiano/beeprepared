@@ -1,12 +1,101 @@
 import os
+import httpx
 from fastapi import Header, HTTPException, Depends
-from supabase import create_client, Client
+from typing import Any, Dict, List, Optional
 
-# Initialize Supabase Client (Backend side)
-SUPABASE_URL = os.getenv("SUPABASE_URL") # Same as frontend
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") # Get this from Dashboard -> Settings -> API (Service Role, NOT Anon)
+# Minimal Supabase Client using HTTPX to avoid binary dependencies (cryptography)
+class SupabaseQueryBuilder:
+    def __init__(self, url: str, headers: Dict[str, str]):
+        self.url = url
+        self.headers = headers
+        self.params = {}
+        self.method = "GET"
+        self.json_body = None
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    def select(self, columns: str = "*") -> 'SupabaseQueryBuilder':
+        self.method = "GET"
+        self.params["select"] = columns
+        return self
+
+    def update(self, data: Dict[str, Any]) -> 'SupabaseQueryBuilder':
+        self.method = "PATCH"
+        self.headers["Prefer"] = "return=representation"
+        self.json_body = data
+        return self
+
+    def eq(self, column: str, value: Any) -> 'SupabaseQueryBuilder':
+        self.params[column] = f"eq.{value}"
+        return self
+
+    def execute(self):
+        try:
+            if self.method == "GET":
+                resp = httpx.get(self.url, headers=self.headers, params=self.params)
+            elif self.method == "PATCH":
+                resp = httpx.patch(self.url, headers=self.headers, params=self.params, json=self.json_body)
+            else:
+                raise NotImplementedError(f"Method {self.method} not implemented")
+            
+            # Return object with data attribute to match SDK
+            class Response:
+                def __init__(self, data): self.data = data
+            
+            if resp.status_code >= 400:
+                print(f"Supabase Error: {resp.text}")
+                return Response(None)
+                
+            return Response(resp.json())
+        except Exception as e:
+            print(f"Supabase Request Failed: {e}")
+            return Response(None)
+
+class SupabaseAuth:
+    def __init__(self, url: str, key: str):
+        self.auth_url = f"{url}/auth/v1"
+        self.key = key
+
+    def get_user(self, token: str):
+        headers = {
+            "apikey": self.key,
+            "Authorization": f"Bearer {token}"
+        }
+        try:
+            resp = httpx.get(f"{self.auth_url}/user", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                # SDK returns object with .user
+                class UserResponse:
+                    def __init__(self, user_data): 
+                        class User:
+                            def __init__(self, uid): self.id = uid
+                        self.user = User(user_data.get('id'))
+                return UserResponse(data)
+            return None
+        except:
+            return None
+
+class SupabaseClient:
+    def __init__(self, url: str, key: str):
+        self.rest_url = f"{url}/rest/v1"
+        self.headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        }
+        self.auth = SupabaseAuth(url, key)
+
+    def table(self, name: str) -> SupabaseQueryBuilder:
+        return SupabaseQueryBuilder(f"{self.rest_url}/{name}", self.headers.copy())
+
+# Initialize Client
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    # Fallback to avoid crash during import if env not set
+    supabase = None
+else:
+    supabase = SupabaseClient(SUPABASE_URL, SUPABASE_KEY)
 
 def get_current_user(authorization: str = Header(None)):
     """
@@ -17,10 +106,10 @@ def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing Token")
 
     try:
-        # Extract "Bearer <token>"
         token = authorization.split(" ")[1]
-        
-        # Verify with Supabase
+        if not supabase:
+             raise HTTPException(status_code=500, detail="DB Config Error")
+             
         user = supabase.auth.get_user(token)
         
         if not user:

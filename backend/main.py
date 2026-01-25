@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 import os
 import asyncio
-from dependencies import get_current_user, supabase
+from backend.dependencies import get_current_user, supabase
+
 
 app = FastAPI(title="BeePrepared API", description="Knowledge Architecture Pipeline")
 

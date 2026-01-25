@@ -7,6 +7,8 @@ import { Upload, File, CheckCircle2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { useIngestionStore } from "@/store/ingestionStore";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
 
 export function HoneyDropZone() {
   const { addFile, files } = useStore();
@@ -14,17 +16,25 @@ export function HoneyDropZone() {
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
-      const id = addFile(file.name);
+      // Check for 1GB limit (mock check for now using state)
+      const currentStorage = useStore.getState().getTotalUsedStorage();
+      if (currentStorage + file.size > 1 * 1024 * 1024 * 1024) {
+        toast.error(`Storage limit exceeded! Cannot add ${file.name}`);
+        return;
+      }
+
+      const id = addFile(file.name, file.size);
       addTask({
         id,
         name: file.name,
         status: 'pending',
         progress: 0,
-        type: 'pdf',
+        type: file.type.includes('pdf') ? 'pdf' : file.type.includes('audio') ? 'audio' : 'video',
         timestamp: Date.now()
       });
     });
   }, [addFile, addTask]);
+
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -73,7 +83,8 @@ export function HoneyDropZone() {
                 <Upload className="text-muted-foreground group-hover:text-honey-500 w-6 h-6 transition-colors" />
               </div>
               <div className="text-center space-y-1">
-                <p className="font-display text-lg uppercase tracking-wider font-bold">Add Files</p>
+                <p className="font-display text-lg uppercase tracking-wider font-bold cursor-pointer">Add Files</p>
+
                 <p className="text-muted-foreground text-[10px] uppercase tracking-widest font-bold opacity-40">PDF, Audio, or Video</p>
               </div>
             </motion.div>

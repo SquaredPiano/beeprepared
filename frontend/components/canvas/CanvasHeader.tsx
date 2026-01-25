@@ -101,17 +101,42 @@ export function CanvasHeader() {
           Run Pipeline
         </Button>
 
-        <Button 
-          onClick={save}
-          disabled={isSaving}
-          className={cn(
-            "h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg",
-            isSaving ? "bg-wax/50 text-bee-black/50" : "bg-white border border-wax hover:bg-cream text-bee-black"
+        <div className="flex flex-col items-end gap-1">
+          <Button 
+            onClick={save}
+            disabled={isSaving}
+            className={cn(
+              "h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg",
+              isSaving ? "bg-wax/50 text-bee-black/50" : "bg-white border border-wax hover:bg-cream text-bee-black"
+            )}
+          >
+            <Save size={14} className={cn("mr-2", isSaving && "animate-pulse")} />
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+          {!isHeaderCollapsed && (
+            <AnimatePresence>
+              {isSaving ? (
+                <motion.span 
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-[8px] font-bold text-honey-600 uppercase tracking-widest mr-2"
+                >
+                  Synchronizing Hive...
+                </motion.span>
+              ) : (
+                <motion.span 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.3 }}
+                  className="text-[8px] font-bold text-bee-black uppercase tracking-widest mr-2"
+                >
+                  All changes saved
+                </motion.span>
+              )}
+            </AnimatePresence>
           )}
-        >
-          <Save size={14} className={cn("mr-2", isSaving && "animate-pulse")} />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
+        </div>
+
 
         <button
           onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)}

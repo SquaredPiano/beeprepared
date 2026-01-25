@@ -31,12 +31,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { useStore } from "@/store/useStore";
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [balance, setBalance] = useState(0);
   const container = useRef(null);
+
+  const { getTotalUsedStorage } = useStore();
+  const storageUsed = getTotalUsedStorage();
+  const storageUsedPercent = Math.min(100, Math.round((storageUsed / (1024**3)) * 100));
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -103,8 +108,9 @@ export default function DashboardPage() {
   const stats = [
     { label: "Projects", value: projects.length.toString(), icon: LayoutGrid },
     { label: "Honey Points", value: balance.toLocaleString(), icon: BookOpen },
-    { label: "Status", value: "Active", icon: Clock },
+    { label: "Capacity", value: `${storageUsedPercent}% used`, icon: Clock },
   ];
+
 
   return (
     <div ref={container} className="max-w-6xl mx-auto px-8 md:px-12 py-16 space-y-16 min-h-screen bg-cream/30">
