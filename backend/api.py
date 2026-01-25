@@ -113,8 +113,9 @@ async def create_job(request: JobRequest):
     
     This endpoint:
     1. Validates input
-    2. Inserts job into DB with status='pending'
-    3. Returns job_id
+    2. Checks for idempotency (don't duplicate completed work)
+    3. Inserts job into DB with status='pending'
+    4. Returns job_id
     
     The JobRunner will pick up the job asynchronously.
     """
@@ -136,9 +137,45 @@ async def create_job(request: JobRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid generate payload: {e}")
     
-    # Insert job
+    supabase = get_supabase()
+    
+    # =========================================================================
+    # IDEMPOTENCY CHECK: Don't duplicate completed work
+    # =========================================================================
+    if request.type == "generate":
+        source_id = request.payload.get("source_artifact_id")
+        target_type = request.payload.get("target_type")
+        
+        # Check if a completed or running job already exists for this exact work
+        existing = supabase.table("jobs").select("id,status,result").eq(
+            "project_id", request.project_id
+        ).eq("type", "generate").in_(
+            "status", ["completed", "running", "pending"]
+        ).execute()
+        
+        for job in existing.data:
+            payload = job.get("result", {}) if job["status"] == "completed" else {}
+            job_source = job.get("payload", {}).get("source_artifact_id") if "payload" in job else None
+            job_target = job.get("payload", {}).get("target_type") if "payload" in job else None
+            
+            # Need to re-fetch to get payload
+            if job_source is None:
+                full_job = supabase.table("jobs").select("payload").eq("id", job["id"]).execute()
+                if full_job.data:
+                    job_payload = full_job.data[0].get("payload", {})
+                    job_source = job_payload.get("source_artifact_id")
+                    job_target = job_payload.get("target_type")
+            
+            if job_source == source_id and job_target == target_type:
+                if job["status"] == "completed":
+                    logger.info(f"Idempotency: Returning existing completed job {job['id']}")
+                    return JobResponse(job_id=job["id"])
+                elif job["status"] in ["running", "pending"]:
+                    logger.info(f"Idempotency: Returning existing in-progress job {job['id']}")
+                    return JobResponse(job_id=job["id"])
+    
+    # Insert new job
     try:
-        supabase = get_supabase()
         response = supabase.table("jobs").insert({
             "project_id": request.project_id,
             "type": request.type,

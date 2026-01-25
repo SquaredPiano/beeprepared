@@ -54,6 +54,35 @@ class GenerateHandler(JobHandler):
         self.db = DBInterface()
         self.generator = ArtifactGenerator()
 
+    def _validate_artifact_semantics(self, target_type: str, model) -> None:
+        """
+        Enforce minimum content requirements for each artifact type.
+        Raises RuntimeError if validation fails.
+        """
+        # INVARIANT: Completed jobs must produce usable artifacts
+        MIN_REQUIREMENTS = {
+            "quiz": ("questions", 5, "questions"),
+            "notes": ("sections", 2, "sections"),
+            "flashcards": ("cards", 5, "cards"),
+            "slides": ("slides", 3, "slides"),
+            "exam": ("questions", 10, "questions"),
+        }
+        
+        if target_type not in MIN_REQUIREMENTS:
+            return  # Unknown type, skip validation
+        
+        field, min_count, label = MIN_REQUIREMENTS[target_type]
+        data = model.model_dump() if hasattr(model, 'model_dump') else model
+        
+        items = data.get(field, [])
+        count = len(items) if items else 0
+        
+        if count < min_count:
+            raise RuntimeError(
+                f"Semantic validation failed for {target_type}: "
+                f"expected at least {min_count} {label}, got {count}"
+            )
+
     async def run(self, job: JobModel) -> JobBundle:
         logger.info(f"[GenerateHandler] Processing job {job.id}")
         
@@ -128,6 +157,9 @@ class GenerateHandler(JobHandler):
         
         if not generated_model:
             raise RuntimeError(f"Generation failed for {target_type}")
+        
+        # --- Semantic Validation: Ensure artifact has minimum content ---
+        self._validate_artifact_semantics(target_type, generated_model)
         
         logger.info(f"[GenerateHandler] Generated {target_type} successfully")
         
