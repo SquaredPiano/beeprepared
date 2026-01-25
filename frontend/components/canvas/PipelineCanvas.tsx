@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AgentNode } from "./AgentNode";
+import { ResultNode } from "./ResultNode";
 import { useIngestionStore } from "@/store/ingestionStore";
 import { useFlowStore } from "@/store/useFlowStore";
 import { playSound } from "@/lib/sounds";
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 const nodeTypes: NodeTypes = {
   agent: AgentNode,
+  result: ResultNode,
 };
 
 function PipelineCanvasContent() {

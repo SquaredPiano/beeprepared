@@ -2,32 +2,47 @@
 
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 interface FeatureCardProps {
   icon: ReactNode | string;
   title: string;
   description: string;
+  featured?: boolean;
 }
 
-export function FeatureCard({ icon, title, description }: FeatureCardProps) {
+export function FeatureCard({ icon, title, description, featured = false }: FeatureCardProps) {
   return (
     <motion.div
-      whileHover={{ scale: 1.05, y: -5 }}
-      className="relative group h-full"
+      whileHover={{ y: -6 }}
+      className={cn(
+        "relative h-full rounded-2xl p-8 border transition-all duration-200",
+        featured
+          ? "bg-honey/10 border-honey/30 shadow-sm"
+          : "bg-white border-wax shadow-sm hover:shadow-md"
+      )}
     >
-      {/* Glassmorphism effect */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-lg rounded-3xl" />
-      <div className="absolute inset-0 bg-gradient-to-br from-honey-500/10 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
-      
-      {/* Content */}
-      <div className="relative p-10 border border-white/20 rounded-3xl shadow-xl h-full flex flex-col items-start gap-4">
-        <div className="text-5xl mb-2">{icon}</div>
-        <h3 className="text-2xl font-display uppercase tracking-tight">{title}</h3>
-        <p className="text-muted-foreground leading-relaxed">{description}</p>
+      <div className="flex items-start gap-6">
+        {/* Icon */}
+        <div
+          className={cn(
+            "flex items-center justify-center w-14 h-14 rounded-full shrink-0",
+            featured ? "bg-honey/20 border border-honey/40" : "bg-bee-black/5 border border-bee-black/10"
+          )}
+        >
+          <div className="text-2xl">{icon}</div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1">
+          <h3 className="text-xl font-display uppercase tracking-tight text-bee-black">
+            {title}
+          </h3>
+          <p className="mt-3 text-sm leading-relaxed text-bee-black/60">
+            {description}
+          </p>
+        </div>
       </div>
-      
-      {/* Glow effect */}
-      <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity blur-xl bg-honey-500/10 -z-10" />
     </motion.div>
   );
 }

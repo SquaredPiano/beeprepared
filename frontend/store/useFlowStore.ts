@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { generateProjectName } from "@/lib/utils/naming";
 
 interface FlowState {
   nodes: Node[];
@@ -40,7 +41,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: [],
   edges: [],
   currentProjectId: null,
-  projectName: "Untitled Pipeline",
+  projectName: generateProjectName(),
   isSaving: false,
   history: [],
   historyIndex: -1,
@@ -77,17 +78,26 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     });
   },
 
-  onConnect: (connection: Connection) => {
-    set({
-      edges: addEdge({
-        ...connection,
-        animated: true,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#FCD34F" },
-        style: { stroke: "#FCD34F", strokeWidth: 2 }
-      }, get().edges),
-    });
-    get().takeSnapshot();
-  },
+    onConnect: (connection: Connection) => {
+      set({
+        edges: addEdge({
+          ...connection,
+          animated: true,
+          markerEnd: { 
+            type: MarkerType.ArrowClosed, 
+            color: "#FCD34F",
+            width: 20,
+            height: 20,
+          },
+          style: { 
+            stroke: "#FCD34F", 
+            strokeWidth: 3,
+            strokeDasharray: "none",
+          }
+        }, get().edges),
+      });
+      get().takeSnapshot();
+    },
 
   undo: () => {
     const { history, historyIndex } = get();
@@ -139,7 +149,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       } else {
         result = await supabase
           .from("projects")
-          .insert({ ...projectData, name: projectName || "Untitled Pipeline" })
+          .insert({ ...projectData, name: projectName || generateProjectName() })
           .select()
           .single();
       }
@@ -187,7 +197,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes: [],
       edges: [],
       currentProjectId: null,
-      projectName: "Untitled Pipeline",
+      projectName: generateProjectName(),
       history: [],
       historyIndex: -1,
     });

@@ -36,7 +36,7 @@ export function HoneyJar({ points, maxPoints, level, isMystery, onReveal }: Hone
   
   return (
     <motion.div
-      className="fixed bottom-8 right-8 z-50"
+      className="fixed bottom-8 left-8 z-50"
       initial={{ scale: 0, rotate: -180 }}
       animate={{ scale: 1, rotate: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 20 }}
