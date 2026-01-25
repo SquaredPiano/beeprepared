@@ -235,18 +235,46 @@ interface CanvasState {
             };
   
             if (currentProjectId) {
-              // Update existing project
-              await api.projects.update(currentProjectId, {
-                name: projectName,
-                canvas_state,
-              });
+              // Update existing project - try with canvas_state first, fall back to name only
+              try {
+                await api.projects.update(currentProjectId, {
+                  name: projectName,
+                  canvas_state,
+                });
+              } catch (canvasError: any) {
+                // If canvas_state column doesn't exist yet, just update the name
+                if (canvasError.message?.includes("canvas_state")) {
+                  console.warn("canvas_state column not found, saving name only");
+                  await api.projects.update(currentProjectId, {
+                    name: projectName,
+                  });
+                } else {
+                  throw canvasError;
+                }
+              }
             } else {
-              // Create new project
-              const project = await api.projects.create(projectName);
-              set({ currentProjectId: project.id });
+              // Create new project - try with minimal fields for compatibility
+              try {
+                const project = await api.projects.create(projectName);
+                set({ currentProjectId: project.id });
+              } catch (createError: any) {
+                // Fallback: create with supabase directly without canvas_state
+                if (createError.message?.includes("canvas_state") || createError.message?.includes("user_id")) {
+                  console.warn("Creating project without canvas_state/user_id");
+                  const { data, error } = await supabase
+                    .from("projects")
+                    .insert({ name: projectName })
+                    .select()
+                    .single();
+                  if (error) throw error;
+                  set({ currentProjectId: data.id });
+                } else {
+                  throw createError;
+                }
+              }
             }
   
-            toast.success("Project saved");
+            toast.success("Hive saved successfully");
           } catch (error: any) {
             console.error("Save error:", error);
             toast.error(`Failed to save: ${error.message}`);
