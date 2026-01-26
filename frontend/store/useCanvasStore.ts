@@ -13,7 +13,7 @@ import {
   MarkerType,
   Viewport
 } from "@xyflow/react";
-import { getMockAccessToken } from "@/lib/mockAuth";
+import { getAccessToken } from "@/lib/auth";
 import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
 import { api, Artifact, ArtifactEdge } from "@/lib/api";
@@ -287,7 +287,7 @@ export const useCanvasStore = create<CanvasState>()(
         }
 
         toast.promise(async () => {
-          const token = await getMockAccessToken();
+          const token = await getAccessToken();
           const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/run`, {
             method: 'POST',
             headers: {
@@ -337,24 +337,35 @@ export const useCanvasStore = create<CanvasState>()(
           // If we have saved canvas state, use it as base (positions)
           // But we MUST sync the data with real artifacts
           if (project.canvas_state?.nodes && project.canvas_state.nodes.length > 0) {
-            nodes = project.canvas_state.nodes.map(node => {
-              // Update data if it corresponds to an artifact
-              if (node.type === 'asset' || node.type === 'artifactNode' || node.type === 'result' || node.type === 'generator') {
-                const artifactId = node.id; // Assuming node ID is artifact ID for synced nodes
-                const artifact = artifacts.find(a => a.id === artifactId || (node.data?.artifact as any)?.id === artifactId);
-                if (artifact) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      artifact,
-                      status: 'completed'
-                    }
-                  };
+            const generatorTypes = ['quiz', 'notes', 'slides', 'flashcards', 'exam'];
+
+            nodes = project.canvas_state.nodes
+              .filter(node => {
+                // FILTER OUT duplicate artifactNodes for generator types
+                // We only want 'generator' nodes for these, not 'artifactNode' pills
+                if (node.type === 'artifactNode' && generatorTypes.includes(node.data?.type)) {
+                  return false;
                 }
-              }
-              return node;
-            });
+                return true;
+              })
+              .map(node => {
+                // Update data if it corresponds to an artifact
+                if (node.type === 'asset' || node.type === 'artifactNode' || node.type === 'result' || node.type === 'generator') {
+                  const artifactId = node.id; // Assuming node ID is artifact ID for synced nodes
+                  const artifact = artifacts.find(a => a.id === artifactId || (node.data?.artifact as any)?.id === artifactId);
+                  if (artifact) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        artifact,
+                        status: 'completed'
+                      }
+                    };
+                  }
+                }
+                return node;
+              });
           } else {
             // 3. Fresh Layout Generation
             // Source (Asset)
@@ -373,97 +384,47 @@ export const useCanvasStore = create<CanvasState>()(
               });
             }
 
-            // Knowledge Core
-            const coreArtifact = artifacts.find(a => a.type === 'knowledge_core');
-            if (coreArtifact) {
+            // Generators
+            // Only spawn if we actually have artifacts (don't clutter canvas with idle nodes)
+            const existingGenerators = artifacts.filter(a => ['quiz', 'notes', 'slides', 'flashcards', 'exam'].includes(a.type));
+
+            existingGenerators.forEach((gen, idx) => {
               nodes.push({
-                id: coreArtifact.id,
-                type: 'artifactNode',
-                position: { x: 500, y: 300 },
+                id: gen.id,
+                type: 'generator',
+                position: { x: 500, y: 50 + (idx * 150) },
                 data: {
-                  label: "Knowledge Core",
-                  type: 'knowledge_core',
+                  label: (ARTIFACT_TYPE_CONFIG[gen.type] || {}).label || gen.type,
+                  subType: gen.type,
+                  projectId: id,
                   status: 'completed',
-                  artifact: coreArtifact
+                  artifact: gen,
+                  progress: 100
                 }
               });
-
-              // Check for Generators. If NONE exist, spawn them.
-              const existingGenerators = artifacts.filter(a => ['quiz', 'notes', 'slides', 'flashcards', 'exam'].includes(a.type));
-
-              if (existingGenerators.length === 0) {
-                const generatorTypes: { type: string; label: string }[] = [
-                  { type: 'notes', label: 'Study Notes' },
-                  { type: 'quiz', label: 'Practice Quiz' },
-                  { type: 'flashcards', label: 'Flashcards' },
-                  { type: 'slides', label: 'Presentation' },
-                  { type: 'exam', label: 'Mock Exam' }
-                ];
-
-                generatorTypes.forEach((gen, idx) => {
-                  nodes.push({
-                    id: `gen-${gen.type}-${Date.now()}`,
-                    type: 'generator',
-                    position: { x: 900, y: 100 + (idx * 120) }, // Vertical stack to the right
-                    data: {
-                      label: gen.label,
-                      subType: gen.type,
-                      projectId: id,
-                      knowledgeCoreId: coreArtifact.id,
-                      status: 'idle',
-                      progress: 0
-                    }
-                  });
-                });
-              } else {
-                // Map existing generator artifacts
-                existingGenerators.forEach((gen, idx) => {
-                  nodes.push({
-                    id: gen.id,
-                    type: 'generator',
-                    position: { x: 900, y: 100 + (idx * 120) },
-                    data: {
-                      label: gen.type,
-                      subType: gen.type,
-                      projectId: id,
-                      knowledgeCoreId: coreArtifact.id,
-                      status: 'completed',
-                      artifact: gen
-                    }
-                  });
-                });
-              }
-            }
+            });
           }
 
-          // Generate Edges (Auto-connect logic)
+          // Generate Edges (Restore or Auto-connect)
           let edges: Edge[] = [];
 
-          // Connect Source -> Core
-          const sourceNode = nodes.find(n => n.type === 'asset');
-          const coreNode = nodes.find(n => n.type === 'artifactNode' && n.data.type === 'knowledge_core');
-
-          if (sourceNode && coreNode) {
-            edges.push({
-              id: `e-${sourceNode.id}-${coreNode.id}`,
-              source: sourceNode.id,
-              target: coreNode.id,
-              animated: true,
-              style: { stroke: '#F59E0B', strokeWidth: 2 }
-            });
-          }
-
-          // Connect Core -> Generators
-          if (coreNode) {
-            nodes.filter(n => n.type === 'generator').forEach(gen => {
-              edges.push({
-                id: `e-${coreNode.id}-${gen.id}`,
-                source: coreNode.id,
-                target: gen.id,
-                animated: true,
-                style: { stroke: '#F59E0B', strokeWidth: 2, strokeDasharray: '5 5' }
+          if (project.canvas_state?.edges && project.canvas_state.edges.length > 0) {
+            edges = project.canvas_state.edges;
+          } else {
+            // Auto-connect Source -> Generators (Default for fresh projects)
+            const sourceNode = nodes.find(n => n.type === 'asset');
+            if (sourceNode) {
+              nodes.filter(n => n.type === 'generator').forEach(gen => {
+                edges.push({
+                  id: `e-${sourceNode.id}-${gen.id}`,
+                  source: sourceNode.id,
+                  target: gen.id,
+                  animated: true,
+                  markerEnd: { type: MarkerType.ArrowClosed, color: "#F59E0B" },
+                  style: { stroke: '#F59E0B', strokeWidth: 2, strokeDasharray: '5 5' }
+                });
               });
-            });
+            }
           }
 
           set({ nodes, edges });
@@ -481,42 +442,44 @@ export const useCanvasStore = create<CanvasState>()(
 
         try {
           const { artifacts } = await api.projects.getArtifacts(currentProjectId);
+          console.log('[refreshArtifacts] Got', artifacts.length, 'artifacts:', artifacts.map(a => a.type));
 
-          // Update existing nodes with new status/data
+          // ONLY update existing nodes - do NOT create new nodes
+          // Nodes are created by: 1) drag-drop from sidebar, 2) loadProject
           const updatedNodes = nodes.map(node => {
-            if (node.type === 'generator') {
-              // Check if this generator has an artifact now
-              // Generator nodes might store 'subType' in data
+            // Update generator nodes with their corresponding artifact
+            if (node.type === 'generator' && node.data.subType) {
               const relevantArtifact = artifacts.find(a => a.type === node.data.subType);
               if (relevantArtifact) {
+                console.log('[refreshArtifacts] Updating generator', node.data.subType, 'with artifact');
                 return {
                   ...node,
-                  data: {
-                    ...node.data,
-                    status: 'completed',
-                    artifact: relevantArtifact,
-                    progress: 100
-                  }
+                  data: { ...node.data, status: 'completed', artifact: relevantArtifact, progress: 100 }
                 };
               }
             }
-            if (node.type === 'artifactNode' && node.data.type === 'knowledge_core') {
-              const core = artifacts.find(a => a.type === 'knowledge_core');
-              if (core) {
-                return {
-                  ...node,
-                  data: { ...node.data, artifact: core, status: 'completed' }
-                };
+
+            // Update asset nodes with their artifact data
+            if (node.type === 'asset' && (node.data as any).artifact?.id) {
+              const refreshed = artifacts.find(a => a.id === (node.data as any).artifact.id);
+              if (refreshed) {
+                return { ...node, data: { ...node.data, artifact: refreshed } };
               }
             }
+
+            // Update artifactNode (knowledge_core etc) if it exists
+            if (node.type === 'artifactNode' && (node.data as any).artifact?.id) {
+              const refreshed = artifacts.find(a => a.id === (node.data as any).artifact.id);
+              if (refreshed) {
+                return { ...node, data: { ...node.data, artifact: refreshed, status: 'completed' } };
+              }
+            }
+
             return node;
           });
 
-          // If we just got a Knowledge Core but didn't have one before, we might need to spawn generators
-          // This simple refresh might need to trigger a full reload or partial injection if struct changed significantly
-          // For now, just updating data is safe.
-
           set({ nodes: updatedNodes });
+          console.log('[refreshArtifacts] Updated', updatedNodes.length, 'nodes');
 
         } catch (error) {
           console.error("Refresh error", error);

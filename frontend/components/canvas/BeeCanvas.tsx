@@ -178,20 +178,53 @@ function BeeCanvasInner() {
         toast.success(`Output connected to processor`);
       }
     } else if (newNode.type === 'generator') {
-      // Connect generator nodes to nearest knowledge_core
-      const sourceNode = findNearestCompatibleNode(newNode.position, 'knowledge_core');
+      // Smart auto-connect: Find nearest asset OR generator for chaining
+      const nearestAsset = findNearestCompatibleNode(newNode.position, 'asset');
+
+      // Also find nearest generator (for chaining Quiz -> Flashcards)
+      let nearestGenerator: Node | null = null;
+      let genDistance = 300; // threshold
+      for (const node of nodes) {
+        if (node.type === 'generator' && node.id !== newNode.id) {
+          const distance = Math.sqrt(
+            Math.pow(node.position.x - newNode.position.x, 2) +
+            Math.pow(node.position.y - newNode.position.y, 2)
+          );
+          if (distance < genDistance) {
+            genDistance = distance;
+            nearestGenerator = node;
+          }
+        }
+      }
+
+      // Calculate asset distance
+      let assetDistance = 9999;
+      if (nearestAsset) {
+        assetDistance = Math.sqrt(
+          Math.pow(nearestAsset.position.x - newNode.position.x, 2) +
+          Math.pow(nearestAsset.position.y - newNode.position.y, 2)
+        );
+      }
+
+      // Connect to whichever is closer
+      const sourceNode = (nearestGenerator && genDistance < assetDistance) ? nearestGenerator : nearestAsset;
+
       if (sourceNode) {
+        const isChained = sourceNode.type === 'generator';
         const edge: Edge = {
           id: `e${sourceNode.id}-${newNode.id}`,
           source: sourceNode.id,
           target: newNode.id,
           animated: true,
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#F59E0B" },
-          style: { stroke: "#F59E0B", strokeWidth: 2, strokeDasharray: "5 5" }
+          markerEnd: { type: MarkerType.ArrowClosed, color: isChained ? "#8B5CF6" : "#F59E0B" },
+          style: { stroke: isChained ? "#8B5CF6" : "#F59E0B", strokeWidth: 2, strokeDasharray: "5 5" }
         };
         setEdges([...edges, edge]);
         playConnect();
-        toast.success(`Connected to Knowledge Core`);
+        toast.success(isChained
+          ? `Chained to ${(sourceNode.data as any).label || 'Generator'}`
+          : `Connected to Source`
+        );
       }
     }
   }, [nodes, edges, setEdges, playConnect]);
@@ -234,12 +267,13 @@ function BeeCanvasInner() {
 
     // Generator nodes need a knowledge core (but we'll be lenient and allow adding them)
     // They'll show an error message when trying to generate without one
-    if (nodeData.type === 'generator' && !hasKnowledgeCore) {
-      toast.info("No Knowledge Core Yet", {
-        description: "Upload and process a source file to enable generation.",
+    // Generator nodes need a source
+    if (nodeData.type === 'generator' && !hasSource) {
+      toast.info("No Source Yet", {
+        description: "Upload a source file to enable generation.",
         icon: <AlertCircle className="h-4 w-4" />,
       });
-      // Still allow adding the node - it will show generate button that explains the requirement
+      // Still allow adding the node
     }
 
 

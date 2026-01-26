@@ -120,31 +120,22 @@ export function CanvasSidebar({ onIngestClick }: CanvasSidebarProps) {
             >
               <Plus size={16} className="mr-2" /> Ingest Source
             </Button>
-
-            <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/20">
-              Logic Layers
-            </p>
           </div>
         )}
 
-        {isSidebarCollapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onIngestClick}
-            className="w-12 h-12 mx-auto mb-4 rounded-xl bg-bee-black text-white hover:bg-honey hover:text-bee-black flex items-center justify-center cursor-pointer shadow-md"
-          >
-            <Plus size={18} />
-          </Button>
-        )}
+        <div className="px-2 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-bee-black/20">
+            Generators
+          </p>
+        </div>
 
         {agents.map((agent) => (
           <DraggableAgent
             key={agent.subType}
             {...agent}
             collapsed={isSidebarCollapsed}
-            disabled={agent.type === 'generator' && !hasKnowledgeCore}
-            tooltip={agent.type === 'generator' && !hasKnowledgeCore ? "Upload a source first to create a Knowledge Core" : undefined}
+            disabled={!hasSource}
+            tooltip={!hasSource ? "Upload a source first" : undefined}
           />
         ))}
       </div>

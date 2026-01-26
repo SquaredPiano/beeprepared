@@ -5,13 +5,13 @@ import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-import { 
-  X, 
-  Upload, 
-  FileText, 
-  Video, 
-  Presentation, 
-  Loader2, 
+import {
+  X,
+  Upload,
+  FileText,
+  Video,
+  Presentation,
+  Loader2,
   Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
   const [uploadProgress, setUploadProgress] = useState<string>("Uploading...");
   const [activeTab, setActiveTab] = useState<"upload" | "library">("upload");
   const [existingArtifacts, setExistingArtifacts] = useState<any[]>([]);
-  
+
   // Vault / Folder State
   const [folderPath, setFolderPath] = useState("/");
   const [viewingPath, setViewingPath] = useState("/");
@@ -55,9 +55,9 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
   };
 
   const filteredArtifacts = existingArtifacts.filter(a => {
-     if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix? 
-     // Simple exact match for "Folder" simulation
-     return a.folder_path === viewingPath;
+    if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix? 
+    // Simple exact match for "Folder" simulation
+    return a.folder_path === viewingPath;
   });
 
   const selectExistingArtifact = (artifact: any) => {
@@ -73,7 +73,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
         status: "completed"
       }
     };
-    
+
     setNodes([...nodes, newNode as any]);
     takeSnapshot();
     onClose();
@@ -85,9 +85,9 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
-    
+
     let projectId = currentProjectId;
-    
+
     if (!projectId) {
       setUploadProgress("Initializing project...");
       try {
@@ -103,11 +103,11 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
 
     setIsUploading(true);
     setUploadProgress("Uploading file...");
-    
+
     try {
       // Use the canvas store's uploadFile which handles the full pipeline
       setUploadProgress("Processing...");
-      
+
       await api.upload.uploadAndIngest(
         projectId,
         file,
@@ -118,25 +118,15 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
           }
         }
       );
-      
+
       // Refresh the canvas to show new artifacts
       await refreshArtifacts();
-      
+
       toast.success(`${file.name} uploaded successfully`);
 
-      
-      // Optional callback for legacy compatibility
-      if (onUpload) {
-        const type = file.type.includes('pdf') ? 'pdf' : 
-                     file.type.includes('video') ? 'video' : 
-                     file.type.includes('presentation') || file.name.endsWith('pptx') ? 'pptx' : 'pdf';
-        onUpload({
-          label: file.name,
-          type: type as 'pdf' | 'video' | 'pptx',
-          id: 'processed'
-        });
-      }
-      
+      // refreshArtifacts now handles creating nodes for new artifacts
+      // No need for legacy onUpload callback
+
       onClose();
     } catch (error: any) {
       console.error("Upload error:", error);
@@ -171,7 +161,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
             onClick={onClose}
             className="absolute inset-0 bg-bee-black/60 backdrop-blur-md"
           />
-          
+
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -186,7 +176,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                 </div>
                 <div className="flex flex-col">
                   <div className="flex items-center gap-4">
-                    <button 
+                    <button
                       onClick={() => setActiveTab("upload")}
                       className={cn(
                         "text-xl font-serif font-bold transition-all",
@@ -196,7 +186,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                       New Upload
                     </button>
                     <div className="w-px h-4 bg-wax" />
-                    <button 
+                    <button
                       onClick={() => setActiveTab("library")}
                       className={cn(
                         "text-xl font-serif font-bold transition-all",
@@ -231,7 +221,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                     )}
                   >
                     <input {...getInputProps()} />
-                    
+
                     <div className={cn(
                       "p-6 rounded-3xl bg-white shadow-xl text-honey transition-all duration-700",
                       isDragActive ? 'scale-110 rotate-12 shadow-honey/20' : 'group-hover:scale-105'
@@ -264,10 +254,10 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                     <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Target Folder</label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-honey">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /></svg>
                       </div>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={folderPath}
                         onChange={(e) => setFolderPath(e.target.value)}
                         placeholder="/ (Root)"
@@ -279,32 +269,32 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
               ) : (
                 <div className="space-y-4">
                   {/* Folder Navigation / Filter */}
-                   <div className="flex items-center gap-2 pb-4 border-b border-wax/50 overflow-x-auto">
-                      <button 
-                        onClick={() => setViewingPath("/")}
+                  <div className="flex items-center gap-2 pb-4 border-b border-wax/50 overflow-x-auto">
+                    <button
+                      onClick={() => setViewingPath("/")}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2",
+                        viewingPath === "/" ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                      )}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+                      Root
+                    </button>
+
+                    {/* Extract unique folders from artifacts to make quick filters */}
+                    {Array.from(new Set(existingArtifacts.map(a => a.folder_path || "/").filter(p => p !== "/"))).map(folder => (
+                      <button
+                        key={folder}
+                        onClick={() => setViewingPath(folder)}
                         className={cn(
-                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2",
-                          viewingPath === "/" ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
+                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors whitespace-nowrap",
+                          viewingPath === folder ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
                         )}
                       >
-                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                         Root
+                        {folder.replace('/', '')}
                       </button>
-                      
-                      {/* Extract unique folders from artifacts to make quick filters */}
-                      {Array.from(new Set(existingArtifacts.map(a => a.folder_path || "/").filter(p => p !== "/"))).map(folder => (
-                         <button 
-                          key={folder}
-                          onClick={() => setViewingPath(folder)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors whitespace-nowrap",
-                            viewingPath === folder ? "bg-honey text-white shadow-lg shadow-honey/20" : "bg-white border border-wax hover:bg-honey/10 text-bee-black/60"
-                          )}
-                        >
-                           {folder.replace('/', '')}
-                        </button>
-                      ))}
-                   </div>
+                    ))}
+                  </div>
 
 
                   {filteredArtifacts.length > 0 ? (
@@ -324,9 +314,9 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                               <div className="flex items-center gap-2">
                                 <p className="text-[9px] uppercase tracking-widest font-bold opacity-30">{artifact.type}</p>
                                 {artifact.folder_path && artifact.folder_path !== "/" && (
-                                   <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-wax/20 text-bee-black/40">
-                                     {artifact.folder_path}
-                                   </span>
+                                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-wax/20 text-bee-black/40">
+                                    {artifact.folder_path}
+                                  </span>
                                 )}
                               </div>
                             </div>
