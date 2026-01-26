@@ -123,4 +123,35 @@ class DBInterface:
             print(f"DB Error fetching artifact {artifact_id}: {e}")
             raise e
 
+    def get_parent_edge(self, child_artifact_id: UUID) -> Optional[Dict[str, Any]]:
+        """
+        Fetches the first parent edge for a given child artifact.
+        For multi-parent lookups, use get_all_parent_edges.
+        """
+        url = f"{self.rest_url}/artifact_edges?child_artifact_id=eq.{str(child_artifact_id)}"
+        try:
+            resp = httpx.get(url, headers=self.headers)
+            resp.raise_for_status()
+            data = resp.json()
+            if data and len(data) > 0:
+                return data[0]
+            return None
+        except Exception as e:
+            print(f"DB Error fetching parent edge for {child_artifact_id}: {e}")
+            raise e
+
+    def get_all_parent_edges(self, child_artifact_id: UUID) -> List[Dict[str, Any]]:
+        """
+        Fetches ALL parent edges for a given child artifact.
+        Supports multi-parent DAG where one artifact derives from multiple sources.
+        """
+        url = f"{self.rest_url}/artifact_edges?child_artifact_id=eq.{str(child_artifact_id)}"
+        try:
+            resp = httpx.get(url, headers=self.headers)
+            resp.raise_for_status()
+            return resp.json() or []
+        except Exception as e:
+            print(f"DB Error fetching parent edges for {child_artifact_id}: {e}")
+            raise e
+
 

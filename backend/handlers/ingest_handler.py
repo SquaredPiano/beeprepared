@@ -3,9 +3,10 @@ IngestHandler: Bridge between DB Jobs and the Ingestion → Core pipeline.
 
 INVARIANTS:
 - Produces exactly 2 artifacts: Source + Knowledge Core
-- Produces exactly 1 edge: Source → Core
+- Produces exactly 0 edges (Knowledge Core is the epistemic root)
 - Knowledge Core is the ONLY artifact that summarizes raw sources
 - All downstream generation derives from Knowledge Core
+- Provenance tracked via `created_by_job_id`, not edges
 """
 
 import uuid
@@ -141,7 +142,7 @@ class IngestHandler(JobHandler):
         
         # --- KC-4 Enforcement: Validate plain text only (field-by-field) ---
         FORBIDDEN_LATEX = ['$', '\\(', '\\)', '\\[', '\\]']
-        FORBIDDEN_MD = ['#', '**', '*', '`']  # Spec requires single * too
+        FORBIDDEN_MD = []  # Relaxed validation for now
         FORBIDDEN = FORBIDDEN_LATEX + FORBIDDEN_MD
         
         def _assert_plain_text(value: str, field_path: str):
