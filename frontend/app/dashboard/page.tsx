@@ -2,11 +2,11 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Plus, 
-  ArrowUpRight, 
-  Clock, 
-  LayoutGrid, 
+import {
+  Plus,
+  ArrowUpRight,
+  Clock,
+  LayoutGrid,
   Settings,
   Search,
   BookOpen,
@@ -24,7 +24,7 @@ import { useGSAP } from "@gsap/react";
 import { api, Project } from "@/lib/api";
 import { generateProjectName } from "@/lib/utils/naming";
 import { toast } from "sonner";
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -32,6 +32,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/store/useStore";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -39,9 +50,14 @@ export default function DashboardPage() {
   const [balance, setBalance] = useState(0);
   const container = useRef(null);
 
+  // Create Project Dialog State
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
   const { getTotalUsedStorage } = useStore();
   const storageUsed = getTotalUsedStorage();
-  const storageUsedPercent = Math.min(100, Math.round((storageUsed / (1024**3)) * 100));
+  const storageUsedPercent = Math.min(100, Math.round((storageUsed / (1024 ** 3)) * 100));
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -57,7 +73,6 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-
   };
 
   useEffect(() => {
@@ -66,13 +81,13 @@ export default function DashboardPage() {
 
   useGSAP(() => {
     if (!container.current || isLoading) return;
-    
+
     gsap.set(".reveal", { opacity: 0, y: 15 });
-    
-    const tl = gsap.timeline({ 
+
+    const tl = gsap.timeline({
       defaults: { ease: "power3.out", duration: 0.8 }
     });
-    
+
     tl.to(".reveal", {
       opacity: 1,
       y: 0,
@@ -85,17 +100,21 @@ export default function DashboardPage() {
   }, { scope: container, dependencies: [isLoading] });
 
   const handleCreateProject = async () => {
-    const name = generateProjectName();
-    toast.promise(api.projects.create(name), {
-      loading: 'Creating new matrix...',
-      success: (newProj) => {
-        setProjects(prev => [newProj as Project, ...prev]);
-        return `Project "${name}" created`;
-      },
-      error: 'Creation failed'
-    });
-  };
+    if (!newProjectName.trim()) return;
 
+    setIsCreating(true);
+    try {
+      const newProj = await api.projects.create(newProjectName.trim());
+      setProjects(prev => [newProj, ...prev]);
+      setIsCreateOpen(false);
+      setNewProjectName("");
+      toast.success(`Project "${newProj.name}" created`);
+    } catch (error) {
+      toast.error("Failed to create project");
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleDeleteProject = async (id: string) => {
     try {
@@ -113,7 +132,6 @@ export default function DashboardPage() {
     { label: "Capacity", value: `${storageUsedPercent}% used`, icon: Clock },
   ];
 
-
   return (
     <div ref={container} className="max-w-6xl mx-auto px-8 md:px-12 py-16 space-y-16 min-h-screen bg-cream/30">
       {/* Hero Section */}
@@ -128,15 +146,60 @@ export default function DashboardPage() {
           </h1>
         </div>
         <div>
-          <Button 
-            onClick={handleCreateProject}
-            className="group flex items-center gap-4 bg-bee-black text-white px-8 py-7 rounded-2xl hover:bg-honey hover:text-bee-black transition-all duration-500 cursor-pointer shadow-xl shadow-bee-black/10 active:scale-95 border-none"
-          >
-            <span className="text-sm uppercase tracking-widest font-bold">New Project</span>
-            <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center group-hover:rotate-90 transition-transform duration-500">
-              <Plus className="w-5 h-5" />
-            </div>
-          </Button>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button
+                className="group flex items-center gap-4 bg-bee-black text-white px-8 py-7 rounded-2xl hover:bg-honey hover:text-bee-black transition-all duration-500 cursor-pointer shadow-xl shadow-bee-black/10 active:scale-95 border-none"
+              >
+                <span className="text-sm uppercase tracking-widest font-bold">New Project</span>
+                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center group-hover:rotate-90 transition-transform duration-500">
+                  <Plus className="w-5 h-5" />
+                </div>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md border-wax shadow-2xl bg-cream/95 backdrop-blur-xl">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-serif italic text-bee-black">New Hive Matrix</DialogTitle>
+                <DialogDescription className="text-bee-black/50 text-xs uppercase tracking-widest font-bold">
+                  Initialize a new workspace for your study materials.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-xs font-bold text-bee-black/70 uppercase tracking-wider">Project Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. Biology Final Exam"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="bg-white/50 border-wax focus:border-honey h-12 rounded-xl"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateProject();
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter className="sm:justify-between gap-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="rounded-xl hover:bg-bee-black/5 text-bee-black/50 hover:text-bee-black"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCreateProject}
+                  disabled={!newProjectName.trim() || isCreating}
+                  className="bg-bee-black hover:bg-honey hover:text-bee-black text-white rounded-xl px-8"
+                >
+                  {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Project"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </header>
 
@@ -171,7 +234,7 @@ export default function DashboardPage() {
               View All <ExternalLink size={10} />
             </Link>
           </div>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {isLoading ? (
               <div className="col-span-full py-24 flex flex-col items-center justify-center gap-4 text-bee-black/20">
@@ -222,13 +285,15 @@ export default function DashboardPage() {
                   <Search className="w-6 h-6 opacity-20" />
                 </div>
                 <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] mb-6">Matrix is currently empty</p>
-                <Button 
-                  onClick={handleCreateProject}
-                  variant="outline"
-                  className="rounded-full border-wax hover:bg-honey/10 hover:border-honey/30 gap-2 uppercase text-[10px] font-bold tracking-widest px-6"
-                >
-                  Start New Project
-                </Button>
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => setIsCreateOpen(true)}
+                    variant="outline"
+                    className="rounded-full border-wax hover:bg-honey/10 hover:border-honey/30 gap-2 uppercase text-[10px] font-bold tracking-widest px-6"
+                  >
+                    Start New Project
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -259,7 +324,7 @@ export default function DashboardPage() {
                   <span className="text-honey">Next: 1,000</span>
                 </div>
                 <div className="h-2 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                  <motion.div 
+                  <motion.div
                     className="h-full bg-honey"
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min((balance / 1000) * 100, 100)}%` }}

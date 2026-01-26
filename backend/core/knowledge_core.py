@@ -66,7 +66,8 @@ class KnowledgeCoreService:
         if api_key:
             try:
                 self.client = genai.Client(api_key=api_key)
-                self.model_name = 'gemini-2.0-flash'
+                # Revert to 2.0-flash as requested, but allow override
+                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini client: {e}")
                 self.client = None
@@ -75,17 +76,16 @@ class KnowledgeCoreService:
             self.client = None
 
 
-    def generate_knowledge_core(self, clean_text: str) -> Optional[KnowledgeCore]:
+    def generate_knowledge_core(self, clean_text: str) -> KnowledgeCore:
         """
         Generates the Knowledge Core JSON structure from cleaned text.
+        Raises exception on failure so specific error is propagated.
         """
         if not self.client:
-            logger.error("Gemini client is not initialized.")
-            return None
+            raise RuntimeError("Gemini client is not initialized (missing API Key?)")
 
         if not clean_text:
-            logger.warning("Input text is empty.")
-            return None
+            raise ValueError("Input text is empty")
 
         logger.info("Generating Knowledge Core (this may take a moment)...")
 
@@ -119,12 +119,15 @@ class KnowledgeCoreService:
             if response.parsed:
                 return response.parsed
             else:
-                logger.error("Failed to parse structured output.")
-                return None
+                # If parsed is missing but text exists, it's a schema violation or refusal
+                error_msg = f"Failed to parse structured output. Raw response: {response.text[:200]}..."
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
         except Exception as e:
             logger.error(f"Knowledge Core generation failed: {e}")
-            return None
+            # Re-raise the exception to be captured by the Job Runner
+            raise e
 
 if __name__ == "__main__":
     # Test Block

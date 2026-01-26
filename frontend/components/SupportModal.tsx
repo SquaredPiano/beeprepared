@@ -2,7 +2,9 @@
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, MessageSquare, LifeBuoy } from "lucide-react";
+import { X, Github, ExternalLink, LifeBuoy, Bug, Lightbulb } from "lucide-react";
+
+const GITHUB_ISSUES_URL = "https://github.com/SquaredPiano/beeprepared/issues";
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -38,48 +40,78 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
                       Hive Support
                     </h3>
                     <p className="text-[10px] uppercase tracking-widest text-bee-black/40 font-bold">
-                      Direct Architect Relay
+                      Community-Driven Support
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="w-10 h-10 rounded-full bg-bee-black/5 hover:bg-bee-black/10 flex items-center justify-center transition-all group"
+                  className="w-10 h-10 rounded-full bg-bee-black/5 hover:bg-bee-black/10 flex items-center justify-center transition-all group cursor-pointer"
                 >
                   <X className="w-4 h-4 text-bee-black transition-transform group-hover:rotate-90" />
                 </button>
               </div>
 
               <div className="p-8 space-y-6">
+                <p className="text-sm text-bee-black/70 leading-relaxed">
+                  BeePrepared is an open-source project. For bugs, feature requests, or questions,
+                  please open an issue on our GitHub repository.
+                </p>
+
                 <div className="grid grid-cols-1 gap-4">
-                  <a 
-                    href="mailto:support@beeprepared.ai"
+                  <a
+                    href={`${GITHUB_ISSUES_URL}/new?template=bug_report.md`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group"
                   >
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <Mail className="text-blue-600 w-6 h-6" />
+                    <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center group-hover:bg-red-100 transition-colors">
+                      <Bug className="text-red-600 w-6 h-6" />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Email Protocol</h4>
-                      <p className="text-xs text-bee-black/50">support@beeprepared.ai</p>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Report a Bug</h4>
+                      <p className="text-xs text-bee-black/50">Something not working correctly?</p>
                     </div>
+                    <ExternalLink className="w-4 h-4 text-bee-black/20 group-hover:text-bee-black/40" />
                   </a>
 
-                  <div className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group cursor-pointer">
+                  <a
+                    href={`${GITHUB_ISSUES_URL}/new?template=feature_request.md`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group"
+                  >
                     <div className="w-12 h-12 rounded-xl bg-honey/10 flex items-center justify-center group-hover:bg-honey/20 transition-colors">
-                      <MessageSquare className="text-honey-600 w-6 h-6" />
+                      <Lightbulb className="text-honey-600 w-6 h-6" />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Live Relay</h4>
-                      <p className="text-xs text-bee-black/50">Available Mon-Fri, 9am-5pm EST</p>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Feature Request</h4>
+                      <p className="text-xs text-bee-black/50">Have an idea to improve BeePrepared?</p>
                     </div>
-                  </div>
+                    <ExternalLink className="w-4 h-4 text-bee-black/20 group-hover:text-bee-black/40" />
+                  </a>
+
+                  <a
+                    href={GITHUB_ISSUES_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-6 rounded-2xl border border-wax bg-white/50 hover:bg-white hover:shadow-xl hover:scale-[1.02] transition-all group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-bee-black/5 flex items-center justify-center group-hover:bg-bee-black/10 transition-colors">
+                      <Github className="text-bee-black w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-bee-black text-sm uppercase tracking-wide">Browse Issues</h4>
+                      <p className="text-xs text-bee-black/50">View existing issues and discussions</p>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-bee-black/20 group-hover:text-bee-black/40" />
+                  </a>
                 </div>
 
-                <div className="bg-honey/5 border border-honey/10 rounded-2xl p-6 text-center">
+                <div className="bg-honey/5 border border-honey/10 rounded-2xl p-5 text-center">
                   <p className="text-xs text-honey-700 font-medium leading-relaxed">
-                    Our architects are currently synthesizing high-fidelity responses. 
-                    Expect a relay within 2-4 hive cycles (hours).
+                    Thank you for helping make BeePrepared better!
+                    Our maintainers review issues regularly.
                   </p>
                 </div>
               </div>
@@ -92,3 +124,4 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
     </AnimatePresence>
   );
 }
+

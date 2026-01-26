@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { 
-  Search, 
-  Filter, 
-  MoreVertical, 
-  FileText, 
-  Download, 
-  Trash2, 
-  Eye, 
-  Workflow, 
+import {
+  Search,
+  Filter,
+  MoreVertical,
+  FileText,
+  Download,
+  Trash2,
+  Eye,
+  Workflow,
   ArrowRight,
   Layout,
   Book,
@@ -35,19 +35,22 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState("projects");
   const [projects, setProjects] = useState<any[]>([]);
   const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [projectsData, vaultData] = await Promise.all([
+        const [projectsData, vaultData, jobsData] = await Promise.all([
           api.projects.list(),
-          api.vault.list("/")
+          api.vault.list("/"),
+          api.jobs.list()
         ]);
 
         setProjects(projectsData);
         setArtifacts(vaultData.files || []);
+        setJobs(jobsData || []);
       } catch (error: any) {
         console.error("Fetch error:", error);
         toast.error("Failed to load library data");
@@ -57,7 +60,24 @@ export default function LibraryPage() {
     }
 
     fetchData();
+
+    // Poll for job updates every 5s if there are active jobs
+    const interval = setInterval(async () => {
+      try {
+        const jobsData = await api.jobs.list();
+        setJobs(jobsData || []);
+        // Also refresh artifacts if jobs complete
+        const hasCompletedRecent = jobsData.some((j: any) => j.status === 'completed' && new Date(j.created_at).getTime() > Date.now() - 10000);
+        if (hasCompletedRecent) {
+          const vaultData = await api.vault.list("/");
+          setArtifacts(vaultData.files || []);
+        }
+      } catch (e) { console.error("Poll error", e); }
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
+
+  const activeJobs = jobs.filter(j => ['pending', 'running', 'failed'].includes(j.status));
 
   const renderContent = () => {
     if (activeTab === "projects") {
@@ -69,6 +89,42 @@ export default function LibraryPage() {
           exit={{ opacity: 0, y: -20 }}
           className="space-y-8"
         >
+          {/* Active Jobs Section */}
+          {activeJobs.length > 0 && (
+            <div className="space-y-4 mb-8">
+              <h3 className="text-sm font-bold uppercase tracking-widest opacity-60">Active Processes</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeJobs.map(job => (
+                  <div key={job.id} className={cn(
+                    "p-4 rounded-2xl border flex items-center gap-4 bg-white/50 backdrop-blur-sm",
+                    job.status === 'failed' ? "border-red-200 bg-red-50/50" : "border-honey/20"
+                  )}>
+                    <div className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center",
+                      job.status === 'failed' ? "bg-red-100 text-red-600" : "bg-honey/10 text-honey animate-pulse"
+                    )}>
+                      {job.status === 'failed' ? <Trash2 size={18} /> : <Workflow size={18} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-bold uppercase">{job.type} Job</p>
+                        <span className={cn(
+                          "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                          job.status === 'failed' ? "bg-red-200 text-red-700" : "bg-honey text-white"
+                        )}>
+                          {job.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] opacity-60 truncate">
+                        {job.error_message || `Processing ${job.payload?.original_name || 'task'}...`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <button
               onClick={() => router.push("/dashboard/canvas")}
@@ -100,7 +156,7 @@ export default function LibraryPage() {
                 <div className="absolute top-0 right-0 p-8 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
                   <ArrowRight className="w-6 h-6 text-honey-600" />
                 </div>
-                
+
                 <div className="w-16 h-16 bg-honey-500 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-honey-500/40 group-hover:rotate-6 transition-transform duration-500">
                   <Workflow size={32} />
                 </div>
@@ -164,7 +220,7 @@ export default function LibraryPage() {
               </p>
             </div>
 
-            <button 
+            <button
               onClick={() => router.push(sectionRoutes[activeTab])}
               className="px-12 py-6 bg-bee-black text-white text-[10px] font-black uppercase tracking-[0.4em] rounded-[2rem] hover:bg-honey-600 transition-all shadow-2xl hover:scale-105 active:scale-95"
             >
@@ -198,7 +254,7 @@ export default function LibraryPage() {
           </p>
         </div>
 
-        <button 
+        <button
           onClick={() => router.push("/dashboard/canvas")}
           className="px-10 py-5 bg-bee-black text-white text-[10px] font-bold uppercase tracking-[0.3em] rounded-[2rem] hover:bg-honey-600 transition-all shadow-2xl"
         >
@@ -213,14 +269,14 @@ export default function LibraryPage() {
       <header className="flex items-end justify-between">
         <div className="space-y-4">
           <h1 className="text-6xl font-display uppercase tracking-tighter leading-[0.8]">
-            Knowledge <br /> 
+            Knowledge <br />
             <span className="italic lowercase opacity-40">Library</span>
           </h1>
           <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-40 max-w-xs leading-relaxed">
             Your archived artifacts and synthesized knowledge base.
           </p>
         </div>
-        
+
         <div className="flex gap-4">
           <div className="glass flex p-1 rounded-2xl border border-border/40 overflow-x-auto scrollbar-none">
             {tabs.map((tab) => {
@@ -231,8 +287,8 @@ export default function LibraryPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     "flex items-center gap-3 px-6 py-3 rounded-xl transition-all duration-500 text-[10px] font-bold uppercase tracking-widest shrink-0 cursor-pointer",
-                    activeTab === tab.id 
-                      ? "bg-bee-black text-white shadow-xl" 
+                    activeTab === tab.id
+                      ? "bg-bee-black text-white shadow-xl"
                       : "text-bee-black/40 hover:text-bee-black hover:bg-honey-50"
                   )}
                 >

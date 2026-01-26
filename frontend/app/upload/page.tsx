@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   Zap,
   Hexagon,
-  ChevronRight
+  ChevronRight,
+  ArrowRight
 } from "lucide-react";
 import Link from "next/link";
 import { api, Job } from "@/lib/api";
@@ -270,30 +271,40 @@ export default function UploadPage() {
               </div>
 
               {uploadQueue.length > 0 && (
-                <div className="mt-8 pt-8 border-t border-wax">
-                  <button
-                    onClick={startIngestion}
-                    disabled={isProcessing || !selectedProjectId}
-                    className={cn(
-                      "w-full h-16 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3",
-                      isProcessing || !selectedProjectId
-                        ? "bg-wax/20 text-bee-black/20 cursor-not-allowed"
-                        : "bg-bee-black text-white hover:bg-honey hover:text-bee-black shadow-xl"
-                    )}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        Start Upload
-                        <ChevronRight size={16} />
-                      </>
-                    )}
-
-                  </button>
+                <div className="mt-8 pt-8 border-t border-wax space-y-4">
+                  {!uploadQueue.every(f => f.status === 'completed') ? (
+                    <button
+                      onClick={startIngestion}
+                      disabled={isProcessing || !selectedProjectId}
+                      className={cn(
+                        "w-full h-16 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3",
+                        isProcessing || !selectedProjectId
+                          ? "bg-wax/20 text-bee-black/20 cursor-not-allowed"
+                          : "bg-bee-black text-white hover:bg-honey hover:text-bee-black shadow-xl"
+                      )}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          Start Upload
+                          <ChevronRight size={16} />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <Link
+                      href={`/dashboard/canvas?id=${selectedProjectId}`}
+                      className="w-full h-16 rounded-[1.5rem] font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-3 bg-green-500 text-white hover:bg-green-600 shadow-xl"
+                    >
+                      <CheckCircle2 size={16} />
+                      Go to Canvas
+                      <ArrowRight size={16} />
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
