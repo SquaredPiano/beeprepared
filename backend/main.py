@@ -296,7 +296,7 @@ async def health_check():
 
 
 @app.post("/api/jobs", response_model=JobResponse)
-async def create_job(request: JobRequest):
+async def create_job(request: JobRequest, user_id: str = Depends(get_current_user)):
     """
     Create a new job.
     
@@ -308,6 +308,21 @@ async def create_job(request: JobRequest):
     
     The JobRunner will pick up the job asynchronously.
     """
+    try:
+        supabase = get_supabase()
+        
+        # Verify project ownership
+        project_resp = supabase.table("projects").select("user_id").eq("id", request.project_id).execute()
+        if not project_resp.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if project_resp.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to verify project ownership for job creation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     logger.info(f"Creating job: type={request.type}, project={request.project_id}")
     
     # Validate job type
@@ -388,7 +403,7 @@ async def create_job(request: JobRequest):
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, user_id: str = Depends(get_current_user)):
     """
     Get job status.
     
@@ -402,6 +417,11 @@ async def get_job_status(job_id: str):
             raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
         
         job = response.data[0]
+        
+        # Verify job ownership via project
+        project_resp = supabase.table("projects").select("user_id").eq("id", job["project_id"]).execute()
+        if not project_resp.data or project_resp.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         return JobStatusResponse(
             id=job["id"],
@@ -420,8 +440,44 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/jobs")
+async def list_active_jobs(project_id: str = None, user_id: str = Depends(get_current_user)):
+    """
+    List recent jobs for user/project.
+    """
+    try:
+        supabase = get_supabase()
+        
+        # Get projects owned by user to filter jobs
+        projects_resp = supabase.table("projects").select("id").eq("user_id", user_id).execute()
+        user_project_ids = [p["id"] for p in projects_resp.data]
+        
+        if not user_project_ids:
+            return []
+            
+        # Build query
+        query = supabase.table("jobs").select("*").in_("project_id", user_project_ids)
+        
+        if project_id:
+            # Verify project ownership if specific project requested
+            if project_id not in user_project_ids:
+                 raise HTTPException(status_code=403, detail="Access denied to project jobs")
+            query = query.eq("project_id", project_id)
+            
+        # Get recent jobs (limit 20)
+        response = query.order("created_at", desc=True).limit(20).execute()
+        
+        return response.data or []
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/projects/{project_id}/artifacts")
-async def list_project_artifacts(project_id: str):
+async def list_project_artifacts(project_id: str, user_id: str = Depends(get_current_user)):
     """
     List all artifacts for a project.
     
@@ -429,6 +485,13 @@ async def list_project_artifacts(project_id: str):
     """
     try:
         supabase = get_supabase()
+        
+        # Verify ownership
+        project_resp = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        if not project_resp.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if project_resp.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
         
         # Fetch artifacts
         artifacts_response = supabase.table("artifacts").select("*").eq("project_id", project_id).execute()
@@ -447,7 +510,7 @@ async def list_project_artifacts(project_id: str):
 
 
 @app.get("/api/artifacts/{artifact_id}/download")
-async def download_artifact_binary(artifact_id: str, inline: bool = False):
+async def download_artifact_binary(artifact_id: str, inline: bool = False, user_id: str = Depends(get_current_user)):
     """
     Get a presigned URL for downloading a binary artifact (PDF, PPTX).
     Optional ?inline=true query param sets Content-Disposition to inline for browser preview.
@@ -467,6 +530,11 @@ async def download_artifact_binary(artifact_id: str, inline: bool = False):
             raise HTTPException(status_code=404, detail="Artifact not found")
         
         artifact = response.data[0]
+        
+        # Verify ownership via project
+        project_resp = supabase.table("projects").select("user_id").eq("id", artifact["project_id"]).execute()
+        if not project_resp.data or project_resp.data[0]["user_id"] != user_id:
+             raise HTTPException(status_code=403, detail="Access denied")
         content = artifact.get("content", {})
         binary = content.get("binary")
         
@@ -820,9 +888,34 @@ async def update_project(
 @app.get("/api/vault")
 async def list_vault(path: str = "/", user_id: str = Depends(get_current_user)):
     """
-    List files in the vault (Mock endpoint for now).
+    List all artifacts across all projects for the authenticated user.
     """
-    return {"files": []}
+    try:
+        supabase = get_supabase()
+        
+        # 1. Get all project IDs for this user
+        projects_resp = supabase.table("projects").select("id").eq("user_id", user_id).execute()
+        if not projects_resp.data:
+            return {"files": []}
+            
+        project_ids = [p["id"] for p in projects_resp.data]
+        
+        # 2. Get artifacts for these projects
+        # Note: 'in_' filter expects a list
+        if not project_ids:
+            return {"files": []}
+
+        artifacts_resp = supabase.table("artifacts") \
+            .select("*") \
+            .in_("project_id", project_ids) \
+            .order("created_at", desc=True) \
+            .execute()
+            
+        return {"files": artifacts_resp.data}
+        
+    except Exception as e:
+        logger.error(f"Vault list failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

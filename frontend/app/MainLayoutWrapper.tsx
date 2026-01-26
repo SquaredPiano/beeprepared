@@ -53,12 +53,12 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   // Auth state change listener + redirects (skip in dev mode)
   useEffect(() => {
     if (DEV_MODE) return;
-    
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setIsLoading(false);
-      
+
       // Redirect logic
       if (currentUser && (isLandingPage || isAuthPage)) {
         router.replace("/dashboard");
@@ -73,7 +73,7 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   // Immediate redirect check after loading (skip in dev mode)
   useEffect(() => {
     if (DEV_MODE || isLoading) return;
-    
+
     if (user && (isLandingPage || isAuthPage)) {
       router.replace("/dashboard");
     } else if (!user && isProtectedRoute) {
@@ -83,11 +83,11 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLandingPage) return;
-    
+
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
-    
+
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, [isLandingPage]);
@@ -130,7 +130,7 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen">
         <Sidebar />
-        <main 
+        <main
           className={cn(
             "flex-1 transition-[padding] duration-300 min-h-screen",
             isCollapsed ? "pl-0" : "pl-[280px]"
@@ -139,9 +139,9 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
           {children}
         </main>
         {/* Hide HoneyJar on canvas page */}
-        {isDashboard && !isCanvasPage && (
+        {/* {isDashboard && !isCanvasPage && (
           <HoneyJar points={450} maxPoints={1000} level="Worker Bee" isMystery={true} />
-        )}
+        )} */}
         <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
       </div>
     );
@@ -156,7 +156,7 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
     <div className="relative flex min-h-screen flex-col">
       <header className={cn(
         "fixed top-0 z-[100] w-full transition-all duration-500",
-        isLandingPage 
+        isLandingPage
           ? isScrolled
             ? "bg-cream/95 backdrop-blur-md border-b-2 border-bee-black shadow-[0_4px_0px_0px_#FFB800]"
             : "bg-transparent border-none"
@@ -166,14 +166,14 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
           <Link href="/" className="group cursor-pointer">
             <Logo showText={true} />
           </Link>
-          
+
           <div className="flex items-center gap-8">
-            <button 
+            <button
               onClick={handleAuthAction}
               className={cn(
                 "px-10 py-4 font-black uppercase tracking-[0.2em] text-[10px] transition-all duration-500 shadow-xl",
-                isLandingPage 
-                  ? "bg-honey text-bee-black hover:bg-white hover:scale-105" 
+                isLandingPage
+                  ? "bg-honey text-bee-black hover:bg-white hover:scale-105"
                   : "bg-bee-black text-white hover:bg-honey-500"
               )}
             >
@@ -186,10 +186,10 @@ export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
       <main className="flex-1">
         {children}
       </main>
-      
+
       {/* Only show global footer if NOT the landing page */}
       {!isLandingPage && <Footer />}
-      
+
       <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
     </div>
   );

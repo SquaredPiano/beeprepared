@@ -34,6 +34,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { supabase } from "@/lib/supabase";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -300,7 +301,15 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
 
     setPptxLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, {
+        headers
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.download_url) {
@@ -365,8 +374,8 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
             <div className="text-bee-black/50 text-sm">Loading Preview...</div>
           ) : pptxSignedUrl ? (
             <iframe
-              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(pptxSignedUrl)}`}
-              className="w-full h-full"
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(pptxSignedUrl)}&embedded=true`}
+              className="w-full h-full border-0"
               title="PPTX Preview"
             />
           ) : (
@@ -506,7 +515,15 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
 
     setPdfLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, {
+        headers
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.download_url) {
@@ -565,11 +582,18 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
           {pdfLoading ? (
             <div className="text-bee-black/50 text-sm">Loading PDF...</div>
           ) : pdfSignedUrl ? (
-            <iframe
-              src={pdfSignedUrl}
+            <object
+              data={pdfSignedUrl}
+              type="application/pdf"
               className="w-full h-full"
-              title="PDF Preview"
-            />
+            >
+              {/* Fallback if object tag doesn't work */}
+              <iframe
+                src={pdfSignedUrl}
+                className="w-full h-full"
+                title="PDF Preview"
+              />
+            </object>
           ) : (
             <div className="text-bee-black/50 text-sm">PDF not available</div>
           )}

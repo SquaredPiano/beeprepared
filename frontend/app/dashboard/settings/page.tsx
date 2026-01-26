@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { 
-  User, 
-  Bell, 
-  Shield, 
-  Palette, 
-  Volume2, 
+import {
+  User,
+  Shield,
+  Palette,
+  Volume2,
   Bug,
   Save,
   LogOut,
-  CreditCard,
   Cloud,
   ChevronRight,
   Monitor,
@@ -44,11 +41,43 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
+  // Settings state with defaults
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
+  const [showMascot, setShowMascot] = useState(true);
+  const [animations, setAnimations] = useState(true);
+  const [audioFeedback, setAudioFeedback] = useState(true);
+  const [autoSave, setAutoSave] = useState(true);
+  const [fullName, setFullName] = useState("");
+  const [bio, setBio] = useState("");
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('beeprepared_settings');
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings);
+        setTheme(settings.theme || 'light');
+        setShowMascot(settings.showMascot ?? true);
+        setAnimations(settings.animations ?? true);
+        setAudioFeedback(settings.audioFeedback ?? true);
+        setAutoSave(settings.autoSave ?? true);
+        setFullName(settings.fullName || "");
+        setBio(settings.bio || "");
+      } catch (e) {
+        console.error('[Settings] Failed to parse saved settings');
+      }
+    }
+  }, []);
+
   useEffect(() => {
     async function fetchProfile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setProfile(user);
+        // Set name from user metadata if not already set
+        if (!fullName && user.user_metadata?.full_name) {
+          setFullName(user.user_metadata.full_name);
+        }
       }
     }
     fetchProfile();
@@ -61,9 +90,36 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Save to localStorage
+    const settings = {
+      theme,
+      showMascot,
+      animations,
+      audioFeedback,
+      autoSave,
+      fullName,
+      bio,
+    };
+    localStorage.setItem('beeprepared_settings', JSON.stringify(settings));
+
+    // Sync to Supabase Auth Metadata (Cloud Persistence)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: fullName,
+          bio: bio
+        }
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error("Cloud sync failed:", e);
+      toast.error("Cloud sync failed (Local saved)");
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300));
     setIsLoading(false);
-    toast.success("Settings saved");
+    toast.success("Settings saved successfully");
   };
 
   const handleDeleteAccount = async () => {
@@ -71,7 +127,7 @@ export default function SettingsPage() {
       toast.error("Please type DELETE to confirm");
       return;
     }
-    
+
     try {
       // In production, this would call a server action to delete the user
       toast.success("Account scheduled for deletion");
@@ -100,9 +156,9 @@ export default function SettingsPage() {
         <div className="bg-white/60 backdrop-blur-xl border border-wax rounded-[2rem] p-2 inline-flex shadow-sm">
           <TabsList className="bg-transparent gap-2 h-auto p-0">
             {sections.map((section) => (
-              <TabsTrigger 
+              <TabsTrigger
                 key={section.id}
-                value={section.id} 
+                value={section.id}
                 className="data-[state=active]:bg-bee-black data-[state=active]:text-cream rounded-2xl px-6 py-3 font-bold uppercase text-[10px] tracking-widest text-bee-black/40 transition-all gap-2"
               >
                 <section.icon size={14} />
@@ -133,7 +189,12 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-bee-black/70 ml-1">Full Name</Label>
-                      <Input defaultValue={profile?.user_metadata?.full_name || "New Worker"} className="bg-cream/30 border-wax rounded-xl h-12" />
+                      <Input
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Your Name"
+                        className="bg-cream/30 border-wax rounded-xl h-12"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-bee-black/70 ml-1">Email</Label>
@@ -143,9 +204,11 @@ export default function SettingsPage() {
 
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold text-bee-black/70 ml-1">Bio</Label>
-                    <textarea 
+                    <textarea
                       className="w-full min-h-[100px] bg-cream/30 border border-wax rounded-2xl p-4 text-sm focus:outline-none focus:border-honey focus:ring-1 focus:ring-honey transition-all font-medium"
                       placeholder="Tell us about yourself..."
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
                     />
                   </div>
                 </div>
@@ -160,12 +223,21 @@ export default function SettingsPage() {
                         { id: 'light', icon: Sun, label: 'Cream' },
                         { id: 'dark', icon: Moon, label: 'Wax' },
                         { id: 'system', icon: Monitor, label: 'Auto' }
-                      ].map((theme) => (
-                        <div key={theme.id} className="cursor-pointer group">
-                          <div className="h-24 bg-cream/50 border border-wax rounded-2xl flex items-center justify-center group-hover:border-honey transition-all mb-2">
-                            <theme.icon className="text-bee-black/20 group-hover:text-honey transition-colors" />
+                      ].map((themeOption) => (
+                        <div
+                          key={themeOption.id}
+                          className="cursor-pointer group"
+                          onClick={() => setTheme(themeOption.id as any)}
+                        >
+                          <div className={`h-24 border rounded-2xl flex items-center justify-center transition-all mb-2 ${theme === themeOption.id
+                            ? "bg-honey/10 border-honey shadow-[0_0_15px_rgba(255,184,0,0.2)]"
+                            : "bg-cream/50 border-wax group-hover:border-honey"
+                            }`}>
+                            <themeOption.icon className={`transition-colors ${theme === themeOption.id ? "text-honey" : "text-bee-black/20 group-hover:text-honey"
+                              }`} />
                           </div>
-                          <p className="text-[10px] font-bold uppercase text-center opacity-40 group-hover:opacity-100">{theme.label}</p>
+                          <p className={`text-[10px] font-bold uppercase text-center transition-all ${theme === themeOption.id ? "text-honey opacity-100" : "opacity-40 group-hover:opacity-100"
+                            }`}>{themeOption.label}</p>
                         </div>
                       ))}
                     </div>
@@ -177,14 +249,14 @@ export default function SettingsPage() {
                         <p className="text-sm font-bold text-bee-black">Bee Mascot</p>
                         <p className="text-xs text-bee-black/40 font-medium tracking-wide">Show the animated bee helper</p>
                       </div>
-                      <Switch defaultChecked />
+                      <Switch checked={showMascot} onCheckedChange={setShowMascot} />
                     </div>
                     <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
                       <div className="space-y-1">
                         <p className="text-sm font-bold text-bee-black">Animations</p>
                         <p className="text-xs text-bee-black/40 font-medium tracking-wide">Enable smooth motion effects</p>
                       </div>
-                      <Switch defaultChecked />
+                      <Switch checked={animations} onCheckedChange={setAnimations} />
                     </div>
                   </div>
                 </div>
@@ -200,7 +272,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-bee-black/40 font-medium tracking-wide">Play sounds for UI interactions</p>
                       </div>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={audioFeedback} onCheckedChange={setAudioFeedback} />
                   </div>
                   <div className="flex items-center justify-between p-6 rounded-3xl bg-cream/30 border border-wax">
                     <div className="flex gap-4 items-center">
@@ -210,7 +282,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-bee-black/40 font-medium tracking-wide">Automatically save canvas progress</p>
                       </div>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={autoSave} onCheckedChange={setAutoSave} />
                   </div>
                 </div>
               </TabsContent>
@@ -238,7 +310,7 @@ export default function SettingsPage() {
                         <div className="space-y-2 flex-1">
                           <p className="text-sm font-bold text-red-700">Delete Account</p>
                           <p className="text-xs text-red-600/60 font-medium">This action is irreversible. All your projects, artifacts, and data will be permanently deleted.</p>
-                          
+
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="outline" className="mt-4 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400">
@@ -253,7 +325,7 @@ export default function SettingsPage() {
                                   <p>This will permanently delete your account and all associated data. This action cannot be undone.</p>
                                   <div className="space-y-2">
                                     <Label className="text-xs font-semibold">Type DELETE to confirm</Label>
-                                    <Input 
+                                    <Input
                                       value={deleteConfirmText}
                                       onChange={(e) => setDeleteConfirmText(e.target.value)}
                                       placeholder="DELETE"
@@ -264,7 +336,7 @@ export default function SettingsPage() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                                <AlertDialogAction 
+                                <AlertDialogAction
                                   onClick={handleDeleteAccount}
                                   disabled={deleteConfirmText !== "DELETE"}
                                   className="bg-red-600 hover:bg-red-700 rounded-xl disabled:opacity-50"
@@ -285,16 +357,16 @@ export default function SettingsPage() {
 
           <aside className="space-y-8">
             <div className="space-y-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleSave}
                 disabled={isLoading}
                 className="w-full h-14 border-wax hover:bg-honey/10 hover:border-honey/30 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em]"
               >
                 {isLoading ? "Saving..." : <><Save size={16} /> Save Settings</>}
               </Button>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={handleLogout}
                 className="w-full h-14 hover:bg-red-50 hover:text-red-600 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em] text-bee-black/40"
               >

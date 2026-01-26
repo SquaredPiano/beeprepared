@@ -146,6 +146,21 @@ export const api = {
   },
 
   jobs: {
+    async list(projectId?: string): Promise<Job[]> {
+      const token = await getAccessToken();
+      const url = projectId
+        ? `${BACKEND_URL}/api/jobs?project_id=${projectId}`
+        : `${BACKEND_URL}/api/jobs`;
+
+      const response = await fetch(url, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch jobs");
+      }
+      return response.json();
+    },
+
     async create(projectId: string, type: "ingest" | "generate", payload: any): Promise<{ job_id: string }> {
       const token = await getAccessToken();
       const response = await fetch(`${BACKEND_URL}/api/jobs`, {
