@@ -1,8 +1,4 @@
-import { getMockAccessToken } from "./mockAuth";
-import { getMockProjects, getMockProjectById, createMockProject, updateMockProject, mockProjects } from "./mockProject";
-
-// For demo mode, we use mock auth
-const getAccessToken = getMockAccessToken;
+import { getAccessToken } from "./auth";
 
 // Backend API base URL
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -151,9 +147,13 @@ export const api = {
 
   jobs: {
     async create(projectId: string, type: "ingest" | "generate", payload: any): Promise<{ job_id: string }> {
+      const token = await getAccessToken();
       const response = await fetch(`${BACKEND_URL}/api/jobs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           project_id: projectId,
           type,
@@ -168,7 +168,10 @@ export const api = {
     },
 
     async getStatus(jobId: string): Promise<Job> {
-      const response = await fetch(`${BACKEND_URL}/api/jobs/${jobId}`);
+      const token = await getAccessToken();
+      const response = await fetch(`${BACKEND_URL}/api/jobs/${jobId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ detail: "Failed to get job status" }));
         throw new Error(err.detail || "Failed to get job status");

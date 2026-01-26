@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { getMockAccessToken } from '@/lib/mockAuth';
+import { getAccessToken } from '@/lib/auth';
 import { api, Artifact } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -57,11 +57,15 @@ export function useArtifactGenerator() {
   }, []);
 
   /**
-   * Get auth token for backend requests (uses mock auth for demo)
+   * Get auth token for backend requests 
    */
   const getAuthToken = async (): Promise<string | null> => {
-    // Using mock auth - backend accepts any token or no token for /api/jobs
-    return getMockAccessToken();
+    try {
+      return await getAccessToken();
+    } catch (error) {
+      console.error('[ArtifactGenerator] Auth error:', error);
+      return null;
+    }
   };
 
   /**
@@ -69,10 +73,22 @@ export function useArtifactGenerator() {
    */
   const createGenerateJob = async (
     projectId: string,
-    sourceArtifactId: string,
+    sourceArtifactIds: string | string[],
     targetType: TargetType
   ): Promise<string> => {
     const token = await getAuthToken();
+
+    console.log(`[ArtifactGenerator] Creating job: target=${targetType}, sources=${sourceArtifactIds}, project=${projectId}`);
+
+    const payload: any = {
+      target_type: targetType,
+    };
+
+    if (Array.isArray(sourceArtifactIds)) {
+      payload.source_artifact_ids = sourceArtifactIds;
+    } else {
+      payload.source_artifact_id = sourceArtifactIds;
+    }
 
     const res = await fetch(`${API_BASE}/api/jobs`, {
       method: 'POST',
@@ -83,10 +99,7 @@ export function useArtifactGenerator() {
       body: JSON.stringify({
         project_id: projectId,
         type: 'generate',
-        payload: {
-          source_artifact_id: sourceArtifactId,
-          target_type: targetType,
-        },
+        payload,
       }),
     });
 
@@ -115,7 +128,10 @@ export function useArtifactGenerator() {
         throw new Error('Generation cancelled');
       }
 
-      const res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       if (!res.ok) {
         throw new Error(`Failed to fetch job status: ${res.status}`);
       }
@@ -167,11 +183,11 @@ export function useArtifactGenerator() {
   };
 
   /**
-   * Generate an artifact from a knowledge core
+   * Generate an artifact from a knowledge core (or list of sources)
    */
   const generate = useCallback(async (
     projectId: string,
-    knowledgeCoreId: string,
+    sourceArtifactIds: string | string[],
     targetType: TargetType
   ): Promise<Artifact | null> => {
     // Cancel any existing generation for this target
@@ -195,7 +211,7 @@ export function useArtifactGenerator() {
 
     try {
       // Create job
-      const jobId = await createGenerateJob(projectId, knowledgeCoreId, targetType);
+      const jobId = await createGenerateJob(projectId, sourceArtifactIds, targetType);
       updateState(targetType, { jobId, status: 'running', progress: 20 });
 
       // Poll for completion

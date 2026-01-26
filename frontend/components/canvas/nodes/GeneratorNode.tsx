@@ -103,28 +103,64 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     );
   }, [id, setNodes]);
 
-  // Find the connected knowledge core
-  const findConnectedKnowledgeCore = useCallback(async (): Promise<string | null> => {
-    // First, check incoming edges for a knowledge_core connection
+  // Find connected sources (Knowledge Core, Asset, or Chained Generators)
+  const findSourceArtifacts = useCallback(async (): Promise<string[]> => {
+    // 1. Check incoming edges
     const edges = getEdges();
     const nodes = getNodes();
 
-    const incomingEdge = edges.find(e => e.target === id);
-    if (incomingEdge) {
-      const sourceNode = nodes.find(n => n.id === incomingEdge.source);
-      const nodeData = sourceNode?.data as Record<string, unknown> | undefined;
-      if (nodeData?.type === "knowledge_core" && (nodeData?.artifact as { id?: string })?.id) {
-        return (nodeData.artifact as { id: string }).id;
+    const incomingEdges = edges.filter(e => e.target === id);
+    console.log(`[Generator ${id}] Finding sources. Incoming edges:`, incomingEdges.length);
+
+    if (incomingEdges.length === 0) {
+      // Fallback: Find any valid source in the project (Single Input logic fallback)
+      if (currentProjectId) {
+        const core = await findKnowledgeCore(currentProjectId);
+        if (core) {
+          console.log(`[Generator ${id}] Fallback: using project knowledge core:`, core.id);
+          return [core.id];
+        }
+      }
+      return [];
+    }
+
+    const foundIds: string[] = [];
+
+    for (const edge of incomingEdges) {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      if (!sourceNode) continue;
+
+      console.log(`[Generator ${id}] Checking source node:`, sourceNode.type, sourceNode.id);
+
+      // Case A: Connected to Knowledge Core direct
+      if (sourceNode.type === 'artifactNode' && sourceNode.data?.type === 'knowledge_core') {
+        if ((sourceNode.data.artifact as { id: string })?.id) {
+          foundIds.push((sourceNode.data.artifact as { id: string }).id);
+        }
+      }
+      // Case B: Connected to Generator (Chaining)
+      else if (sourceNode.type === 'generator') {
+        const parentData = sourceNode.data as unknown as GeneratorNodeData;
+        if (parentData.artifact && (parentData.artifact as { id: string }).id) {
+          foundIds.push((parentData.artifact as { id: string }).id);
+        } else {
+          // If parent incomplete, we skip it but log warning
+          console.warn(`[Generator ${id}] Skipping incomplete parent generator ${sourceNode.id}`);
+        }
+      }
+      // Case C: Asset -> Project Knowledge Core
+      else if (sourceNode.type === 'asset') {
+        if (currentProjectId) {
+          const core = await findKnowledgeCore(currentProjectId);
+          if (core) {
+            foundIds.push(core.id);
+          }
+        }
       }
     }
 
-    // Fallback: Find any knowledge_core in the project
-    if (currentProjectId) {
-      const core = await findKnowledgeCore(currentProjectId);
-      if (core) return core.id;
-    }
-
-    return null;
+    // Deduplicate
+    return Array.from(new Set(foundIds));
   }, [getEdges, getNodes, id, currentProjectId]);
 
   // Handle generation
@@ -134,18 +170,19 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
       return;
     }
 
-    const knowledgeCoreId = await findConnectedKnowledgeCore();
+    const sourceArtifactIds = await findSourceArtifacts();
 
-    if (!knowledgeCoreId) {
-      toast.error("No Knowledge Core found", {
-        description: "Upload and process a source file first to create a Knowledge Core.",
+    if (sourceArtifactIds.length === 0) {
+      toast.error("No Source found", {
+        description: "Connect to a source file or knowledge core to generate.",
       });
       return;
     }
 
     updateNodeData({ status: "pending", progress: 0, error: null });
 
-    const result = await generate(currentProjectId, knowledgeCoreId, generatorType);
+    // Pass IDs list to generate
+    const result = await generate(currentProjectId, sourceArtifactIds, generatorType);
 
     if (result) {
       setLocalArtifact(result);
@@ -164,7 +201,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
         progress: 0
       });
     }
-  }, [currentProjectId, findConnectedKnowledgeCore, generate, generatorType, updateNodeData, refreshArtifacts, generatorState?.error]);
+  }, [currentProjectId, findSourceArtifacts, generate, generatorType, updateNodeData, refreshArtifacts, generatorState?.error]);
 
   // Handle cancel
   const handleCancel = useCallback(() => {
@@ -194,103 +231,106 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className={`
-            shadow-xl rounded-2xl bg-white min-w-[220px] group relative overflow-hidden
+            shadow-xl rounded-2xl bg-white min-w-[220px] group relative
             border-2 ${isCompleted ? colors.border : isFailed ? "border-red-300" : "border-wax"}
             transition-all duration-300
           `}
         >
-          {/* Progress bar */}
-          {isGenerating && (
-            <motion.div
-              className={`absolute top-0 left-0 h-1 ${colors.accent}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          )}
-
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className={`
-                p-2.5 rounded-xl transition-all duration-300
-                ${isCompleted ? colors.bg : isFailed ? "bg-red-50" : "bg-cream"}
-                ${isGenerating ? "animate-pulse" : ""}
-              `}>
-                {isGenerating ? (
-                  <Loader2 className={`w-5 h-5 ${colors.text} animate-spin`} />
-                ) : isCompleted ? (
-                  <Check className="w-5 h-5 text-green-500" />
-                ) : isFailed ? (
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                ) : (
-                  <Icon className={`w-5 h-5 ${colors.text}`} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${colors.text}`}>
-                  {isGenerating ? "Generating..." : isCompleted ? "Ready" : isFailed ? "Failed" : "Generator"}
-                </p>
-                <p className="text-sm font-bold text-bee-black truncate">{label}</p>
-              </div>
-            </div>
-
-            {/* Error message */}
-            {isFailed && error && (
-              <p className="text-xs text-red-500 mt-2 truncate" title={error}>
-                {error}
-              </p>
+          {/* Content Wrapper - Handles clipping for corners */}
+          <div className="w-full h-full rounded-[14px] overflow-hidden relative bg-inherit"> {/* radius slightly less than parent 2xl (16px) - 2px border */}
+            {/* Progress bar */}
+            {isGenerating && (
+              <motion.div
+                className={`absolute top-0 left-0 h-1 ${colors.accent}`}
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.3 }}
+              />
             )}
 
-            {/* Action buttons */}
-            <div className="mt-3 pt-3 border-t border-wax flex gap-2">
-              {isGenerating ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancel}
-                  className="flex-1 h-8 text-[10px] uppercase tracking-widest font-bold"
-                >
-                  Cancel
-                </Button>
-              ) : isCompleted ? (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() => setShowPreview(true)}
-                    className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
-                  >
-                    <Eye className="w-3 h-3 mr-1" /> View
-                  </Button>
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className={`
+                    p-2.5 rounded-xl transition-all duration-300
+                    ${isCompleted ? colors.bg : isFailed ? "bg-red-50" : "bg-cream"}
+                    ${isGenerating ? "animate-pulse" : ""}
+                  `}>
+                  {isGenerating ? (
+                    <Loader2 className={`w-5 h-5 ${colors.text} animate-spin`} />
+                  ) : isCompleted ? (
+                    <Check className="w-5 h-5 text-green-500" />
+                  ) : isFailed ? (
+                    <AlertCircle className="w-5 h-5 text-red-500" />
+                  ) : (
+                    <Icon className={`w-5 h-5 ${colors.text}`} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${colors.text}`}>
+                    {isGenerating ? "Generating..." : isCompleted ? "Ready" : isFailed ? "Failed" : "Generator"}
+                  </p>
+                  <p className="text-sm font-bold text-bee-black truncate">{label}</p>
+                </div>
+              </div>
+
+              {/* Error message */}
+              {isFailed && error && (
+                <p className="text-xs text-red-500 mt-2 truncate" title={error}>
+                  {error}
+                </p>
+              )}
+
+              {/* Action buttons */}
+              <div className="mt-3 pt-3 border-t border-wax flex gap-2">
+                {isGenerating ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleGenerate}
-                    className="h-8 px-2"
-                    title="Regenerate"
+                    onClick={handleCancel}
+                    className="flex-1 h-8 text-[10px] uppercase tracking-widest font-bold"
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    Cancel
                   </Button>
-                </>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={handleGenerate}
-                  className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
-                >
-                  <Play className="w-3 h-3 mr-1" /> Generate
-                </Button>
-              )}
+                ) : isCompleted ? (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => setShowPreview(true)}
+                      className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
+                    >
+                      <Eye className="w-3 h-3 mr-1" /> View
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerate}
+                      className="h-8 px-2"
+                      title="Regenerate"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={handleGenerate}
+                    className={`flex-1 h-8 text-[10px] uppercase tracking-widest font-bold ${colors.accent} text-white hover:opacity-90`}
+                  >
+                    <Play className="w-3 h-3 mr-1" /> Generate
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Input handle */}
+          {/* Input handle - Outside wrapper to avoid clipping */}
           <Handle
             type="target"
             position={Position.Left}
             className={`w-3 h-3 border-2 border-white !-left-1.5 ${isCompleted ? colors.accent : "bg-wax"}`}
           />
 
-          {/* Output handle (for chaining) */}
+          {/* Output handle - Outside wrapper */}
           <Handle
             type="source"
             position={Position.Right}

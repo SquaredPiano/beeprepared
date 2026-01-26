@@ -16,7 +16,7 @@
   --color-bee-yellow: #FFC107;
   --color-cream: #FAF9F6;
   --color-wax: #E6E2D3;
-  
+
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
   --font-display: "Cabinet Grotesk", "Instrument Sans", sans-serif;
@@ -33,15 +33,35 @@
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 @keyframes swarm {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(2px, -2px); }
-  50% { transform: translate(-1px, 2px); }
-  75% { transform: translate(-2px, -1px); }
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  25% {
+    transform: translate(2px, -2px);
+  }
+
+  50% {
+    transform: translate(-1px, 2px);
+  }
+
+  75% {
+    transform: translate(-2px, -1px);
+  }
 }
 
 :root {
@@ -93,25 +113,25 @@
     border-color: var(--border);
     cursor: default;
   }
-  
-    a, 
-    button, 
-    [role="button"], 
-    input[type="submit"], 
-    input[type="button"], 
-    .cursor-pointer,
-    .react-flow__node,
-    .react-flow__handle,
-    .react-flow__edge,
-    .react-flow__edge-path,
-    .react-flow__pane,
-    select,
-    summary,
-    label,
-    .honey-dropzone,
-    [draggable="true"] {
-      cursor: pointer !important;
-    }
+
+  a,
+  button,
+  [role="button"],
+  input[type="submit"],
+  input[type="button"],
+  .cursor-pointer,
+  .react-flow__node,
+  .react-flow__handle,
+  .react-flow__edge,
+  .react-flow__edge-path,
+  .react-flow__pane,
+  select,
+  summary,
+  label,
+  .honey-dropzone,
+  [draggable="true"] {
+    cursor: pointer !important;
+  }
 
 
   [draggable="true"]:active {
@@ -122,7 +142,13 @@
     @apply bg-background text-foreground antialiased selection:bg-honey-200 selection:text-honey-900;
     font-feature-settings: "ss01", "ss02", "cv01", "cv02";
   }
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-display tracking-tight font-bold;
   }
 
@@ -131,11 +157,11 @@
     width: 10px;
     height: 10px;
   }
-  
+
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
-  
+
   ::-webkit-scrollbar-thumb {
     @apply bg-bee-black/10 rounded-full border-[3px] border-cream bg-clip-padding hover:bg-honey-500 transition-colors;
   }
@@ -143,12 +169,13 @@
   .dark ::-webkit-scrollbar-thumb {
     @apply bg-white/10 border-bee-black hover:bg-honey-400;
   }
-  
+
   /* Hide scrollbar utility */
   .scrollbar-none {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
+
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
@@ -161,9 +188,11 @@
     opacity: 0.2;
     transition: opacity 0.3s;
   }
+
   .react-flow__attribution:hover {
     opacity: 1;
   }
+
   .react-flow__attribution a {
     color: var(--color-bee-black) !important;
     text-transform: uppercase;
@@ -193,16 +222,17 @@
 }
 
 .honey-glow {
-  @apply shadow-[0_0_20px_rgba(245,158,11,0.2)];
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
 }
 
 .honey-glow-lg {
-  @apply shadow-[0_0_40px_rgba(245,158,11,0.3)];
+  box-shadow: 0 0 40px rgba(245, 158, 11, 0.3);
 }
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -241,4 +271,23 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.4);
+}
+
+/* 3D Transform Utilities for Flashcards */
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
 }
