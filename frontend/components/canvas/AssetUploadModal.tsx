@@ -84,8 +84,6 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
-    const file = acceptedFiles[0];
-
     let projectId = currentProjectId;
 
     if (!projectId) {
@@ -102,40 +100,49 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
     }
 
     setIsUploading(true);
-    setUploadProgress("Uploading file...");
 
-    try {
-      // Use the canvas store's uploadFile which handles the full pipeline
-      setUploadProgress("Processing...");
+    // Multi-file support: Process each file sequentially
+    const totalFiles = acceptedFiles.length;
+    let successCount = 0;
+    let failCount = 0;
 
-      await api.upload.uploadAndIngest(
-        projectId,
-        file,
-        folderPath || "/",
-        (job) => {
-          if (job.status === "running") {
-            setUploadProgress("Extracting knowledge...");
+    for (let i = 0; i < acceptedFiles.length; i++) {
+      const file = acceptedFiles[i];
+      setUploadProgress(`Uploading ${i + 1}/${totalFiles}: ${file.name}`);
+
+      try {
+        await api.upload.uploadAndIngest(
+          projectId,
+          file,
+          folderPath || "/",
+          (job) => {
+            if (job.status === "running") {
+              setUploadProgress(`Processing ${i + 1}/${totalFiles}: ${file.name}`);
+            }
           }
-        }
-      );
-
-      // Refresh the canvas to show new artifacts
-      await refreshArtifacts();
-
-      toast.success(`${file.name} uploaded successfully`);
-
-      // refreshArtifacts now handles creating nodes for new artifacts
-      // No need for legacy onUpload callback
-
-      onClose();
-    } catch (error: any) {
-      console.error("Upload error:", error);
-      toast.error(error.message || "Upload failed");
-    } finally {
-      setIsUploading(false);
-      setUploadProgress("Uploading...");
+        );
+        successCount++;
+      } catch (error: any) {
+        console.error(`Upload error for ${file.name}:`, error);
+        toast.error(`Failed: ${file.name}`);
+        failCount++;
+      }
     }
-  }, [currentProjectId, refreshArtifacts, onUpload, onClose]);
+
+    // Refresh the canvas to show all new artifacts
+    await refreshArtifacts();
+
+    if (successCount > 0) {
+      toast.success(`${successCount} file(s) uploaded successfully`);
+    }
+    if (failCount > 0) {
+      toast.warning(`${failCount} file(s) failed`);
+    }
+
+    setIsUploading(false);
+    setUploadProgress("Uploading...");
+    onClose();
+  }, [currentProjectId, refreshArtifacts, onClose, folderPath]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -147,7 +154,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
       "text/markdown": [".md"],
       "text/plain": [".txt"]
     },
-    multiple: false
+    multiple: true  // Allow multiple file uploads
   });
 
   return (
@@ -235,10 +242,10 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
 
                     <div className="text-center space-y-2">
                       <p className="text-xl font-bold text-bee-black">
-                        {isUploading ? uploadProgress : 'Drop your file here'}
+                        {isUploading ? uploadProgress : 'Drop your files here'}
                       </p>
                       <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest">
-                        PDF • MP4 • MP3 • PPTX • TXT • MD
+                        PDF • MP4 • MP3 • PPTX • TXT • MD (Multiple files supported)
                       </p>
                     </div>
 

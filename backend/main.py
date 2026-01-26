@@ -212,7 +212,8 @@ class IngestPayload(BaseModel):
 
 class GeneratePayload(BaseModel):
     """Frozen payload for 'generate' jobs."""
-    source_artifact_id: str  # UUID as string
+    source_artifact_id: Optional[str] = None  # Single source (Legacy)
+    source_artifact_ids: Optional[List[str]] = None  # Multi-source support
     target_type: str  # "quiz | exam | notes | slides | flashcards"
 
 
@@ -446,9 +447,10 @@ async def list_project_artifacts(project_id: str):
 
 
 @app.get("/api/artifacts/{artifact_id}/download")
-async def download_artifact_binary(artifact_id: str):
+async def download_artifact_binary(artifact_id: str, inline: bool = False):
     """
     Get a presigned URL for downloading a binary artifact (PDF, PPTX).
+    Optional ?inline=true query param sets Content-Disposition to inline for browser preview.
     
     Returns:
         { "download_url": "...", "format": "pdf|pptx", "filename": "..." }
@@ -505,13 +507,15 @@ async def download_artifact_binary(artifact_id: str):
         
         # Generate presigned URL with proper response headers
         # This forces the browser to download with correct Content-Type and filename
+        disposition_type = 'inline' if inline else 'attachment'
+        
         presigned_url = s3_client.generate_presigned_url(
             'get_object',
             Params={
                 'Bucket': r2_bucket, 
                 'Key': storage_path,
                 'ResponseContentType': mime_type,
-                'ResponseContentDisposition': f'attachment; filename="{filename}"',
+                'ResponseContentDisposition': f'{disposition_type}; filename="{filename}"',
             },
             ExpiresIn=3600
         )
