@@ -96,6 +96,7 @@ class ArtifactGenerator:
         3. **Points**: {points} points each.
         4. **Alignment**: Questions must match the cognitive targets: {", ".join(spec.cognitive_targets)}.
         5. **Rigorous Answers**: You MUST provide a 'model_answer' and 'grading_notes' for every question.
+        6. **Formatting**: Use LaTeX for ALL mathematical notation. Wrap inline math in $...$ (e.g. $E=mc^2$) and block math in $$...$$.
         
         **Output Format**:
         Return a raw JSON list. Each object:
@@ -186,6 +187,7 @@ class ArtifactGenerator:
         prompt = """
         You are an expert Examiner.
         **Task**: Generate a QuizModel based on the provided content (10-15 questions).
+        **Formatting**: Use LaTeX for all math ($x^2$).
         """
         try:
             return self.llm.generate_content(
@@ -202,6 +204,7 @@ class ArtifactGenerator:
         prompt = """
         You are an expert Tutor.
         **Task**: Generate a FlashcardModel (15-20 cards).
+        **Formatting**: Use LaTeX for all math ($x^2$).
         """
         try:
             return self.llm.generate_content(
@@ -219,6 +222,7 @@ class ArtifactGenerator:
         You are an expert Academic Note-Taker.
          **Task**: Generate detailed study notes in Markdown format.
          **Output**: Pure Markdown text.
+         **Formatting**: Use LaTeX for ALL mathematical formulas ($...$ or $$...$$).
         """
         try:
             # No schema -> returns string
