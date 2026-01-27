@@ -18,13 +18,9 @@
 ## 🎬 Demo
 
 <div align="center">
-  <iframe width="100%" height="480" 
-          src="https://www.youtube.com/embed/VUVFwkcULzk" 
-          title="BeePrepared Demo Video" 
-          frameborder="0" 
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-          allowfullscreen>
-  </iframe>
+  <video src="frontend/public/BePreparedMP4.mp4" controls width="100%" poster="frontend/public/gallery.jpg">
+    <a href="frontend/public/BePreparedMP4.mp4">Watch local demo video</a>
+  </video>
   <p><em>Turn a 2-hour lecture into a complete study pack in seconds.</em></p>
 </div>
 
