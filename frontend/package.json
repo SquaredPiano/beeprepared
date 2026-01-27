@@ -47,6 +47,7 @@
     "@tsparticles/slim": "^3.9.1",
     "@types/howler": "^2.2.12",
     "@uidotdev/usehooks": "^2.4.1",
+    "@uiw/react-md-editor": "^4.0.11",
     "@xyflow/react": "^12.10.0",
     "ai": "^6.0.49",
     "axios": "^1.13.2",

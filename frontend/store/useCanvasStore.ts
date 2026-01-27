@@ -94,8 +94,8 @@ interface CanvasState {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
-  setNodes: (nodes: Node[]) => void;
-  setEdges: (edges: Edge[]) => void;
+  setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
+  setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   setIsDragging: (val: boolean) => void;
   setIsLocked: (val: boolean) => void;
   setShowMiniMap: (val: boolean) => void;
@@ -163,8 +163,12 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      setNodes: (nodes) => set({ nodes }),
-      setEdges: (edges) => set({ edges }),
+      setNodes: (nodes) => set((state) => ({
+        nodes: typeof nodes === 'function' ? (nodes as any)(state.nodes) : nodes
+      })),
+      setEdges: (edges) => set((state) => ({
+        edges: typeof edges === 'function' ? (edges as any)(state.edges) : edges
+      })),
       setIsDragging: (isDragging) => set({ isDragging }),
       setIsLocked: (isLocked) => set({ isLocked }),
       setShowMiniMap: (showMiniMap) => set({ showMiniMap }),
