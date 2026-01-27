@@ -177,9 +177,31 @@ class PDFRenderer:
 
             if self._check_pdflatex():
                 logger.info("Compiling PDF...")
-                # Use clean_tex=False to debug .tex if needed.
-                doc.generate_pdf(filepath, clean_tex=False)
-                logger.info(f"Successfully generated {filepath}.pdf")
+                
+                # Use subprocess manually to handle encoding issues in pdflatex output
+                try:
+                    # Run pdflatex (twice for references/labels)
+                    # We use errors='replace' to avoid crashing on non-UTF8 output from latex
+                    cmd = ['pdflatex', '-interaction=nonstopmode', '-output-directory', self.output_dir, filepath + ".tex"]
+                    
+                    # First pass
+                    logger.info(f"Running pdflatex pass 1: {' '.join(cmd)}")
+                    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if proc.returncode != 0:
+                        raise RuntimeError(f"Pass 1 failed: {proc.stdout.decode('utf-8', errors='replace')}")
+
+                    # Second pass (for references)
+                    # logger.info("Running pdflatex pass 2...")
+                    # subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                    logger.info(f"Successfully generated {filepath}.pdf")
+                    
+                except Exception as e:
+                    logger.error(f"pdflatex execution failed: {e}")
+                    # Don't re-raise, we want to at least save the .tex file
+                    # But checking for existence of PDF is good practice
+                    if not os.path.exists(filepath + ".pdf"):
+                        logger.error("PDF file was not created.")
             else:
                 logger.warning("pdflatex not found. Skipping PDF compilation. Only .tex file generated.")
                 

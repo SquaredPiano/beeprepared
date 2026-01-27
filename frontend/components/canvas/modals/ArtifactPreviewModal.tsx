@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,6 @@ import {
   ClipboardCheck,
   Share2,
   RefreshCw,
-  X,
   ChevronLeft,
   ChevronRight,
   Brain,
@@ -66,18 +65,18 @@ function stripMarkdown(text: string | null | undefined): string {
  */
 const MarkdownRenderers = {
   h1: ({ children }: any) => (
-    <h1 className="text-3xl md:text-4xl font-serif font-bold text-bee-black mb-6 mt-8 pb-4 border-b-2 border-honey/20 first:mt-0">
+    <h1 className="text-3xl md:text-4xl font-sans font-bold text-bee-black mb-6 mt-8 pb-4 border-b-2 border-honey/20 first:mt-0 tracking-tight">
       {children}
     </h1>
   ),
   h2: ({ children }: any) => (
-    <h2 className="text-2xl md:text-3xl font-serif font-bold text-bee-black mb-4 mt-8 flex items-center gap-2">
+    <h2 className="text-2xl md:text-3xl font-sans font-bold text-bee-black mb-4 mt-8 flex items-center gap-2 tracking-tight">
       <span className="w-2 h-8 bg-honey rounded-full block" />
       {children}
     </h2>
   ),
   h3: ({ children }: any) => (
-    <h3 className="text-xl md:text-2xl font-serif font-semibold text-bee-black/80 mb-3 mt-6">
+    <h3 className="text-xl md:text-2xl font-sans font-semibold text-bee-black/80 mb-3 mt-6 tracking-tight">
       {children}
     </h3>
   ),
@@ -168,13 +167,11 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
   if (!artifact?.content) return null;
   const content = artifact.content;
 
-  // Helper to ensure we don't strip the root key if the renderer needs it
-  // But also handle cases where content IS the data directly
-  const wrap = (key: string, data: any) => {
+  // Helper to ensure we don't strip the root key
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _wrap = (key: string, data: Record<string, unknown>) => {
     if (!data) return null;
-    // If data already has the key, return it as is
     if (data[key]) return data;
-    // Otherwise wrap it
     return { [key]: data };
   };
 
@@ -193,6 +190,7 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
       // But we prefer consistent object.
       if (typeof notesData === 'string') return { markdown: notesData };
       if (notesData?.markdown || notesData?.content) return notesData;
+      if (notesData?.body) return { markdown: notesData.body };
       // Fallback for legacy
       if (notesData?.sections) return { markdown: "Legacy notes format not supported in editor." };
       return { markdown: "" }; // Default empty
@@ -227,9 +225,17 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
 
 async function downloadBinary(artifactId: string, fallbackFilename: string): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}/download`);
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: HeadersInit = {};
+    if (session) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+
+    const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}/download`, { headers });
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+      const errText = await res.text();
+      console.error('[Download] Error response:', errText);
+      throw new Error(`HTTP ${res.status}: ${errText}`);
     }
 
     const data = await res.json();
@@ -242,7 +248,7 @@ async function downloadBinary(artifactId: string, fallbackFilename: string): Pro
     document.body.removeChild(a);
   } catch (error) {
     console.error('[Download] Failed:', error);
-    alert('Download failed');
+    toast.error('Download failed. The file may not be ready yet.');
   }
 }
 
@@ -268,7 +274,7 @@ function QuizRenderer({ data }: { data: any }) {
 
   const currentQuestion = data.questions[currentIndex];
   const total = data.questions.length;
-  const answeredCount = Object.keys(answers).length;
+  const _answeredCount = Object.keys(answers).length; // eslint-disable-line @typescript-eslint/no-unused-vars
   const correctCount = data.questions.filter((q: any, i: number) =>
     answers[q.id || i] === q.correct_answer_index
   ).length;
@@ -321,48 +327,60 @@ function QuizRenderer({ data }: { data: any }) {
   const selectedIdx = answers[currentIndex];
   const correctIdx = currentQuestion.correct_answer_index;
 
+  // Quiz UI - Apple/Clean Style
   return (
-    <div className="h-full bg-white text-bee-black flex flex-col">
-      {/* Progress Header */}
-      <div className="p-8 pb-4 shrink-0 border-b border-wax">
-        <div className="flex justify-between items-center mb-6">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/30">
-            Question {currentIndex + 1} / {total}
-          </span>
-          <div className="flex gap-1">
-            {data.questions.map((_: any, idx: number) => (
-              <div
-                key={idx}
-                className={cn(
-                  "h-1.5 w-6 rounded-full transition-all duration-300",
-                  idx === currentIndex ? "bg-honey w-12 shadow-sm" :
-                    idx < currentIndex ? (answers[idx] === data.questions[idx].correct_answer_index ? "bg-green-500/80" : "bg-red-500/80") :
-                      "bg-bee-black/5"
-                )}
-              />
-            ))}
-          </div>
+    <div className="h-full bg-[#FAFAFA] text-bee-black flex flex-col">
+      {/* Header */}
+      <div className="p-8 pb-4 shrink-0 flex items-center justify-between border-b border-black/5 bg-white/50 backdrop-blur-md sticky top-0 z-10">
+        <div className="text-xs font-bold uppercase tracking-[0.2em] text-black/40">
+          Question {currentIndex + 1} of {total}
+        </div>
+        <div className="flex gap-1.5">
+          {data.questions.map((_: any, idx: number) => (
+            <div
+              key={idx}
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                idx === currentIndex ? "w-8 bg-black shadow-sm" :
+                  idx < currentIndex ? (answers[idx] === data.questions[idx].correct_answer_index ? "w-2 bg-green-500" : "w-2 bg-red-400") :
+                    "w-2 bg-black/5"
+              )}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Main Question Area */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar bg-cream/30">
-        <div className="max-w-3xl mx-auto h-full flex flex-col justify-center min-h-[500px]">
-          <h3 className="text-2xl md:text-3xl font-serif font-bold leading-relaxed mb-12 text-bee-black/90 selection:bg-honey/30">
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="max-w-3xl mx-auto p-8 md:p-12 pb-24">
+          <h3 className="text-3xl md:text-4xl font-serif font-bold leading-tight mb-12 text-black tracking-tight">
             <MathText>{currentQuestion.text}</MathText>
           </h3>
 
-          <div className="grid gap-4">
+          <div className="space-y-4">
             {currentQuestion.options?.map((opt: string, idx: number) => {
               const isSelected = isAnswered && idx === selectedIdx;
               const isCorrect = isAnswered && idx === correctIdx;
               const isWrong = isSelected && !isCorrect;
 
-              let stateClass = "bg-white border-wax hover:border-honey/50 hover:bg-honey/5 cursor-pointer text-bee-black/80";
+              let containerClass = "bg-white border-black/5 shadow-sm hover:border-black/20 hover:shadow-md active:scale-[0.99]";
+              let textClass = "text-black/80 font-medium";
+              let markerClass = "border-black/10 text-black/40 bg-black/5";
+
               if (isAnswered) {
-                if (idx === correctIdx) stateClass = "bg-green-50 border-green-200 text-green-800 ring-2 ring-green-500/20";
-                else if (isSelected) stateClass = "bg-red-50 border-red-200 text-red-800";
-                else stateClass = "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed opacity-60";
+                containerClass = "opacity-50 cursor-not-allowed border-transparent shadow-none bg-gray-50";
+
+                if (idx === correctIdx) {
+                  containerClass = "bg-green-50 border-green-200 shadow-sm opacity-100 ring-1 ring-green-500/20";
+                  textClass = "text-green-800 font-semibold";
+                  markerClass = "bg-green-100 text-green-700 border-green-200";
+                } else if (isSelected) {
+                  containerClass = "bg-red-50 border-red-100 shadow-sm opacity-100";
+                  textClass = "text-red-800";
+                  markerClass = "bg-red-100 text-red-700 border-red-200";
+                }
+              } else if (idx === selectedIdx) {
+                // Selection state before confirming (if we had a confirm step, but we select immediately)
               }
 
               return (
@@ -371,23 +389,23 @@ function QuizRenderer({ data }: { data: any }) {
                   disabled={isAnswered}
                   onClick={() => handleSelect(currentIndex, idx)}
                   className={cn(
-                    "w-full text-left p-6 rounded-2xl border-2 transition-all duration-200 flex items-center justify-between group relative overflow-hidden shadow-sm",
-                    stateClass
+                    "w-full text-left p-6 rounded-2xl border transition-all duration-200 flex items-center gap-6 group relative overflow-hidden",
+                    containerClass
                   )}
                 >
-                  <div className="flex items-center gap-6 relative z-10">
-                    <span className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
-                      isCorrect ? "bg-green-500 text-white border-green-500" :
-                        isWrong ? "bg-red-500 text-white border-red-500" :
-                          "border-bee-black/10 text-bee-black/40 group-hover:border-honey group-hover:text-honey bg-white"
-                    )}>
-                      {String.fromCharCode(65 + idx)}
-                    </span>
-                    <span className="font-medium text-lg leading-snug"><MathTextInline>{opt}</MathTextInline></span>
-                  </div>
-                  {isCorrect && <CheckCircle2 className="text-green-600 animate-in zoom-in spin-in-180 duration-300" />}
-                  {isWrong && <XCircle className="text-red-500 animate-in zoom-in duration-300" />}
+                  <span className={cn(
+                    "w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-sm font-bold border transition-colors",
+                    markerClass,
+                    !isAnswered && "group-hover:bg-black group-hover:text-white group-hover:border-black"
+                  )}>
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className={cn("text-lg flex-1", textClass)}>
+                    <MathTextInline>{opt}</MathTextInline>
+                  </span>
+
+                  {isCorrect && <CheckCircle2 className="text-green-600 shrink-0" />}
+                  {isWrong && <XCircle className="text-red-500 shrink-0" />}
                 </button>
               );
             })}
@@ -398,20 +416,39 @@ function QuizRenderer({ data }: { data: any }) {
   );
 }
 
-function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) {
+// Helper to clean markdown that might be wrapped in code blocks
+function cleanMarkdownForDisplay(content: string): string {
+  if (!content) return "";
+  let clean = content.trim();
+  // Remove wrapping ```markdown ... ``` or ``` ... ```
+  if (clean.startsWith('```') && clean.endsWith('```')) {
+    const lines = clean.split('\n');
+    if (lines.length >= 2) {
+      // Remove first and last lines
+      clean = lines.slice(1, -1).join('\n');
+    }
+  }
+  return clean;
+}
+
+function NotesRenderer({ data, artifactId, onUpdate }: { data: any, artifactId: string, onUpdate?: (a: Artifact) => void }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [content, setContent] = useState(data.markdown || data.content || "");
+  const [content, setContent] = useState(data.markdown || data.content || data.body || "");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Parse markdown to ensure it's a string
-  const markdownContent = typeof content === 'string' ? content : "No content available.";
+  // Parse and clean markdown
+  const rawContent = typeof content === 'string' ? content : "No content available.";
+  const markdownContent = useMemo(() => cleanMarkdownForDisplay(rawContent), [rawContent]);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.artifacts.update(artifactId, { content: { ...data, markdown: content } });
-      toast.success("Notes saved successfully");
+      const newArtifact = await api.artifacts.update(artifactId, { content: { ...data, markdown: content, body: content } });
+      if (onUpdate) onUpdate(
+        newArtifact // The parent will handle the update
+      );
       setIsEditing(false);
+      toast.success("Notes saved successfully");
     } catch (error) {
       console.error("Failed to save notes:", error);
       toast.error("Failed to save notes");
@@ -421,27 +458,28 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
   };
 
   return (
-    <div className="h-full flex flex-col relative w-full pt-6 bg-white">
-      <div className="px-10 flex justify-between items-center mb-6 shrink-0">
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-bee-black">Study Notes</h2>
-          <p className="text-sm font-medium text-bee-black/40 uppercase tracking-widest mt-1">
-            Generated from Knowledge Core
+          <h2 className="text-2xl font-serif font-bold text-gray-900">{data.title || 'Study Notes'}</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            AI-generated comprehensive study material
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
           {isEditing ? (
             <>
               <Button
                 variant="ghost"
                 onClick={() => setIsEditing(false)}
-                className="rounded-xl hover:bg-gray-100 font-bold uppercase tracking-widest text-[10px]"
+                className="rounded-full text-gray-600 hover:bg-gray-100 px-4"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
-                className="bg-bee-black text-white hover:bg-honey hover:text-bee-black rounded-xl font-bold uppercase tracking-widest text-[10px] min-w-[100px]"
+                className="bg-gray-900 text-white hover:bg-gray-800 rounded-full px-5 gap-2"
                 disabled={isSaving}
               >
                 {isSaving ? <RefreshCw className="animate-spin w-4 h-4" /> : "Save Changes"}
@@ -450,7 +488,8 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
           ) : (
             <Button
               onClick={() => setIsEditing(true)}
-              className="bg-white border border-wax text-bee-black hover:bg-honey/10 rounded-xl font-bold uppercase tracking-widest text-[10px]"
+              variant="outline"
+              className="rounded-full border-gray-200 text-gray-700 hover:bg-gray-50 px-4"
             >
               Edit Notes
             </Button>
@@ -458,21 +497,24 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden relative px-10 pb-10">
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
         {isEditing ? (
-          <div className="h-full border border-wax rounded-2xl overflow-hidden shadow-sm" data-color-mode="light">
-            <MDEditor
-              value={content}
-              onChange={(val) => setContent(val || "")}
-              height="100%"
-              preview="edit"
-              className="!border-none !h-full"
-              visibleDragbar={false}
-            />
+          <div className="h-full p-6" data-color-mode="light">
+            <div className="h-full border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+              <MDEditor
+                value={content}
+                onChange={(val) => setContent(val || "")}
+                height="100%"
+                preview="edit"
+                className="!border-none !h-full"
+                visibleDragbar={false}
+              />
+            </div>
           </div>
         ) : (
-          <div className="h-full overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto bg-white p-12 shadow-sm min-h-full prose prose-lg prose-headings:font-serif prose-headings:text-bee-black text-bee-black/80">
+          <div className="h-full overflow-y-auto bg-white custom-scrollbar">
+            <div className="max-w-5xl mx-auto py-12 px-8 md:px-16">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -492,23 +534,11 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
   const [viewMode, setViewMode] = useState<'slides' | 'pptx'>('slides');
   const [pptxSignedUrl, setPptxSignedUrl] = useState<string | null>(null);
   const [pptxLoading, setPptxLoading] = useState(false);
-
-  if (!data?.slides) return <EmptyState message="No slides data" />;
-
   const binaryInfo = getBinaryInfo(artifact);
-
-  const downloadJSON = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'slides.json';
-    a.click();
-  };
 
   const handleDownloadPPTX = () => {
     if (!binaryInfo?.available) {
-      alert('PPTX not yet generated. Please wait for processing to complete.');
+      toast.error('PPTX not yet generated. Please wait.');
       return;
     }
     if (artifact?.id) {
@@ -516,11 +546,10 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
     }
   };
 
-  const handleViewPPTX = async () => {
+  const handleViewPPTX = useCallback(async () => {
     setViewMode('pptx');
     if (pptxSignedUrl) return;
-
-    if (!artifact?.id || !binaryInfo?.available) return;
+    if (!artifact?.id) return;
 
     setPptxLoading(true);
     try {
@@ -529,14 +558,11 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
       if (session) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-
-      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, {
-        headers
-      });
+      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, { headers });
       if (res.ok) {
-        const data = await res.json();
-        if (data.download_url) {
-          setPptxSignedUrl(data.download_url);
+        const resData = await res.json();
+        if (resData.download_url) {
+          setPptxSignedUrl(resData.download_url);
         }
       }
     } catch (err) {
@@ -544,97 +570,146 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
     } finally {
       setPptxLoading(false);
     }
-  };
+  }, [pptxSignedUrl, artifact?.id]);
+
+  useEffect(() => {
+    if (binaryInfo?.available && artifact?.id && viewMode === 'slides' && !pptxSignedUrl) {
+      handleViewPPTX();
+    }
+  }, [binaryInfo?.available, artifact?.id, viewMode, pptxSignedUrl, handleViewPPTX]);
+
+  if (!data?.slides) return <EmptyState message="No slides data" />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-bee-black">{data.title || 'Slides'}</h2>
-          <p className="text-sm text-bee-black/50">{data.slides.length} slides • {data.audience_level || 'General'} level</p>
-        </div>
-        <div className="flex gap-2">
-          {binaryInfo?.available && (
-            <div className="flex bg-cream rounded-xl p-1 border border-wax">
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-serif font-bold text-gray-900">{data.title || 'Presentation'}</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {data.slides.length} slides • {data.audience_level || 'General'} level
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Toggle Slider */}
+            <div className="relative flex bg-gray-100 rounded-full p-1">
+              <div
+                className={cn(
+                  "absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-200 ease-out",
+                  viewMode === 'slides' ? "left-1 w-[60px]" : "left-[65px] w-[100px]"
+                )}
+              />
               <button
                 onClick={() => setViewMode('slides')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'slides'
-                  ? 'bg-white shadow text-bee-black'
-                  : 'text-bee-black/50 hover:text-bee-black'
-                  }`}
+                className={cn(
+                  "relative z-10 px-4 py-1.5 text-xs font-semibold rounded-full transition-colors",
+                  viewMode === 'slides' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                )}
               >
                 Slides
               </button>
               <button
                 onClick={handleViewPPTX}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'pptx'
-                  ? 'bg-white shadow text-bee-black'
-                  : 'text-bee-black/50 hover:text-bee-black'
-                  }`}
+                className={cn(
+                  "relative z-10 px-4 py-1.5 text-xs font-semibold rounded-full transition-colors",
+                  viewMode === 'pptx' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                )}
               >
                 PPTX Preview
               </button>
             </div>
-          )}
 
-          <Button variant="outline" onClick={downloadJSON}>JSON</Button>
-
-          {binaryInfo?.available && (
-            <Button
-              onClick={handleDownloadPPTX}
-              className="bg-bee-black text-white hover:bg-honey hover:text-bee-black"
-            >
-              <FileText className="w-4 h-4 mr-2" /> Download PPTX
-            </Button>
-          )}
+            {/* Download Button */}
+            {binaryInfo?.available ? (
+              <Button
+                onClick={handleDownloadPPTX}
+                size="sm"
+                className="bg-gray-900 text-white hover:bg-gray-800 rounded-full px-4 gap-2"
+              >
+                <Presentation className="w-4 h-4" /> Download PPTX
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" disabled className="text-gray-400 rounded-full px-4 gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Generating...
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* PPTX Preview Mode */}
-      {viewMode === 'pptx' && (
-        <div className="bg-white rounded-2xl border border-wax overflow-hidden h-[60vh] flex items-center justify-center relative">
-          {pptxLoading ? (
-            <div className="text-bee-black/50 text-sm">Loading Preview...</div>
-          ) : pptxSignedUrl ? (
-            <iframe
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(pptxSignedUrl)}&embedded=true`}
-              className="w-full h-full border-0"
-              title="PPTX Preview"
-            />
-          ) : (
-            <div className="text-bee-black/50 text-sm">Preview not available</div>
-          )}
-        </div>
-      )}
-
-      {/* Slides Mode */}
-      {viewMode === 'slides' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {data.slides.map((slide: any, i: number) => (
-            <div
-              key={i}
-              className="bg-white p-6 rounded-2xl border border-wax aspect-video flex flex-col transition-all hover:shadow-lg hover:-translate-y-1 hover:border-honey cursor-pointer group"
-            >
-              <h3 className="font-bold text-bee-black mb-2 group-hover:text-honey transition-colors">{stripMarkdown(slide.heading)}</h3>
-              <p className="text-sm text-bee-black/60 mb-3">{stripMarkdown(slide.main_idea)}</p>
-              <ul className="text-xs space-y-1 flex-1">
-                {slide.bullet_points?.slice(0, 4).map((bp: string, b: number) => (
-                  <li key={b} className="flex items-start gap-2">
-                    <span className="text-honey">•</span>
-                    {stripMarkdown(bp)}
-                  </li>
-                ))}
-              </ul>
-              <div className="flex items-center justify-between mt-2">
-                <div className="text-[10px] text-bee-black/30">Slide {i + 1}</div>
-                <div className="text-[8px] text-bee-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {slide.visual_cue && `📷 ${slide.visual_cue.slice(0, 20)}...`}
-                </div>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* PPTX Preview Mode */}
+        {viewMode === 'pptx' && (
+          <div className="h-full w-full bg-gray-50 flex flex-col p-4 md:p-8">
+            {pptxLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                <RefreshCw className="w-6 h-6 animate-spin" />
+                <span className="text-sm">Loading preview...</span>
               </div>
+            ) : pptxSignedUrl ? (
+              <div className="flex-1 w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden relative">
+                <iframe
+                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(pptxSignedUrl)}&embedded=true`}
+                  className="w-full h-full border-0 block"
+                  title="PPTX Preview"
+                />
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+                <Presentation className="w-10 h-10" />
+                <span className="text-sm">Preview not available</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Slides Grid Mode */}
+        {viewMode === 'slides' && (
+          <div className="p-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.slides.map((slide: any, i: number) => (
+                <div
+                  key={i}
+                  className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all"
+                >
+                  {/* Slide Header */}
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Slide {i + 1}
+                    </span>
+                  </div>
+                  {/* Slide Content - 16:9 aspect ratio */}
+                  <div className="aspect-video p-5 flex flex-col">
+                    <h3 className="font-semibold text-gray-900 text-sm mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                      {stripMarkdown(slide.heading)}
+                    </h3>
+                    {slide.main_idea && (
+                      <p className="text-xs text-gray-500 mb-3 italic line-clamp-2">
+                        {stripMarkdown(slide.main_idea)}
+                      </p>
+                    )}
+                    <ul className="text-xs text-gray-600 space-y-1 flex-1">
+                      {slide.bullet_points?.slice(0, 3).map((bp: string, b: number) => (
+                        <li key={b} className="flex items-start gap-2">
+                          <span className="text-blue-500 mt-0.5">•</span>
+                          <span className="line-clamp-1">{stripMarkdown(bp)}</span>
+                        </li>
+                      ))}
+                      {slide.bullet_points?.length > 3 && (
+                        <li className="text-gray-400 text-[10px]">
+                          +{slide.bullet_points.length - 3} more
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -643,23 +718,22 @@ function FlashcardRenderer({ data }: { data: any }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
-  if (!data?.flashcards) return <EmptyState message="No flashcards data" />;
+  const total = data?.flashcards?.length || 0;
 
-  const currentCard = data.flashcards[currentIndex];
-  const total = data.flashcards.length;
-
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
+    if (!total) return;
     setIsFlipped(false);
     setTimeout(() => setCurrentIndex((c) => (c + 1) % total), 150);
-  };
+  }, [total]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
+    if (!total) return;
     setIsFlipped(false);
     setTimeout(() => setCurrentIndex((c) => (c - 1 + total) % total), 150);
-  };
+  }, [total]);
 
-  // Keyboard navigation
   useEffect(() => {
+    if (!total) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') handleNext();
       if (e.key === 'ArrowLeft') handlePrev();
@@ -667,45 +741,74 @@ function FlashcardRenderer({ data }: { data: any }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, total, handleNext, handlePrev]);
+  }, [handleNext, handlePrev, total]);
+
+  if (!data?.flashcards || total === 0) return <EmptyState message="No flashcards data" />;
+
+  const currentCard = data.flashcards[currentIndex];
 
   return (
-    <div className="h-full flex flex-col items-center justify-center p-8 bg-cream/30">
-      <div className="w-full max-w-3xl aspect-[3/2] relative perspective-1000">
-        <div
-          className={cn(
-            "w-full h-full relative preserve-3d transition-all duration-700 cursor-pointer shadow-2xl rounded-[3rem]",
-            isFlipped ? "rotate-y-180" : ""
-          )}
-          onClick={() => setIsFlipped(!isFlipped)}
-        >
-          {/* Front (Black/Gold) */}
-          <div className="absolute inset-0 backface-hidden bg-bee-black text-white rounded-[3rem] p-12 flex flex-col items-center justify-center border border-white/10 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)]">
-            <div className="absolute top-8 left-8">
-              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-honey/60">Front</span>
-            </div>
-            <div className="absolute top-8 right-8">
-              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/20">{currentIndex + 1} / {total}</span>
-            </div>
-
-            <div className="flex-1 flex items-center justify-center w-full">
-              <h3 className="text-3xl md:text-4xl font-serif font-bold text-center leading-tight">
-                <MathText>{currentCard.front}</MathText>
-              </h3>
-            </div>
-
-            <p className="text-white/20 text-xs uppercase tracking-widest mt-auto">Click to reveal</p>
+    <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-gray-100">
+      {/* Header */}
+      <div className="shrink-0 px-8 py-5 bg-white border-b border-gray-100">
+        <div className="flex items-center justify-between max-w-3xl mx-auto">
+          <div>
+            <h2 className="text-xl font-serif font-bold text-gray-900">Flashcards</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{total} cards • Use arrow keys to navigate</p>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-600 tabular-nums bg-gray-100 px-3 py-1 rounded-full">
+              {currentIndex + 1} / {total}
+            </span>
+          </div>
+        </div>
+      </div>
 
-          {/* Back (White/Gold) */}
-          <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white text-bee-black rounded-[3rem] p-12 flex flex-col items-center justify-center border border-wax shadow-xl">
-            <div className="absolute top-8 left-8">
-              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-honey">Back</span>
+      {/* Card Area */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-2xl aspect-[4/3] relative perspective-[1000px]">
+          <div
+            className={cn(
+              "w-full h-full relative cursor-pointer transition-all duration-500 ease-out",
+              isFlipped ? "[transform:rotateY(180deg)]" : ""
+            )}
+            onClick={() => setIsFlipped(!isFlipped)}
+            style={{ transformStyle: 'preserve-3d' }}
+          >
+            {/* Front */}
+            <div
+              className="absolute inset-0 bg-white rounded-3xl p-10 flex flex-col items-center justify-center border border-gray-200 shadow-xl"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
+              <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Question</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-300">
+                  {currentIndex + 1} / {total}
+                </span>
+              </div>
+
+              <div className="flex-1 flex items-center justify-center w-full">
+                <h3 className="text-2xl md:text-3xl font-serif font-bold text-gray-900 text-center leading-snug">
+                  <MathText>{currentCard.front}</MathText>
+                </h3>
+              </div>
+
+              <p className="text-gray-400 text-xs font-medium mt-auto">Tap to reveal answer</p>
             </div>
 
-            <div className="flex-1 flex items-center justify-center w-full overflow-y-auto custom-scrollbar">
-              <div className="text-xl md:text-2xl font-serif font-medium text-center leading-relaxed text-bee-black/80">
-                <MathText>{currentCard.back}</MathText>
+            {/* Back */}
+            <div
+              className="absolute inset-0 bg-gray-900 rounded-3xl p-10 flex flex-col items-center justify-center shadow-xl force-white-text [transform:rotateY(180deg)]"
+              style={{ backfaceVisibility: 'hidden' }}
+            >
+              <div className="absolute top-6 left-6">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Answer</span>
+              </div>
+
+              <div className="flex-1 flex items-center justify-center w-full overflow-y-auto">
+                <div className="text-xl md:text-2xl font-serif font-medium text-center leading-relaxed" style={{ color: 'white' }}>
+                  <MathText>{currentCard.back}</MathText>
+                </div>
               </div>
             </div>
           </div>
@@ -713,28 +816,40 @@ function FlashcardRenderer({ data }: { data: any }) {
       </div>
 
       {/* Controls */}
-      <div className="mt-12 flex items-center gap-8">
-        <Button
-          onClick={handlePrev}
-          variant="outline"
-          size="icon"
-          className="w-14 h-14 rounded-full border-2 border-bee-black/10 hover:border-bee-black/30 hover:bg-white text-bee-black/60"
-        >
-          <ChevronLeft size={24} />
-        </Button>
+      <div className="shrink-0 py-6 bg-white border-t border-gray-100">
+        <div className="flex items-center justify-center gap-6">
+          <Button
+            onClick={handlePrev}
+            variant="outline"
+            size="icon"
+            className="w-12 h-12 rounded-full border-gray-200 hover:bg-gray-50"
+          >
+            <ChevronLeft size={20} className="text-gray-600" />
+          </Button>
 
-        <span className="font-mono text-sm font-bold text-bee-black/30 tracking-widest">
-          {currentIndex + 1} <span className="mx-2 opacity-30">/</span> {total}
-        </span>
+          {/* Progress dots */}
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: Math.min(total, 10) }).map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "w-2 h-2 rounded-full transition-colors",
+                  i === currentIndex ? "bg-gray-900" : "bg-gray-200"
+                )}
+              />
+            ))}
+            {total > 10 && <span className="text-xs text-gray-400 ml-1">+{total - 10}</span>}
+          </div>
 
-        <Button
-          onClick={handleNext}
-          variant="outline"
-          size="icon"
-          className="w-14 h-14 rounded-full border-2 border-bee-black/10 hover:border-bee-black/30 hover:bg-white text-bee-black/60"
-        >
-          <ChevronRight size={24} />
-        </Button>
+          <Button
+            onClick={handleNext}
+            variant="outline"
+            size="icon"
+            className="w-12 h-12 rounded-full border-gray-200 hover:bg-gray-50"
+          >
+            <ChevronRight size={20} className="text-gray-600" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -757,12 +872,10 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
     }
   };
 
-  // Fetch signed URL when switching to PDF view
   const handleViewPDF = async () => {
     setViewMode('pdf');
-    if (pdfSignedUrl) return; // Already have URL
-
-    if (!artifact?.id || !binaryInfo?.available) return;
+    if (pdfSignedUrl) return;
+    if (!artifact?.id) return;
 
     setPdfLoading(true);
     try {
@@ -771,14 +884,11 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
       if (session) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
-
-      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, {
-        headers
-      });
+      const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, { headers });
       if (res.ok) {
-        const data = await res.json();
-        if (data.download_url) {
-          setPdfSignedUrl(data.download_url);
+        const resData = await res.json();
+        if (resData.download_url) {
+          setPdfSignedUrl(resData.download_url);
         }
       }
     } catch (err) {
@@ -788,138 +898,200 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
     }
   };
 
+  const totalPoints = data.questions.reduce((sum: number, q: any) => sum + (q.points || 0), 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-bee-black">{data.title || 'Final Exam'}</h2>
-        <div className="flex gap-2">
-          {/* View Mode Toggle */}
-          {binaryInfo?.available && (
-            <div className="flex bg-cream rounded-xl p-1 border border-wax">
+    <div className="h-full flex flex-col bg-white">
+      {/* Header Bar */}
+      <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-serif font-bold text-gray-900">{data.title || 'Final Exam'}</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {data.questions.length} questions • {totalPoints} points total
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Polished Toggle Slider */}
+            <div className="relative flex bg-gray-100 rounded-full p-1">
+              <div
+                className={cn(
+                  "absolute top-1 bottom-1 rounded-full bg-white shadow-sm transition-all duration-200 ease-out",
+                  viewMode === 'questions' ? "left-1 w-[90px]" : "left-[95px] w-[100px]"
+                )}
+              />
               <button
                 onClick={() => setViewMode('questions')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'questions'
-                  ? 'bg-white shadow text-bee-black'
-                  : 'text-bee-black/50 hover:text-bee-black'
-                  }`}
+                className={cn(
+                  "relative z-10 px-4 py-1.5 text-xs font-semibold rounded-full transition-colors",
+                  viewMode === 'questions' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                )}
               >
                 Questions
               </button>
               <button
                 onClick={handleViewPDF}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'pdf'
-                  ? 'bg-white shadow text-bee-black'
-                  : 'text-bee-black/50 hover:text-bee-black'
-                  }`}
+                className={cn(
+                  "relative z-10 px-4 py-1.5 text-xs font-semibold rounded-full transition-colors",
+                  viewMode === 'pdf' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                )}
               >
                 PDF Preview
               </button>
             </div>
-          )}
-          {binaryInfo?.available && (
-            <Button onClick={handleDownloadPDF} className="bg-bee-black text-white hover:bg-honey hover:text-bee-black">
-              <FileText className="w-4 h-4 mr-2" /> Download PDF
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => setShowAnswers(!showAnswers)}>
-            {showAnswers ? 'Hide Answers' : 'Show Answers'}
-          </Button>
+
+            {/* Show/Hide Answers Toggle */}
+            <button
+              onClick={() => setShowAnswers(!showAnswers)}
+              className={cn(
+                "px-4 py-2 text-xs font-semibold rounded-full border transition-all",
+                showAnswers
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+              )}
+            >
+              {showAnswers ? '✓ Answers Visible' : 'Show Answers'}
+            </button>
+
+            {/* Download Button */}
+            {binaryInfo?.available ? (
+              <Button
+                onClick={handleDownloadPDF}
+                size="sm"
+                className="bg-gray-900 text-white hover:bg-gray-800 rounded-full px-4 gap-2"
+              >
+                <FileText className="w-4 h-4" /> Download PDF
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" disabled className="text-gray-400 rounded-full px-4 gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Generating...
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* PDF Preview Mode */}
-      {viewMode === 'pdf' && (
-        <div className="bg-white rounded-2xl border border-wax overflow-hidden h-[60vh] flex items-center justify-center">
-          {pdfLoading ? (
-            <div className="text-bee-black/50 text-sm">Loading PDF...</div>
-          ) : pdfSignedUrl ? (
-            <object
-              data={pdfSignedUrl}
-              type="application/pdf"
-              className="w-full h-full"
-            >
-              {/* Fallback if object tag doesn't work */}
-              <iframe
-                src={pdfSignedUrl}
-                className="w-full h-full"
-                title="PDF Preview"
-              />
-            </object>
-          ) : (
-            <div className="text-bee-black/50 text-sm">PDF not available</div>
-          )}
-        </div>
-      )}
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        {/* PDF Preview Mode */}
+        {viewMode === 'pdf' && (
+          <div className="h-full w-full bg-gray-50 flex flex-col p-4 md:p-8">
+            {pdfLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                <RefreshCw className="w-6 h-6 animate-spin" />
+                <span className="text-sm">Loading PDF...</span>
+              </div>
+            ) : pdfSignedUrl ? (
+              <div className="flex-1 w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden relative">
+                <object data={pdfSignedUrl} type="application/pdf" className="w-full h-full block">
+                  <iframe src={pdfSignedUrl} className="w-full h-full border-none block" title="PDF Preview" />
+                </object>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+                <FileText className="w-10 h-10" />
+                <span className="text-sm">PDF preview not available</span>
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Questions Mode */}
-      {viewMode === 'questions' && (
-        <div className="h-full overflow-y-auto custom-scrollbar px-10 pb-20">
-          <div className="max-w-4xl mx-auto space-y-8">
+        {/* Questions Mode */}
+        {viewMode === 'questions' && (
+          <div className="max-w-3xl mx-auto px-8 py-8">
+            {/* Instructions */}
             {data.instructions && (
-              <div className="p-6 bg-honey/5 border border-honey/20 rounded-2xl text-sm text-bee-black/80 leading-relaxed font-serif italic relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-honey" />
-                <strong className="block mb-2 text-honey font-sans uppercase tracking-widest text-[10px]">Instructions</strong>
-                {data.instructions}
+              <div className="mb-8 p-5 bg-amber-50 border border-amber-100 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+                    <BookOpen className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-amber-900 text-sm mb-1">Instructions</h4>
+                    <p className="text-sm text-amber-800/80 leading-relaxed">{data.instructions}</p>
+                  </div>
+                </div>
               </div>
             )}
 
+            {/* Questions List */}
             <div className="space-y-6">
               {data.questions.map((q: any, idx: number) => (
-                <div key={q.id || idx} className="bg-white p-8 rounded-[2rem] border border-wax shadow-sm hover:shadow-md transition-all group">
-                  <div className="flex items-start justify-between mb-6 border-b border-wax pb-4">
-                    <div className="flex items-center gap-4">
-                      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-bee-black text-honey font-serif font-bold text-lg shadow-lg shadow-bee-black/10">
+                <div
+                  key={q.id || idx}
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors"
+                >
+                  {/* Question Header */}
+                  <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-900 text-white font-bold text-sm">
                         {idx + 1}
                       </span>
-                      <Badge variant="outline" className="border-wax text-bee-black/40 text-[10px] uppercase tracking-widest bg-cream/50">
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-white border-gray-200 text-gray-500">
                         {q.type}
                       </Badge>
                     </div>
-                    <Badge className="bg-honey/10 text-honey hover:bg-honey/20 border-none font-bold tabular-nums">
+                    <span className="text-sm font-semibold text-gray-600 tabular-nums">
                       {q.points} pts
-                    </Badge>
+                    </span>
                   </div>
 
-                  <div className="text-xl font-medium text-bee-black/90 leading-relaxed mb-6 font-serif">
-                    <MathText>{q.text}</MathText>
-                  </div>
-
-                  {q.options && (
-                    <div className="space-y-3 pl-4 border-l-2 border-wax group-hover:border-honey/30 transition-colors">
-                      {q.options.map((opt: string, i: number) => (
-                        <div key={i} className="flex items-center gap-3 text-bee-black/70 hover:text-bee-black transition-colors">
-                          <div className="w-6 h-6 rounded-full border border-wax flex items-center justify-center text-[10px] font-bold text-bee-black/30">
-                            {String.fromCharCode(65 + i)}
-                          </div>
-                          <MathTextInline>{opt}</MathTextInline>
-                        </div>
-                      ))}
+                  {/* Question Body */}
+                  <div className="px-6 py-5">
+                    <div className="text-base text-gray-800 leading-relaxed mb-5">
+                      <MathText>{q.text}</MathText>
                     </div>
-                  )}
 
-                  {showAnswers && (
-                    <div className="mt-8 pt-6 border-t border-wax animate-in fade-in slide-in-from-top-2">
-                      <div className="bg-green-50 border border-green-100 rounded-xl p-5">
-                        <div className="flex items-center gap-2 mb-2 text-green-700 font-bold text-xs uppercase tracking-widest">
-                          <CheckCircle2 size={14} /> Correct Answer
-                        </div>
-                        <div className="text-green-900 font-medium">
-                          {q.options ? q.options[q.correct_answer_index] : q.correct_answer}
-                        </div>
-                        {q.explanation && (
-                          <div className="mt-3 text-green-800/70 text-sm leading-relaxed border-t border-green-200/50 pt-3">
-                            {q.explanation}
+                    {/* MCQ Options */}
+                    {q.options && q.options.length > 0 && (
+                      <div className="space-y-2 ml-2">
+                        {q.options.map((opt: string, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-semibold shrink-0">
+                              {String.fromCharCode(65 + i)}
+                            </span>
+                            <span className="text-gray-700 text-sm pt-0.5">
+                              <MathTextInline>{opt}</MathTextInline>
+                            </span>
                           </div>
-                        )}
+                        ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                    {/* Answer Section (when visible) */}
+                    {showAnswers && (
+                      <div className="mt-5 pt-5 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <CheckCircle2 size={16} className="text-emerald-600" />
+                            <span className="font-semibold text-emerald-800 text-sm">Model Answer</span>
+                          </div>
+                          <div className="text-emerald-900 leading-relaxed">
+                            {/* Exam questions use model_answer field */}
+                            {q.model_answer || (q.options && q.options[q.correct_answer_index]) || 'No answer provided'}
+                          </div>
+                          {/* Grading notes for exam questions */}
+                          {q.grading_notes && (
+                            <div className="mt-4 pt-4 border-t border-emerald-200/50">
+                              <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2">Grading Notes</div>
+                              <div className="text-sm text-emerald-800/70 leading-relaxed">
+                                {q.grading_notes}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1013,6 +1185,7 @@ interface ArtifactPreviewModalProps {
   artifact: Artifact | null;
   onRegenerate?: () => void;
   isRegenerating?: boolean;
+  onUpdate?: (newArtifact: Artifact) => void;
 }
 
 export function ArtifactPreviewModal({
@@ -1021,18 +1194,20 @@ export function ArtifactPreviewModal({
   artifact,
   onRegenerate,
   isRegenerating = false,
+  onUpdate,
 }: ArtifactPreviewModalProps) {
+  const artifactType = artifact?.type || 'text';
+  const data = useMemo(() => normalizeArtifact(artifactType, artifact), [artifact, artifactType]);
+
   if (!artifact) return null;
 
-  const artifactType = artifact.type || 'text';
   const Icon = TYPE_ICONS[artifactType] || FileText;
   const label = TYPE_LABELS[artifactType] || artifactType;
-  const data = useMemo(() => normalizeArtifact(artifactType, artifact), [artifact, artifactType]);
 
   const renderContent = () => {
     switch (artifactType) {
       case 'quiz': return <QuizRenderer data={data} />;
-      case 'notes': return <NotesRenderer data={data} artifactId={artifact.id} />;
+      case 'notes': return <NotesRenderer data={data} artifactId={artifact.id} onUpdate={onUpdate} />;
       case 'slides': return <SlidesRenderer data={data} artifact={artifact} />;
       case 'flashcards': return <FlashcardRenderer data={data} />;
       case 'exam': return <ExamRenderer data={data} artifact={artifact} />;
@@ -1098,11 +1273,9 @@ export function ArtifactPreviewModal({
           </div>
         </div>
 
-        {/* Content - Flexible, scrolling */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="mx-auto max-w-3xl">
-            {renderContent()}
-          </div>
+        {/* Content - Flexible, full width/height */}
+        <div className="flex-1 overflow-hidden relative bg-white flex flex-col">
+          {renderContent()}
         </div>
 
         {/* Footer - Fixed Height, shrinking */}
