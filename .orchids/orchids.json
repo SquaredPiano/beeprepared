@@ -1,9 +1,0 @@
-{
-  "projectId": "60b8cbbe-1f32-4b9e-96fd-986278b5e4af",
-  "createdAt": 1769452706473,
-  "version": "1.0",
-  "startupCommands": [
-    "cd frontend && bun install && bun run dev",
-    "cd backend && source venv/bin/activate && python main.py"
-  ]
-}
