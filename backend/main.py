@@ -594,7 +594,21 @@ async def download_artifact_binary(artifact_id: str, inline: bool = False, user_
         filename = f"{artifact_type}_{artifact_id[:8]}.{file_format}"
         
         # Generate presigned URL with proper response headers
-        # This forces the browser to download with correct Content-Type and filename
+        try:
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': r2_bucket,
+                    'Key': storage_path,
+                    'ResponseContentDisposition': 'inline' if inline else f'attachment; filename="{filename}"',
+                    'ResponseContentType': mime_type
+                },
+                ExpiresIn=3600  # 1 hour
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate presigned URL: {e}")
+            raise HTTPException(status_code=500, detail=f"S3 signing failed: {str(e)}")
+
         return {
             "download_url": presigned_url,
             "format": file_format,
@@ -626,31 +640,54 @@ async def update_artifact(artifact_id: str, updates: ArtifactUpdate, user_id: st
         # 1. Get artifact to find project_id
         # 2. Check project ownership
         
-        art_resp = supabase.table("artifacts").select("project_id").eq("id", artifact_id).execute()
-        if not art_resp.data:
-            raise HTTPException(status_code=404, detail="Artifact not found")
-            
-        project_id = art_resp.data[0]["project_id"]
+        # Schema enforces immutability. We must create a NEW artifact (Version History).
         
-        proj_resp = supabase.table("projects").select("user_id").eq("id", project_id).execute()
-        if not proj_resp.data or proj_resp.data[0]["user_id"] != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-            
-        # Perform update
-        # Only update fields that are provided
-        data = {}
-        if updates.content is not None:
-            data["content"] = updates.content
-            
-        if not data:
-            return {"status": "no_change"}
-            
-        upd_resp = supabase.table("artifacts").update(data).eq("id", artifact_id).execute()
+        # 1. Fetch original artifact data to copy metadata
+
         
-        if not upd_resp.data:
-             raise HTTPException(status_code=500, detail="Update failed")
+        # 2. Prepare new content
+        # Merge old content with updates if needed, or just replace?
+        # The model `ArtifactUpdate` has `content: Optional[dict]`. 
+        # If it's a partial update, we need to read the old content first.
+        # But we queried `select("project_id")` only. Let's get everything.
+        
+        full_art_resp = supabase.table("artifacts").select("*").eq("id", artifact_id).execute()
+        if not full_art_resp.data:
+             raise HTTPException(status_code=404, detail="Original artifact lost")
              
-        return upd_resp.data[0]
+        old_art = full_art_resp.data[0]
+        new_content = old_art["content"]
+        
+        if updates.content:
+            # Shallow merge or replacement? 
+            # Usually for JSONB, we replace top-level keys or the whole thing.
+            # Assuming replacement of keys provided in updates.content
+            if isinstance(updates.content, dict) and isinstance(new_content, dict):
+                new_content.update(updates.content)
+            else:
+                new_content = updates.content
+
+        # 3. Insert NEW artifact
+        new_artifact_data = {
+            "project_id": old_art["project_id"],
+            "type": old_art["type"],
+            "content": new_content,
+            "created_by_job_id": old_art.get("created_by_job_id") 
+        }
+        
+        ins_resp = supabase.table("artifacts").insert(new_artifact_data).execute()
+        
+        if not ins_resp.data:
+             raise HTTPException(status_code=500, detail="Failed to create new artifact version")
+             
+        new_artifact = ins_resp.data[0]
+        
+        # 4. (Optional) Re-link edges? 
+        # If we want the graph to point to the new note, we might need to move edges.
+        # But for 'Notes', usually they are leaf nodes or we just use the new ID in the UI.
+        # We will return the new artifact and let the UI switch to it.
+        
+        return new_artifact
 
     except HTTPException:
         raise

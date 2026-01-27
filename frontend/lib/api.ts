@@ -156,7 +156,11 @@ export const api = {
         },
         body: JSON.stringify(updates)
       });
-      if (!response.ok) throw new Error("Failed to update artifact");
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("Artifact update failed:", response.status, errText);
+        throw new Error(`Failed to update artifact: ${errText}`);
+      }
       return response.json();
     }
   },
