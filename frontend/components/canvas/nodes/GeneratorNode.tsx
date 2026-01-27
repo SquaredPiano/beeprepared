@@ -84,14 +84,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
   const progress = data.progress || generatorState?.progress || 0;
   const error = data.error || generatorState?.error;
 
-  // Sync artifact from generator state
-  useEffect(() => {
-    if (generatorState?.artifact) {
-      setLocalArtifact(generatorState.artifact);
-      updateNodeData({ artifact: generatorState.artifact, status: "completed" });
-    }
-  }, [generatorState?.artifact]);
-
   // Update node data helper
   const updateNodeData = useCallback((updates: Partial<GeneratorNodeData>) => {
     setNodes(nodes =>
@@ -102,6 +94,14 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
       )
     );
   }, [id, setNodes]);
+
+  // Sync artifact from generator state
+  useEffect(() => {
+    if (generatorState?.artifact) {
+      setLocalArtifact(generatorState.artifact);
+      updateNodeData({ artifact: generatorState.artifact, status: "completed" });
+    }
+  }, [generatorState?.artifact, updateNodeData]);
 
   // Find connected sources (Knowledge Core, Asset, or Chained Generators)
   const findSourceArtifacts = useCallback(async (): Promise<string[]> => {
@@ -132,10 +132,12 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
       console.log(`[Generator ${id}] Checking source node:`, sourceNode.type, sourceNode.id);
 
-      // Case A: Connected to Knowledge Core direct
-      if (sourceNode.type === 'artifactNode' && sourceNode.data?.type === 'knowledge_core') {
-        if ((sourceNode.data.artifact as { id: string })?.id) {
-          foundIds.push((sourceNode.data.artifact as { id: string }).id);
+      // Case A: Connected to ANY Artifact Node (Core, Notes, Quiz, etc.)
+      if (sourceNode.type === 'artifactNode') {
+        const artifactData = sourceNode.data as any;
+        if (artifactData?.artifact?.id) {
+          console.log(`[Generator ${id}] Found source artifact:`, artifactData.artifact.id, artifactData.type);
+          foundIds.push(artifactData.artifact.id);
         }
       }
       // Case B: Connected to Generator (Chaining)

@@ -106,7 +106,7 @@ class GenerateHandler(JobHandler):
         if not target_type:
             raise ValueError("target_type is required")
             
-        logger.info(f"[GenerateHandler] Processing {len(source_ids)} source artifacts for target {target_type}")
+        logger.info(f"[GenerateHandler] Processing {len(source_ids)} source artifacts for target {target_type}. Source IDs: {source_ids}")
 
         # --- Resolve Knowledge Cores for ALL inputs ---
         resolved_cores = []
@@ -142,13 +142,7 @@ class GenerateHandler(JobHandler):
             # Resolve to Knowledge Core
             found_core = None
             
-            # Special Case: Quiz -> Flashcards (Direct)
-            # This logic is hard to merge if we mix Quiz + Notes. 
-            # Strategy: If ANY input is Quiz and target is Flashcards, we handle strict Quiz->Flashcard?
-            # Or we force consistent inputs?
-            # For simplicity: If multi-input, we force Knowledge Core path.
-            # Direct Quiz->Flashcard only applies if Single Input = Quiz.
-            
+            # Special Case: Quiz -> Flashcards (Direct Semantic Conversion)
             if len(source_ids) == 1 and source_type == "quiz" and target_type == "flashcards":
                 # ... Existing Direct Logic ...
                 content = source_artifact.get("content", {})
@@ -169,20 +163,29 @@ class GenerateHandler(JobHandler):
                 
                 from backend.models.artifacts import FlashcardModel
                 generated_model = FlashcardModel(cards=flashcard_cards)
-                
-                # Create bundle immediately and return? 
-                # Or set flag to skip generation.
-                # Refactored below: we set knowledge_core = None and generated_model properly.
                 return self._finalize_job(job, source_ids, target_type, generated_model, None)
 
-            # Normal Path: Find Knowledge Core
+            # Strategy 1: Is it a Knowledge Core?
             if source_type == "knowledge_core":
                 content = source_artifact.get("content", {})
                 core_data = content.get("core")
                 if core_data:
                     found_core = KnowledgeCore(**core_data)
-            else:
-                # Parent Lookup
+            
+            # Strategy 2: Is it a Text/Generated Artifact? (Chaining)
+            # Create a synthetic core ensuring the generator uses THIS content, not the ancestor.
+            elif source_type in ["notes", "text", "flat_text", "transcription", "quiz", "flashcards", "exam", "slides"]:
+                text_repr = self._extract_content_as_text(source_artifact)
+                if text_repr:
+                    logger.info(f"[GenerateHandler] Chaining: Using content of {source_type} as synthetic core")
+                    found_core = KnowledgeCore(
+                        title=f"Source: {source_artifact.get('alias', 'Content')}",
+                        summary=text_repr, # Pass full text as summary so Generator sees it
+                        concepts=[], key_facts=[], section_hierarchy=[], notes=[], definitions=[], examples=[]
+                    )
+
+            # Strategy 3: Parent Lookup (Fallback to Source of Truth)
+            if not found_core:
                 edge = self.db.get_parent_edge(source_id)
                 if edge:
                     parent_id = edge.get("parent_artifact_id")
@@ -206,25 +209,43 @@ class GenerateHandler(JobHandler):
             # Single source: pass through directly
             final_core = resolved_cores[0]
         else:
-            # Multi-source: Use hierarchical summarization + merge
-            logger.info(f"[GenerateHandler] Hierarchical merge of {len(resolved_cores)} Knowledge Cores")
-            combined_context = self.core_merger.merge_cores(resolved_cores)
+            # Check if these are synthetic cores (from chaining) which hold full text
+            # Heuristic: Synthetic cores have empty concept lists (created in loop above)
+            is_synthetic_merge = all(len(c.concepts) == 0 and c.summary for c in resolved_cores)
             
-            # Convert CombinedContext to a synthetic KnowledgeCore for generator compatibility
-            # This keeps ArtifactGenerator unchanged while benefiting from hierarchical merge
-            final_core = KnowledgeCore(
-                title=f"Combined: {', '.join(combined_context.source_titles)}",
-                summary=combined_context.unified_summary,
-                concepts=[Concept(name=c, description="", importance_score=7) for c in combined_context.all_concepts],
-                key_facts=[KeyFact(fact=f, category="Combined") for f in combined_context.all_facts],
-                notes=[],  # Not needed for generation - concepts and facts are primary
-                section_hierarchy=[],
-                definitions=[],
-                examples=[]
-            )
-            
-            if combined_context.conflict_notes:
-                logger.warning(f"[GenerateHandler] Merge conflicts: {combined_context.conflict_notes}")
+            if is_synthetic_merge:
+                logger.info(f"[GenerateHandler] Concatenating {len(resolved_cores)} synthetic text sources (High Fidelity)")
+                # Concatenate full text summaries
+                titles = [c.title for c in resolved_cores]
+                combined_text = "\n\n".join([
+                    f"### Content from {c.title}:\n{c.summary}" 
+                    for c in resolved_cores
+                ])
+                
+                final_core = KnowledgeCore(
+                    title=f"Combined: {', '.join(titles)}",
+                    summary=combined_text, # Full concatenated text
+                    concepts=[], key_facts=[], section_hierarchy=[], notes=[], definitions=[], examples=[]
+                )
+            else:
+                # Multi-source: Use hierarchical summarization + merge
+                logger.info(f"[GenerateHandler] Hierarchical merge of {len(resolved_cores)} Knowledge Cores")
+                combined_context = self.core_merger.merge_cores(resolved_cores)
+                
+                # Convert CombinedContext to a synthetic KnowledgeCore for generator compatibility
+                final_core = KnowledgeCore(
+                    title=f"Combined: {', '.join(combined_context.source_titles)}",
+                    summary=combined_context.unified_summary,
+                    concepts=[Concept(name=c, description="", importance_score=7) for c in combined_context.all_concepts],
+                    key_facts=[KeyFact(fact=f, category="Combined") for f in combined_context.all_facts],
+                    notes=[],  # Not needed for generation - concepts and facts are primary
+                    section_hierarchy=[],
+                    definitions=[],
+                    examples=[]
+                )
+                
+                if combined_context.conflict_notes:
+                    logger.warning(f"[GenerateHandler] Merge conflicts: {combined_context.conflict_notes}")
             
         # --- Generate ---
         generated_model = None
@@ -242,6 +263,59 @@ class GenerateHandler(JobHandler):
             raise ValueError(f"Unknown target_type: {target_type}")
             
         return self._finalize_job(job, source_ids, target_type, generated_model, final_core)
+
+    def _extract_content_as_text(self, artifact: Dict) -> Optional[str]:
+        """Extracts a text representation of an artifact's content."""
+        a_type = artifact.get("type")
+        content = artifact.get("content", {})
+        data = content.get("data", {})
+        
+        if a_type == "notes":
+            return data.get("markdown") or data.get("body") or data.get("content")
+        
+        if a_type == "text" or a_type == "flat_text" or a_type == "transcription":
+            return data.get("text") or content.get("text")
+            
+        if a_type == "quiz":
+            questions = data.get("questions", [])
+            lines = ["Quiz Content:"]
+            for q in questions:
+                lines.append(f"Q: {q.get('text')}")
+                lines.append(f"Answer: {q.get('explanation') or 'Correct Option'}")
+            return "\n".join(lines)
+            
+        if a_type == "flashcards":
+            cards = data.get("cards") or data.get("flashcards", [])
+            lines = ["Flashcards Content:"]
+            for c in cards:
+                lines.append(f"Front: {c.get('front')}")
+                lines.append(f"Back: {c.get('back')}")
+            return "\n".join(lines)
+        
+        if a_type == "exam":
+            questions = data.get("questions", [])
+            lines = ["Exam Content:"]
+            for q in questions:
+                lines.append(f"Q: {q.get('text', '')}")
+                lines.append(f"Type: {q.get('type', '')}")
+                lines.append(f"Model Answer: {q.get('model_answer', '')}")
+                lines.append(f"Grading Notes: {q.get('grading_notes', '')}")
+                lines.append("")  # blank line separator
+            return "\n".join(lines)
+        
+        if a_type == "slides":
+            slides_list = data.get("slides", [])
+            lines = ["Slides Content:"]
+            for s in slides_list:
+                lines.append(f"# {s.get('heading', '')}")
+                lines.append(f"{s.get('main_idea', '')}")
+                for bp in s.get('bullet_points', []):
+                    lines.append(f"- {bp}")
+                lines.append(f"Speaker Notes: {s.get('speaker_notes', '')}")
+                lines.append("")  # blank line separator
+            return "\n".join(lines)
+            
+        return None
 
     def _finalize_job(self, job, source_ids: list, target_type: str, generated_model, knowledge_core=None) -> JobBundle:
         """Helper to build the final bundle with binaries and edges."""
