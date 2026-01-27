@@ -463,9 +463,25 @@ export const useCanvasStore = create<CanvasState>()(
           const updatedNodes = nodes.map(node => {
             // Update generator nodes with their corresponding artifact
             if (node.type === 'generator' && node.data.subType) {
-              const relevantArtifact = artifacts.find(a => a.type === node.data.subType);
+              const currentId = (node.data as any).artifact?.id;
+              let relevantArtifact;
+
+              if (currentId) {
+                // Priority 1: Match by specific ID (Preserve specific assignment)
+                relevantArtifact = artifacts.find(a => a.id === currentId);
+              }
+
+              if (!relevantArtifact && !currentId) {
+                // Priority 2: Fallback to type matching ONLY if no ID assigned (Initial load/Auto-bind)
+                // We pick the most recent one ideally, or just the first found
+                relevantArtifact = artifacts.find(a => a.type === node.data.subType);
+              }
+
               if (relevantArtifact) {
-                console.log('[refreshArtifacts] Updating generator', node.data.subType, 'with artifact');
+                // Only log if we are changing something or binding for the first time
+                if (currentId !== relevantArtifact.id) {
+                  console.log('[refreshArtifacts] Binding generator', node.data.subType, 'to', relevantArtifact.id);
+                }
                 return {
                   ...node,
                   data: { ...node.data, status: 'completed', artifact: relevantArtifact, progress: 100 }
