@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
   --color-honey-50: #FFFBEB;
@@ -289,5 +290,11 @@
 
   .rotate-y-180 {
     transform: rotateY(180deg);
+  }
+
+  /* Force white text on dark backgrounds (overrides all children) */
+  .force-white-text,
+  .force-white-text * {
+    color: white !important;
   }
 }

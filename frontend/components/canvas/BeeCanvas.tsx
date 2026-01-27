@@ -448,6 +448,29 @@ function BeeCanvasInner() {
     // Generator nodes handle their own click via internal button
   }, []);
 
+  // Handle immutable artifact updates (versioning)
+  const handleArtifactUpdate = useCallback((newArtifact: any) => {
+    // Find node containing the *original* artifact (we don't know the old ID easily unless passed, 
+    // but typically we can match by checking if the node's artifact.id matches the *current* previewArtifact.id)
+    if (!previewArtifact) return;
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.type === 'artifactNode' && node.data?.artifact?.id === previewArtifact.id) {
+          return {
+            ...node,
+            data: { ...node.data, artifact: newArtifact }
+          };
+        }
+        return node;
+      })
+    );
+
+    // Update the preview modal state to show the new artifact
+    setPreviewArtifact(newArtifact);
+    toast.success("Saved new version");
+  }, [previewArtifact, setNodes]);
+
   const onViewportChange = useCallback((viewport: Viewport) => {
     useCanvasStore.getState().setViewport(viewport);
   }, []);
@@ -577,6 +600,7 @@ function BeeCanvasInner() {
         isOpen={!!previewArtifact}
         onClose={() => setPreviewArtifact(null)}
         artifact={previewArtifact}
+        onUpdate={handleArtifactUpdate}
       />
 
       {/* Upload Modal Relay */}
