@@ -145,6 +145,22 @@ export const api = {
     }
   },
 
+  artifacts: {
+    async update(id: string, updates: { content?: any; markdown?: string }): Promise<Artifact> {
+      const token = await getAccessToken();
+      const response = await fetch(`${BACKEND_URL}/api/artifacts/${id}`, {
+        method: "PATCH",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updates)
+      });
+      if (!response.ok) throw new Error("Failed to update artifact");
+      return response.json();
+    }
+  },
+
   jobs: {
     async list(projectId?: string): Promise<Job[]> {
       const token = await getAccessToken();
@@ -155,6 +171,11 @@ export const api = {
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${token}` }
       });
+      // Handle 403 gracefully - project may have been deleted
+      if (response.status === 403) {
+        console.warn("[api.jobs.list] Access denied - project may be deleted");
+        return [];
+      }
       if (!response.ok) {
         throw new Error("Failed to fetch jobs");
       }
@@ -264,8 +285,16 @@ export const api = {
 
       const { job_id } = await response.json();
 
-      // Poll for completion
-      const job = await api.jobs.poll(job_id, onProgress || (() => { }));
+      // Return immediately so UI can use Realtime to track progress
+      // The backend creates the job in 'pending' state
+      const job: Job = {
+        id: job_id,
+        project_id: projectId,
+        type: "ingest",
+        status: "pending",
+        payload: { source_type: sourceType },
+        created_at: new Date().toISOString()
+      };
 
       return { job_id, job };
     }

@@ -7,28 +7,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Sparkles,
   HelpCircle,
   FileText,
   Presentation,
   BookOpen,
   Layers,
   ClipboardCheck,
-  PlayCircle,
-  Download,
   Share2,
-  Trash2,
   RefreshCw,
   X,
   ChevronLeft,
   ChevronRight,
   Brain,
   Video,
-  Music
+  Music,
+  Award,
+  CheckCircle2,
+  XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Artifact } from "@/lib/api";
+import { Artifact, api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -62,14 +63,67 @@ function stripMarkdown(text: string | null | undefined): string {
  * Detects LaTeX patterns and wraps in delimiters if missing to ensure proper rendering.
  * Prevents Markdown from swallowing backslashes in math formulas.
  */
+const MarkdownRenderers = {
+  h1: ({ children }: any) => (
+    <h1 className="text-3xl md:text-4xl font-serif font-bold text-bee-black mb-6 mt-8 pb-4 border-b-2 border-honey/20 first:mt-0">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: any) => (
+    <h2 className="text-2xl md:text-3xl font-serif font-bold text-bee-black mb-4 mt-8 flex items-center gap-2">
+      <span className="w-2 h-8 bg-honey rounded-full block" />
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: any) => (
+    <h3 className="text-xl md:text-2xl font-serif font-semibold text-bee-black/80 mb-3 mt-6">
+      {children}
+    </h3>
+  ),
+  p: ({ children }: any) => (
+    <p className="text-bee-black/90 font-sans leading-relaxed text-lg mb-6 max-w-none text-justify">
+      {children}
+    </p>
+  ),
+  ul: ({ children }: any) => (
+    <ul className="list-disc pl-6 space-y-2 mb-6 text-bee-black/80 marker:text-honey">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }: any) => (
+    <ol className="list-decimal pl-6 space-y-2 mb-6 text-bee-black/80 marker:text-honey marker:font-bold">
+      {children}
+    </ol>
+  ),
+  li: ({ children }: any) => (
+    <li className="pl-1 leading-relaxed">
+      {children}
+    </li>
+  ),
+  blockquote: ({ children }: any) => (
+    <blockquote className="border-l-4 border-honey bg-honey/5 p-6 my-8 rounded-r-2xl italic text-bee-black/70 font-serif text-xl">
+      {children}
+    </blockquote>
+  ),
+  code: ({ className, children }: any) => {
+    return (
+      <code className={cn(
+        "font-mono text-sm px-1.5 py-0.5 rounded bg-bee-black/5 text-bee-black/80",
+        className?.includes('language-') ? "block w-full overflow-x-auto p-4 bg-bee-black/90 text-cream my-6 rounded-xl" : ""
+      )}>
+        {children}
+      </code>
+    );
+  },
+  hr: () => <hr className="my-8 border-honey/20" />
+};
+
 function MathText({ children }: { children: string | null | undefined }) {
   if (!children) return null;
 
   let content = children;
 
   // Heuristic: If text contains common LaTeX commands but NO (or distinct) delimiters, wrap it.
-  // We check for backslashes followed by common math commands.
-  // Note: We avoid aggressive wrapping if $ is already present.
   const latexPatterns = [
     /\\frac/, /\\int/, /\\sum/, /\\prod/, /\\partial/, /\\sqrt/, /\\cdot/, /\\infty/,
     /\\alpha/, /\\beta/, /\\theta/, /\\sigma/, /\\omega/, /\\pi/,
@@ -79,7 +133,6 @@ function MathText({ children }: { children: string | null | undefined }) {
   const hasLatex = latexPatterns.some(p => p.test(content));
   const hasDelimiters = content.includes('$') || content.includes('\\(') || content.includes('\\[');
 
-  // Auto-wrap if it looks like raw LaTeX
   if (hasLatex && !hasDelimiters) {
     if (content.length > 50 || content.includes('\\\\')) {
       content = `$$\n${content}\n$$`;
@@ -89,15 +142,15 @@ function MathText({ children }: { children: string | null | undefined }) {
   }
 
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        p: ({ children }) => <span className="inline-block">{children}</span> // Use span for p to avoid block margins inside cards
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="prose-honey w-full max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={MarkdownRenderers}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
@@ -168,99 +221,227 @@ function getBinaryInfo(artifact: Artifact | null): { format: string; available: 
 
 function QuizRenderer({ data }: { data: any }) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
 
   if (!data?.questions) return <EmptyState message="No quiz data" />;
 
-  return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-bee-black">{data.title || 'Quiz'}</h2>
-      {data.questions.map((q: any, idx: number) => {
-        const answered = answers[q.id] !== undefined;
-        const selected = answers[q.id];
-        const correct = selected === q.correct_answer_index;
+  const currentQuestion = data.questions[currentIndex];
+  const total = data.questions.length;
+  const answeredCount = Object.keys(answers).length;
+  const correctCount = data.questions.filter((q: any, i: number) =>
+    answers[q.id || i] === q.correct_answer_index
+  ).length;
 
-        return (
-          <div key={q.id || idx} className="p-4 bg-white rounded-2xl border border-wax">
-            <div className="font-medium mb-3">
-              <span className="text-honey font-bold mr-2">{idx + 1}.</span>
-              <MathTextInline>{q.text}</MathTextInline>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {q.options?.map((opt: string, i: number) => (
-                <button
-                  key={i}
-                  className={`p-3 rounded-xl text-left text-sm transition-all ${answered
-                    ? i === q.correct_answer_index
-                      ? 'bg-green-100 border-green-300 border-2'
-                      : i === selected
-                        ? 'bg-red-100 border-red-300 border-2'
-                        : 'bg-gray-50 border-gray-200 border opacity-50'
-                    : 'bg-cream hover:bg-honey/10 border border-wax cursor-pointer'
-                    }`}
-                  onClick={() => !answered && setAnswers(p => ({ ...p, [q.id || idx]: i }))}
-                  disabled={answered}
-                >
-                  <MathTextInline>{opt}</MathTextInline>
-                </button>
-              ))}
-            </div>
-            {answered && (
-              <div className={`mt-3 p-3 rounded-xl text-sm ${correct ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {correct ? '✓ Correct!' : '✗ Incorrect.'} <MathTextInline>{q.explanation}</MathTextInline>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+  const handleSelect = (qIdx: number, optionIdx: number) => {
+    if (answers[qIdx] !== undefined) return;
+    if (navigator.vibrate) navigator.vibrate(50);
+    setAnswers(prev => ({ ...prev, [qIdx]: optionIdx }));
 
-function NotesRenderer({ data }: { data: any }) {
-  if (data?.format === 'markdown' && data?.body) {
+    if (currentIndex < total - 1) {
+      setTimeout(() => setCurrentIndex(c => c + 1), 1500);
+    } else {
+      setTimeout(() => setShowSummary(true), 1500);
+    }
+  };
+
+  if (showSummary) {
     return (
-      <div className="prose prose-sm max-w-none">
-        <h1 className="text-2xl font-bold text-bee-black mb-6">{data.title || 'Notes'}</h1>
-        <div className="bg-white p-6 rounded-2xl border border-wax">
-          <MathText>{data.body}</MathText>
+      <div className="bg-bee-black min-h-full flex flex-col items-center justify-center p-12 text-center text-white">
+        <div className="w-32 h-32 bg-honey/10 rounded-full flex items-center justify-center mb-8 border border-honey/20 shadow-[0_0_40px_-10px_rgba(251,191,36,0.3)]">
+          <Award className="w-16 h-16 text-honey" />
         </div>
+        <h2 className="text-4xl font-serif font-bold text-white mb-3">Quiz Complete</h2>
+        <p className="text-white/40 font-medium uppercase tracking-widest text-sm mb-12">Performance Report</p>
+
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 mb-12 min-w-[300px]">
+          <div className="text-6xl font-bold text-honey mb-2 tabular-nums">
+            {Math.round((correctCount / total) * 100)}%
+          </div>
+          <div className="flex items-center justify-center gap-2 text-white/60 text-sm font-medium">
+            <CheckCircle2 size={16} className="text-green-500" />
+            <span>{correctCount} Correct</span>
+            <span className="mx-2 opacity-20">|</span>
+            <XCircle size={16} className="text-red-500" />
+            <span>{total - correctCount} Incorrect</span>
+          </div>
+        </div>
+
+        <Button
+          onClick={() => { setAnswers({}); setCurrentIndex(0); setShowSummary(false); }}
+          className="bg-honey text-bee-black px-10 py-7 rounded-2xl text-sm font-bold uppercase tracking-widest hover:bg-white hover:scale-105 transition-all w-full max-w-sm"
+        >
+          Retake Quiz
+        </Button>
       </div>
     );
   }
 
-  if (!data?.sections) return <EmptyState message="No notes data" />;
+  const isAnswered = answers[currentIndex] !== undefined;
+  const selectedIdx = answers[currentIndex];
+  const correctIdx = currentQuestion.correct_answer_index;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-bee-black">{data.title || 'Notes'}</h1>
-      {data.sections.map((sec: any, i: number) => (
-        <div key={i} className="bg-white p-6 rounded-2xl border border-wax space-y-4">
-          <h2 className="text-lg font-bold text-bee-black">{sec.heading}</h2>
+    <div className="h-full bg-bee-black text-white flex flex-col">
+      {/* Progress Header */}
+      <div className="p-8 pb-4 shrink-0">
+        <div className="flex justify-between items-center mb-6">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
+            Question {currentIndex + 1} / {total}
+          </span>
+          <div className="flex gap-1">
+            {data.questions.map((_: any, idx: number) => (
+              <div
+                key={idx}
+                className={cn(
+                  "h-1 w-6 rounded-full transition-all duration-300",
+                  idx === currentIndex ? "bg-honey w-12" :
+                    idx < currentIndex ? (answers[idx] === data.questions[idx].correct_answer_index ? "bg-green-500/50" : "bg-red-500/50") :
+                      "bg-white/10"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
 
-          {sec.key_points && sec.key_points.length > 0 && (
-            <ul className="list-disc list-inside space-y-1 text-sm">
-              {sec.key_points.map((kp: string, k: number) => (
-                <li key={k}><MathTextInline>{kp}</MathTextInline></li>
-              ))}
-            </ul>
-          )}
+      {/* Main Question Area */}
+      <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
+        <div className="max-w-3xl mx-auto h-full flex flex-col justify-center min-h-[500px]">
+          <h3 className="text-2xl md:text-3xl font-serif font-medium leading-relaxed mb-12 text-white/90">
+            <MathText>{currentQuestion.text}</MathText>
+          </h3>
 
-          {sec.content_block && (
-            <div className="prose prose-sm max-w-none">
-              <MathText>{sec.content_block}</MathText>
-            </div>
-          )}
+          <div className="grid gap-4">
+            {currentQuestion.options?.map((opt: string, idx: number) => {
+              let stateClass = "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 text-white/70";
+              const isSelected = isAnswered && idx === selectedIdx;
+              const isCorrect = isAnswered && idx === correctIdx;
+              const isWrong = isSelected && !isCorrect;
 
-          {sec.key_terms && sec.key_terms.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              <span className="text-xs font-bold text-bee-black/40">Key Terms:</span>
-              {sec.key_terms.map((term: string, t: number) => (
-                <span key={t} className="px-2 py-1 bg-honey/10 text-honey-700 text-xs rounded-full font-medium">{term}</span>
-              ))}
-            </div>
+              if (isAnswered) {
+                if (idx === correctIdx) stateClass = "bg-green-500/20 border-green-500/50 text-green-200 ring-1 ring-green-500/50";
+                else if (isSelected) stateClass = "bg-red-500/20 border-red-500/50 text-red-200";
+                else stateClass = "bg-white/5 border-white/5 text-white/20 opacity-50";
+              }
+
+              return (
+                <button
+                  key={idx}
+                  disabled={isAnswered}
+                  onClick={() => handleSelect(currentIndex, idx)}
+                  className={cn(
+                    "w-full text-left p-6 rounded-2xl border transition-all duration-200 flex items-center justify-between group relative overflow-hidden",
+                    stateClass
+                  )}
+                >
+                  <div className="flex items-center gap-6 relative z-10">
+                    <span className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-colors",
+                      isCorrect ? "bg-green-500 text-black border-green-500" :
+                        isWrong ? "bg-red-500 text-white border-red-500" :
+                          "border-white/20 text-white/40 group-hover:border-honey/50 group-hover:text-honey"
+                    )}>
+                      {String.fromCharCode(65 + idx)}
+                    </span>
+                    <span className="font-medium text-lg"><MathTextInline>{opt}</MathTextInline></span>
+                  </div>
+                  {isCorrect && <CheckCircle2 className="text-green-500 animate-in zoom-in spin-in-180 duration-300" />}
+                  {isWrong && <XCircle className="text-red-500 animate-in zoom-in duration-300" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [content, setContent] = useState(data.markdown || data.body || "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Parse markdown to ensure it's a string
+  const markdownContent = typeof content === 'string' ? content : "No content available.";
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // Optimistic update
+      await api.artifacts.update(artifactId, { content: { ...data, markdown: content } }); // Assuming content is nested
+      toast.success("Notes saved successfully");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Failed to save notes:", error);
+      toast.error("Failed to save notes");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col relative w-full pt-6">
+      <div className="px-10 flex justify-between items-center mb-6 shrink-0">
+        <div>
+          <h2 className="text-3xl font-serif font-bold text-bee-black">Study Notes</h2>
+          <p className="text-sm font-medium text-bee-black/40 uppercase tracking-widest mt-1">
+            Generated from Knowledge Core
+          </p>
+        </div>
+        <div className="flex gap-3">
+          {isEditing ? (
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => setIsEditing(false)}
+                className="rounded-xl hover:bg-gray-100 font-bold uppercase tracking-widest text-[10px]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                className="bg-bee-black text-white hover:bg-honey hover:text-bee-black rounded-xl font-bold uppercase tracking-widest text-[10px] min-w-[100px]"
+                disabled={isSaving}
+              >
+                {isSaving ? <RefreshCw className="animate-spin w-4 h-4" /> : "Save Changes"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={() => setIsEditing(true)}
+              className="bg-white border border-wax text-bee-black hover:bg-honey/10 rounded-xl font-bold uppercase tracking-widest text-[10px]"
+            >
+              Edit Notes
+            </Button>
           )}
         </div>
-      ))}
+      </div>
+
+      <div className="flex-1 overflow-hidden relative">
+        {isEditing ? (
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="w-full h-full p-10 resize-none outline-none font-mono text-sm leading-relaxed bg-white/50 text-bee-black focus:bg-white transition-colors overflow-y-auto"
+            placeholder="# Start typing your notes..."
+          />
+        ) : (
+          <div className="h-full overflow-y-auto custom-scrollbar px-10 pb-20">
+            <div className="max-w-3xl mx-auto bg-white/80 p-12 rounded-[2rem] shadow-sm min-h-full">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={MarkdownRenderers}
+                className="prose prose-slate max-w-none"
+              >
+                {markdownContent}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -417,72 +598,100 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
 }
 
 function FlashcardRenderer({ data }: { data: any }) {
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
 
-  if (!data?.cards || data.cards.length === 0) {
-    return <EmptyState message="No flashcard data" />;
-  }
+  if (!data?.flashcards) return <EmptyState message="No flashcards data" />;
 
-  const card = data.cards[index];
-  const next = () => { setFlipped(false); setTimeout(() => setIndex(i => (i + 1) % data.cards.length), 200); };
-  const prev = () => { setFlipped(false); setTimeout(() => setIndex(i => (i - 1 + data.cards.length) % data.cards.length), 200); };
+  const currentCard = data.flashcards[currentIndex];
+  const total = data.flashcards.length;
+
+  const handleNext = () => {
+    setIsFlipped(false);
+    setTimeout(() => setCurrentIndex((c) => (c + 1) % total), 150);
+  };
+
+  const handlePrev = () => {
+    setIsFlipped(false);
+    setTimeout(() => setCurrentIndex((c) => (c - 1 + total) % total), 150);
+  };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') handleNext();
+      if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === ' ' || e.key === 'Enter') setIsFlipped(f => !f);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, total, handleNext, handlePrev]);
 
   return (
-    <div className="flex flex-col items-center">
-      <div
-        onClick={() => setFlipped(!flipped)}
-        className="w-full max-w-md aspect-[3/2] cursor-pointer"
-        style={{ perspective: '1000px' }}
-      >
+    <div className="h-full flex flex-col items-center justify-center p-8 bg-cream/30">
+      <div className="w-full max-w-3xl aspect-[3/2] relative perspective-1000">
         <div
-          className="relative w-full h-full duration-500"
-          style={{
-            transformStyle: 'preserve-3d',
-            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-            transition: 'transform 0.5s'
-          }}
+          className={cn(
+            "w-full h-full relative preserve-3d transition-all duration-700 cursor-pointer shadow-2xl rounded-[3rem]",
+            isFlipped ? "rotate-y-180" : ""
+          )}
+          onClick={() => setIsFlipped(!isFlipped)}
         >
-          {/* Front */}
-          <div
-            className="absolute inset-0 bg-white rounded-3xl border-2 border-honey shadow-xl p-8 flex flex-col items-center justify-center text-center"
-            style={{ backfaceVisibility: 'hidden' }}
-          >
-            <Badge className="bg-honey/10 text-honey mb-4">Question</Badge>
-            <div className="text-lg font-medium">
-              <MathText>{card.front}</MathText>
+          {/* Front (Black/Gold) */}
+          <div className="absolute inset-0 backface-hidden bg-bee-black text-white rounded-[3rem] p-12 flex flex-col items-center justify-center border border-white/10 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)]">
+            <div className="absolute top-8 left-8">
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-honey/60">Front</span>
             </div>
-            <p className="text-xs text-bee-black/30 mt-4">Click to flip</p>
+            <div className="absolute top-8 right-8">
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/20">{currentIndex + 1} / {total}</span>
+            </div>
+
+            <div className="flex-1 flex items-center justify-center w-full">
+              <h3 className="text-3xl md:text-4xl font-serif font-bold text-center leading-tight">
+                <MathText>{currentCard.front}</MathText>
+              </h3>
+            </div>
+
+            <p className="text-white/20 text-xs uppercase tracking-widest mt-auto">Click to reveal</p>
           </div>
 
-          {/* Back */}
-          <div
-            className="absolute inset-0 bg-bee-black text-white rounded-3xl shadow-xl p-8 flex flex-col items-center justify-center text-center"
-            style={{
-              backfaceVisibility: 'hidden',
-              transform: 'rotateY(180deg)'
-            }}
-          >
-            <Badge className="bg-honey text-bee-black mb-4">Answer</Badge>
-            <div className="text-lg">
-              <MathText>{card.back}</MathText>
+          {/* Back (White/Gold) */}
+          <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white text-bee-black rounded-[3rem] p-12 flex flex-col items-center justify-center border border-wax shadow-xl">
+            <div className="absolute top-8 left-8">
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-honey">Back</span>
             </div>
-            {card.hint && (
-              <p className="text-xs text-white/50 mt-4">💡 {card.hint}</p>
-            )}
+
+            <div className="flex-1 flex items-center justify-center w-full overflow-y-auto custom-scrollbar">
+              <div className="text-xl md:text-2xl font-serif font-medium text-center leading-relaxed text-bee-black/80">
+                <MathText>{currentCard.back}</MathText>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-6 mt-8">
-        <Button variant="outline" onClick={prev} className="rounded-full w-12 h-12 p-0">
-          <ChevronLeft className="w-5 h-5" />
+      {/* Controls */}
+      <div className="mt-12 flex items-center gap-8">
+        <Button
+          onClick={handlePrev}
+          variant="outline"
+          size="icon"
+          className="w-14 h-14 rounded-full border-2 border-bee-black/10 hover:border-bee-black/30 hover:bg-white text-bee-black/60"
+        >
+          <ChevronLeft size={24} />
         </Button>
-        <span className="text-sm font-bold text-bee-black/60">
-          {index + 1} / {data.cards.length}
+
+        <span className="font-mono text-sm font-bold text-bee-black/30 tracking-widest">
+          {currentIndex + 1} <span className="mx-2 opacity-30">/</span> {total}
         </span>
-        <Button variant="outline" onClick={next} className="rounded-full w-12 h-12 p-0">
-          <ChevronRight className="w-5 h-5" />
+
+        <Button
+          onClick={handleNext}
+          variant="outline"
+          size="icon"
+          className="w-14 h-14 rounded-full border-2 border-bee-black/10 hover:border-bee-black/30 hover:bg-white text-bee-black/60"
+        >
+          <ChevronRight size={24} />
         </Button>
       </div>
     </div>
@@ -764,7 +973,7 @@ export function ArtifactPreviewModal({
   const renderContent = () => {
     switch (artifactType) {
       case 'quiz': return <QuizRenderer data={data} />;
-      case 'notes': return <NotesRenderer data={data} />;
+      case 'notes': return <NotesRenderer data={data} artifactId={artifact.id} />;
       case 'slides': return <SlidesRenderer data={data} artifact={artifact} />;
       case 'flashcards': return <FlashcardRenderer data={data} />;
       case 'exam': return <ExamRenderer data={data} artifact={artifact} />;
@@ -784,33 +993,41 @@ export function ArtifactPreviewModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         className="
-          fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] 
-          w-[90vw] max-w-4xl h-[85vh] 
-          rounded-[32px] border-wax bg-cream/95 backdrop-blur-xl 
-          p-0 shadow-2xl z-50 flex flex-col overflow-hidden
+          fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%]
+          w-[95vw] max-w-5xl h-[90vh] max-h-[90vh]
+          rounded-[32px] border border-white/20 bg-cream/80 backdrop-blur-2xl
+          p-0 shadow-2xl z-[100] flex flex-col overflow-hidden outline-none
         "
       >
-        <DialogTitle className="sr-only">Artifact Preview</DialogTitle>
+        <DialogTitle className="sr-only">
+          {artifact?.content?.title || artifact?.content?.original_name || artifact?.type || 'Artifact Preview'}
+        </DialogTitle>
 
         {/* Header - Fixed Height, shrinking */}
         <div className="shrink-0 z-10 bg-cream/95 backdrop-blur-xl border-b border-wax p-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-white shadow-lg flex items-center justify-center border border-wax">
-              <Icon className="w-6 h-6 text-honey" />
+            <div className="p-3 bg-bee-black/5 rounded-2xl border border-wax">
+              <Icon size={24} className="text-bee-black" />
             </div>
             <div>
-              <Badge className="bg-honey/10 text-honey border-none text-[10px] uppercase tracking-widest font-bold mb-1">
-                {label}
-              </Badge>
-              <h2 className="text-xl font-bold text-bee-black truncate max-w-[400px]">
-                {artifact.content?.title || artifact.content?.data?.title || label}
+              <h2 className="text-lg font-bold font-serif text-bee-black uppercase tracking-wide">
+                {artifact?.content?.title || label}
               </h2>
+              <div className="flex items-center gap-3 mt-1">
+                <Badge variant="outline" className="bg-white border-wax text-bee-black/40 text-[9px] uppercase tracking-widest px-2 py-0.5 h-5">
+                  {artifactType}
+                </Badge>
+                <span className="text-[10px] font-bold text-bee-black/20 uppercase tracking-widest">
+                  Generated via BeePrepared
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex gap-2">
             {onRegenerate && (
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={onRegenerate}
                 disabled={isRegenerating}
                 className="gap-2"
@@ -819,9 +1036,6 @@ export function ArtifactPreviewModal({
                 {isRegenerating ? 'Regenerating...' : 'Regenerate'}
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-honey/10">
-              <X className="w-5 h-5" />
-            </Button>
           </div>
         </div>
 

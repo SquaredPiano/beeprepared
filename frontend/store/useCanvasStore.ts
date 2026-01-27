@@ -116,6 +116,7 @@ interface CanvasState {
   createNewProject: () => Promise<void>;
   uploadFile: (file: File) => Promise<void>;
   refreshArtifacts: () => Promise<void>;
+  clearProject: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -136,6 +137,15 @@ export const useCanvasStore = create<CanvasState>()(
 
       history: [],
       historyIndex: -1,
+
+      clearProject: () => {
+        set({
+          currentProjectId: null,
+          nodes: [],
+          edges: [],
+          projectName: generateProjectName()
+        });
+      },
 
       takeSnapshot: () => {
         const { nodes, edges, history, historyIndex } = get();

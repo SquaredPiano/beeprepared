@@ -29,3 +29,13 @@ __pycache__/
 .idea/
 
 verify_rpc.sh
+
+/output
+/tests
+.orchids
+.pytest_cache
+backend/scripts
+backend/tests
+backend/repair_db.py
+backend/list_models
+docs

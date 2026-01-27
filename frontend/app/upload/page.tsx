@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,7 +31,27 @@ interface UploadingFile {
   error?: string;
 }
 
+// Loading fallback for Suspense
+function UploadPageLoading() {
+  return (
+    <div className="min-h-screen bg-cream flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="w-8 h-8 animate-spin text-honey" />
+        <p className="text-[10px] uppercase tracking-widest font-bold text-bee-black/40">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
 export default function UploadPage() {
+  return (
+    <Suspense fallback={<UploadPageLoading />}>
+      <UploadPageContent />
+    </Suspense>
+  );
+}
+
+function UploadPageContent() {
   const searchParams = useSearchParams();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadingFile[]>([]);

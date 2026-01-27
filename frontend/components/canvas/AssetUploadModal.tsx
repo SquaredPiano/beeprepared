@@ -25,17 +25,19 @@ interface AssetUploadModalProps {
   onUpload?: (asset: { label: string; type: "pdf" | "video" | "pptx"; id: string }) => void;
 }
 
-export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModalProps) {
+export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>("Uploading...");
   const [activeTab, setActiveTab] = useState<"upload" | "library">("upload");
   const [existingArtifacts, setExistingArtifacts] = useState<any[]>([]);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
 
   // Vault / Folder State
   const [folderPath, setFolderPath] = useState("/");
   const [viewingPath, setViewingPath] = useState("/");
 
-  const { currentProjectId, uploadFile, refreshArtifacts, setNodes, nodes, takeSnapshot } = useCanvasStore();
+  const { currentProjectId, loadProject, setNodes, nodes, takeSnapshot } = useCanvasStore();
 
   useEffect(() => {
     if (isOpen && activeTab === "library") {
@@ -99,9 +101,13 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
       }
     }
 
+    // Import supabase
+    // (This will be added by the tool automatically if I use imports? No, I must add import line explicitly or use a separate block)
+    // Actually, I'll use multi_replace to do both safely.
+
     setIsUploading(true);
 
-    // Multi-file support: Process each file sequentially
+    const jobIds: string[] = [];
     const totalFiles = acceptedFiles.length;
     let successCount = 0;
     let failCount = 0;
@@ -111,38 +117,160 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
       setUploadProgress(`Uploading ${i + 1}/${totalFiles}: ${file.name}`);
 
       try {
-        await api.upload.uploadAndIngest(
+        const result = await api.upload.uploadAndIngest(
           projectId,
           file,
           folderPath || "/",
           (job) => {
-            if (job.status === "running") {
-              setUploadProgress(`Processing ${i + 1}/${totalFiles}: ${file.name}`);
-            }
+            // This callback isn't really used since we return immediately now
           }
         );
+        if (result && result.job_id) {
+          jobIds.push(result.job_id);
+        }
         successCount++;
       } catch (error: any) {
         console.error(`Upload error for ${file.name}:`, error);
-        toast.error(`Failed: ${file.name}`);
+        toast.error(`Failed to upload ${file.name}`);
         failCount++;
       }
     }
 
-    // Refresh the canvas to show all new artifacts
-    await refreshArtifacts();
+    if (jobIds.length > 0) {
+      setIsUploading(false);
+      setIsProcessing(true);
+      setUploadProgress("Processing media... Please wait.");
 
-    if (successCount > 0) {
-      toast.success(`${successCount} file(s) uploaded successfully`);
+      // Use polling instead of Realtime (more reliable)
+      const pendingJobIds = new Set(jobIds);
+
+      const pollJobStatuses = async () => {
+        try {
+          for (const jobId of [...pendingJobIds]) {
+            const job = await api.jobs.getStatus(jobId);
+            console.log(`[AssetUploadModal] Job ${jobId} status:`, job.status);
+
+            if (job.status === 'completed') {
+              pendingJobIds.delete(jobId);
+              toast.success("Processing complete!");
+            } else if (job.status === 'failed') {
+              pendingJobIds.delete(jobId);
+              toast.error("Processing failed", { description: job.error_message });
+            }
+          }
+
+          // All jobs done?
+          if (pendingJobIds.size === 0) {
+            console.log('[AssetUploadModal] All jobs complete, reloading project');
+            if (projectId) {
+              await loadProject(projectId);
+            }
+            setIsProcessing(false);
+            onClose();
+            return true; // Signal to stop polling
+          }
+          return false; // Keep polling
+        } catch (error) {
+          console.error('[AssetUploadModal] Polling error:', error);
+          return false;
+        }
+      };
+
+      // Poll every 2 seconds until all jobs are done
+      const pollInterval = setInterval(async () => {
+        const allDone = await pollJobStatuses();
+        if (allDone) {
+          clearInterval(pollInterval);
+        }
+      }, 2000);
+
+      // Initial poll
+      pollJobStatuses();
+
+      // Safety timeout after 5 minutes - don't leave user hanging
+      setTimeout(() => {
+        if (pendingJobIds.size > 0) {
+          clearInterval(pollInterval);
+          console.warn('[AssetUploadModal] Timeout waiting for jobs');
+          toast.warning("Processing is taking longer than expected. Check back later.");
+          setIsProcessing(false);
+          onClose();
+        }
+      }, 5 * 60 * 1000);
+
+    } else {
+      setIsUploading(false);
+      setUploadProgress("Uploading...");
+      onClose();
     }
-    if (failCount > 0) {
-      toast.warning(`${failCount} file(s) failed`);
+  }, [currentProjectId, loadProject, onClose, folderPath]);
+
+  // YouTube URL Ingestion
+  const onIngestYoutube = useCallback(async () => {
+    if (!youtubeUrl.trim()) {
+      toast.error("Please enter a YouTube URL");
+      return;
     }
 
-    setIsUploading(false);
-    setUploadProgress("Uploading...");
-    onClose();
-  }, [currentProjectId, refreshArtifacts, onClose, folderPath]);
+    // Validate YouTube URL
+    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+    if (!ytRegex.test(youtubeUrl)) {
+      toast.error("Invalid YouTube URL");
+      return;
+    }
+
+    let projectId = currentProjectId;
+    if (!projectId) {
+      try {
+        await useCanvasStore.getState().save();
+        projectId = useCanvasStore.getState().currentProjectId;
+        if (!projectId) throw new Error("Failed to initialize project");
+      } catch {
+        toast.error("Could not initialize project");
+        return;
+      }
+    }
+
+    setIsProcessing(true);
+    setUploadProgress("Downloading YouTube video...");
+
+    try {
+      // Create ingest job for YouTube
+      const { job_id } = await api.jobs.create(projectId, "ingest", {
+        source_type: "youtube",
+        source_ref: youtubeUrl.trim(),
+        original_name: "YouTube Video"
+      });
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const job = await api.jobs.getStatus(job_id);
+          console.log(`[YouTube] Job status: ${job.status}`);
+
+          if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            toast.success("YouTube video processed!");
+            await loadProject(projectId!);
+            setIsProcessing(false);
+            setYoutubeUrl("");
+            onClose();
+          } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            toast.error("Processing failed", { description: job.error_message });
+            setIsProcessing(false);
+          }
+        } catch (error) {
+          console.error('[YouTube] Poll error:', error);
+        }
+      }, 2000);
+
+    } catch (error: unknown) {
+      console.error("YouTube ingest error:", error);
+      toast.error("Failed to start YouTube ingestion");
+      setIsProcessing(false);
+    }
+  }, [youtubeUrl, currentProjectId, loadProject, onClose]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -224,7 +352,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                     className={cn(
                       "relative border-2 border-dashed rounded-[2rem] p-12 transition-all duration-500 flex flex-col items-center gap-6 cursor-pointer group",
                       isDragActive ? 'border-honey bg-honey/5' : 'border-wax hover:border-honey/40 hover:bg-honey/5',
-                      isUploading && 'pointer-events-none opacity-50'
+                      (isUploading || isProcessing) && 'pointer-events-none opacity-50'
                     )}
                   >
                     <input {...getInputProps()} />
@@ -233,7 +361,7 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                       "p-6 rounded-3xl bg-white shadow-xl text-honey transition-all duration-700",
                       isDragActive ? 'scale-110 rotate-12 shadow-honey/20' : 'group-hover:scale-105'
                     )}>
-                      {isUploading ? (
+                      {(isUploading || isProcessing) ? (
                         <Loader2 className="w-10 h-10 animate-spin" />
                       ) : (
                         <Upload className="w-10 h-10" />
@@ -242,14 +370,14 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
 
                     <div className="text-center space-y-2">
                       <p className="text-xl font-bold text-bee-black">
-                        {isUploading ? uploadProgress : 'Drop your files here'}
+                        {(isUploading || isProcessing) ? uploadProgress : 'Drop your files here'}
                       </p>
                       <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest">
                         PDF • MP4 • MP3 • PPTX • TXT • MD (Multiple files supported)
                       </p>
                     </div>
 
-                    {!isUploading && (
+                    {(!isUploading && !isProcessing) && (
                       <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bee-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-bee-black/40">
                         <Check size={10} className="text-green-500" /> Ready to process
                       </div>
@@ -270,6 +398,28 @@ export function AssetUploadModal({ isOpen, onClose, onUpload }: AssetUploadModal
                         placeholder="/ (Root)"
                         className="w-full pl-12 pr-4 py-3 bg-white border border-wax rounded-2xl text-xs font-bold text-bee-black focus:outline-none focus:border-honey/40 transition-colors placeholder:text-bee-black/20"
                       />
+                    </div>
+
+                    {/* YouTube URL */}
+                    <div className="space-y-2 pt-4 border-t border-wax">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Or paste a YouTube URL</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={youtubeUrl}
+                          onChange={(e) => setYoutubeUrl(e.target.value)}
+                          placeholder="https://youtube.com/watch?v=..."
+                          disabled={isUploading || isProcessing}
+                          className="flex-1 px-4 py-3 bg-white border border-wax rounded-2xl text-xs font-bold text-bee-black focus:outline-none focus:border-honey/40 transition-colors placeholder:text-bee-black/20 disabled:opacity-50"
+                        />
+                        <button
+                          onClick={onIngestYoutube}
+                          disabled={isUploading || isProcessing || !youtubeUrl.trim()}
+                          className="px-6 py-3 bg-red-500 text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Import
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </>

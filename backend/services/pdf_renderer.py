@@ -110,7 +110,7 @@ class PDFRenderer:
         doc.append(NoEscape(r'\vspace*{1cm}'))
         
         # Branding Update
-        doc.append(NoEscape(r'{\Huge \textbf{ONTARIO TECH UNIVERSITY} \par}'))
+        doc.append(NoEscape(r'{\Huge \textbf{FINAL EXAM} \par}'))
         doc.append(NoEscape(r'\vspace{1.5cm}'))
         
         # Use NoEscape for all content to prevent math breaking
