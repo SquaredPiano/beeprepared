@@ -1,0 +1,76 @@
+{
+  "cards": [
+    {
+      "front": "How many lectures are scheduled in total for this Introductory Calculus course?",
+      "back": "**16**\n\nThe lecture notes specify that there are 16 lectures in total for the course.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q1"
+    },
+    {
+      "front": "The recommended textbook for the course is *Mathematical Methods in the Physical Sciences* by Mary Boas.",
+      "back": "**True**\n\nThe recommended reading listed in the practical information is the book by Mary Boas.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q2"
+    },
+    {
+      "front": "What defines the 'order' of an Ordinary Differential Equation (ODE)?",
+      "back": "**The order of the highest derivative that occurs in the equation.**\n\nThe order of an ODE is defined by the order of the highest derivative present in the equation.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q3"
+    },
+    {
+      "front": "Newton's second law, $F=ma$, when relating force $F$ to position $r(t)$, is generally expressed as a first-order differential equation.",
+      "back": "**False**\n\nAcceleration ($a$) is the second derivative of position ($r$) with respect to time ($t$), i.e., $a = \\frac{d^2r}{dt^2}$. Thus, $F=m\\frac{d^2r}{dt^2}$ is a second-order differential equation.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q4"
+    },
+    {
+      "front": "The differential equation modeling the charge $Q(t)$ in an RLC circuit with voltage source $V$ is represented by:",
+      "back": "**$$ L \\frac{d^2Q}{dt^2} + R \\frac{dQ}{dt} + \\frac{1}{C} Q = V $$**\n\nKirchhoff's law leads to the second-order linear ODE: $L \\frac{d^2Q}{dt^2} + R \\frac{dQ}{dt} + \\frac{1}{C} Q = V$, where $I = dQ/dt$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q5"
+    },
+    {
+      "front": "Which differentiation rule is the foundation for the Integration by Parts technique?",
+      "back": "**The Product Rule**\n\nIntegration by Parts is derived by integrating the Product Rule for differentiation: $(fg)' = f'g + fg'$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q6"
+    },
+    {
+      "front": "In the integration by parts formula $\\int f g' dx = f g - \\int f' g dx$, if one must integrate $\\int x^2 \\sin(x) dx$, the standard choice for $f$ is $x^2$.",
+      "back": "**True**\n\nIn $\\int x^2 \\sin(x) dx$, we typically choose $f = x^2$ because its derivative, $f' = 2x$, simplifies the subsequent integral. $g' = \\sin(x)$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q7"
+    },
+    {
+      "front": "The final part of the Introductory Calculus syllabus focuses on the study of Partial Differential Equations (PDEs).",
+      "back": "**False**\n\nThe final part of the syllabus covers Calculus of functions in two variables, including surfaces, gradients, Taylor's theorem, and critical points. Differential Equations are covered in the first half.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q8"
+    },
+    {
+      "front": "A differential equation is considered 'separable' if it can be written in which of the following forms?",
+      "back": "**$$ \\frac{dy}{dx} = a(x) b(y) $$**\n\nA separable equation must be expressible as $dy/dx = a(x)b(y)$, allowing the variables to be separated: $\\frac{1}{b(y)} dy = a(x) dx$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q9"
+    },
+    {
+      "front": "When solving the separable equation $dy/dx = a(x)b(y)$, the correct separation and integration setup is:",
+      "back": "**$$ \\int \\frac{1}{b(y)} dy = \\int a(x) dx $$**\n\nTo separate variables, we manipulate the equation to get $dy/b(y) = a(x) dx$. Integrating yields $\\int \\frac{1}{b(y)} dy = \\int a(x) dx$.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q10"
+    },
+    {
+      "front": "The integral $I_n = \\int \\cos^n(x) dx$ can be solved using a reduction formula that relates $I_n$ to $I_{n-2}$.",
+      "back": "**True**\n\nReduction formulas typically relate the integral of power $n$ to an integral of a power two steps lower, such as $I_{n-2}$. The formula given in the notes confirms this.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q11"
+    },
+    {
+      "front": "What type of equation involves partial derivatives of a function of several variables?",
+      "back": "**Partial Differential Equation (PDE)**\n\nA Partial Differential Equation (PDE) is defined as a differential equation involving partial derivatives of a function of several variables.",
+      "hint": "Recall the quiz question.",
+      "source_reference": "Quiz Q12"
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "title": "Introduction to Stoicism",
+  "questions": [
+    {
+      "id": "1",
+      "text": "Who is credited with founding the philosophical school of Stoicism?",
+      "type": "MCQ",
+      "options": [
+        "Aristotle",
+        "Epictetus",
+        "Zeno of Cyprus",
+        "Marcus Aurelius"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Stoicism was founded by Zeno of Cyprus, who began studying philosophy after losing his wealth in a shipwreck near Athens.",
+      "topic_focus": "Historical Origins"
+    },
+    {
+      "id": "2",
+      "text": "The name 'Stoicism' is derived from the Stoa Poikile. What does 'Stoa Poikile' refer to?",
+      "type": "MCQ",
+      "options": [
+        "The philosophical retreat Zeno owned",
+        "A bookshop where Zeno found inspiration",
+        "A public painted porch or colonnade",
+        "The Greek word for 'inner peace'"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Stoicism gets its name from the Stoa Poikile, which was a public colonnade (painted porch) in Athens where Zeno taught his philosophy.",
+      "topic_focus": "Etymology"
+    },
+    {
+      "id": "3",
+      "text": "A central tenet of Stoicism is directing energy towards controlling external events, rather than controlling one's own approach and judgments about those events.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "False. Stoicism emphasizes focusing energy on what we can control (our approach, reactions, and judgments) and accepting what we cannot control (external events).",
+      "topic_focus": "Dichotomy of Control"
+    },
+    {
+      "id": "4",
+      "text": "In Stoic philosophy, the term Logos refers to which concept?",
+      "type": "MCQ",
+      "options": [
+        "The pursuit of pleasure and avoidance of pain",
+        "The rational structure of the universe and the interconnected web of cause and effect",
+        "The doctrine of the separation of powers",
+        "The material wealth required for a virtuous life"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "Logos is the Stoic concept describing the rational, governing structure of the universe, suggesting that everything operates according to an ordered system of cause and effect.",
+      "topic_focus": "Stoic Cosmology"
+    },
+    {
+      "id": "5",
+      "text": "Which of the following is NOT considered one of the Four Cardinal Virtues of Stoicism?",
+      "type": "MCQ",
+      "options": [
+        "Practical wisdom",
+        "Temperance",
+        "Wealth",
+        "Justice"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "The four cardinal virtues are Practical wisdom, Temperance, Justice, and Courage. Wealth is considered an external factor, not a core virtue.",
+      "topic_focus": "The Four Virtues"
+    },
+    {
+      "id": "6",
+      "text": "Which cardinal virtue is defined as 'the ability to navigate complex situations in a logical, informed, and calm manner'?",
+      "type": "MCQ",
+      "options": [
+        "Courage",
+        "Temperance",
+        "Practical wisdom",
+        "Justice"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Practical wisdom (phronesis) involves the knowledge of what is good, bad, and indifferent, guiding one's actions rationally in complex scenarios.",
+      "topic_focus": "Virtue Definition"
+    },
+    {
+      "id": "7",
+      "text": "Seneca, a prominent Roman Stoic, was notable for advocating which practical social application of Stoicism?",
+      "type": "MCQ",
+      "options": [
+        "Military expansion across the Danube",
+        "Strict adherence to pagan religious festivals",
+        "The humane treatment of slaves",
+        "The establishment of democratic elections"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Seneca advocated strongly for humane treatment of others, specifically emphasizing compassion and fair treatment, even towards slaves, demonstrating the universality of Stoic ethics.",
+      "topic_focus": "Stoicism in Practice"
+    },
+    {
+      "id": "8",
+      "text": "Marcus Aurelius was a famous Roman Emperor who utilized Stoic principles to lead the empire through wars and personal loss.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 0,
+      "explanation": "True. Marcus Aurelius was known as the 'Stoic Emperor' and his personal writings, 'Meditations,' reflect his reliance on Stoicism during immense hardship.",
+      "topic_focus": "Historical Figures"
+    },
+    {
+      "id": "9",
+      "text": "The philosopher Epictetus taught that suffering originates from the catastrophic events themselves, independent of our personal judgments about those events.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "False. Epictetus argued that suffering stems not from external events, but from our internal judgments and interpretations of those events.",
+      "topic_focus": "Epictetus and Judgment"
+    },
+    {
+      "id": "10",
+      "text": "Nelson Mandela drew guidance and comfort during his imprisonment by reading the journals of which Stoic figure?",
+      "type": "MCQ",
+      "options": [
+        "Zeno of Cyprus",
+        "Epictetus",
+        "Marcus Aurelius",
+        "Plato"
+      ],
+      "correct_answer_index": 2,
+      "explanation": "Nelson Mandela famously utilized the journals of Marcus Aurelius, 'Meditations,' to guide him through his long imprisonment, highlighting the philosophy's resilience.",
+      "topic_focus": "Modern Application"
+    },
+    {
+      "id": "11",
+      "text": "The cultivation of virtue in Stoicism is primarily aimed at achieving the state of Ataraxia, or tranquility of mind.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 0,
+      "explanation": "True. While virtue is an end in itself, its successful cultivation leads directly to inner peace, resilience, and tranquility (Ataraxia).",
+      "topic_focus": "Goals of Stoicism"
+    },
+    {
+      "id": "12",
+      "text": "Which modern psychological approach is explicitly mentioned as having roots in Stoic philosophy, particularly concerning the analysis of beliefs and judgments?",
+      "type": "MCQ",
+      "options": [
+        "Freudian Psychoanalysis",
+        "Rational Emotive Behavioral Therapy (REBT)",
+        "Behavioral Conditioning",
+        "Dream Analysis"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "Rational Emotive Behavioral Therapy (REBT) is heavily influenced by Stoic ideas, particularly the concept that emotional disturbance is caused by irrational beliefs and judgments, echoing Epictetus.",
+      "topic_focus": "Modern Relevance"
+    },
+    {
+      "id": "13",
+      "text": "The Stoic concept of Justice requires treating others with absolute fairness and righteousness, but only if they have done no wrong themselves.",
+      "type": "True/False",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct_answer_index": 1,
+      "explanation": "False. Stoic Justice involves treating others with fairness and righteousness, even in circumstances where they have wronged you, as demonstrated by the advocacy for humane treatment of slaves.",
+      "topic_focus": "Definition of Justice"
+    }
+  ]
+}
