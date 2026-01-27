@@ -18,9 +18,13 @@
 ## 🎬 Demo
 
 <div align="center">
-  <video src="https://www.youtube.com/watch?v=VUVFwkcULzk" controls width="100%" poster="frontend/public/gallery.jpg">
-    <a href="https://www.youtube.com/watch?v=VUVFwkcULzk">Watch local demo video</a>
-  </video>
+  <iframe width="100%" height="480" 
+          src="https://www.youtube.com/embed/VUVFwkcULzk" 
+          title="BeePrepared Demo Video" 
+          frameborder="0" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+          allowfullscreen>
+  </iframe>
   <p><em>Turn a 2-hour lecture into a complete study pack in seconds.</em></p>
 </div>
 
