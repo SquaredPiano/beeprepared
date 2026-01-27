@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./frontend/public/logo.png" alt="BeePrepared Logo" width="120" style="margin-bottom: 20px;"/>
+  <img src="frontend/public/logo.png" alt="BeePrepared Logo" width="120" style="margin-bottom: 20px;"/>
   
   # BeePrepared
   
@@ -18,7 +18,9 @@
 ## 🎬 Demo
 
 <div align="center">
-  <video src="./frontend/public/BePreparedMP4.mp4" controls width="100%"></video>
+  <video src="frontend/public/BePreparedMP4.mp4" controls width="100%" poster="frontend/public/gallery.jpg">
+    <a href="frontend/public/BePreparedMP4.mp4">Watch local demo video</a>
+  </video>
   <p><em>Turn a 60-minute lecture into a complete study pack in seconds.</em></p>
 </div>
 
@@ -30,6 +32,10 @@ BeePrepared is an **AI-native learning platform** that ingests raw lecture conte
 
 > *"Upload a lecture, get a study guide."* — Simple as that.
 
+<div align="center">
+  <img src="frontend/public/gallery.jpg" alt="BeePrepared Dashboard" width="100%" style="border-radius: 8px; border: 1px solid #333;"/>
+</div>
+
 ### Features
 
 | Feature | Description |
@@ -39,6 +45,17 @@ BeePrepared is an **AI-native learning platform** that ingests raw lecture conte
 | 🎨 **Canvas Workflow** | Infinite canvas to organize, connect, and generate study nodes (Quizzes, Flashcards, Notes). |
 | ⚡ **Deepgram Nova-2** | Lightning-fast transcription with high accuracy for technical terms. |
 | 🔄 **Node Chaining** | Generate artifacts from other artifacts (e.g., Flashcards *derived from* a Quiz). |
+
+---
+
+## 📸 Gallery
+
+<div align="center" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+  <img src="frontend/public/canvas-demo.png" alt="Canvas Interface" width="48%" style="border-radius: 6px;"/>
+  <img src="frontend/public/dashboard-demo.png" alt="Project Dashboard" width="48%" style="border-radius: 6px;"/>
+  <img src="frontend/public/ingest-demo.png" alt="Ingestion Process" width="48%" style="border-radius: 6px;"/>
+  <img src="frontend/public/database-demo.png" alt="Database Schema" width="48%" style="border-radius: 6px;"/>
+</div>
 
 ---
 
@@ -111,7 +128,7 @@ Visit [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## 🛠️ Architecure
+## 🛠️ Architecture
 
 BPP (BeePrepared Platform) uses a **Generator-Node** architecture.
 
