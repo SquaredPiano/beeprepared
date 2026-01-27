@@ -18,8 +18,8 @@
 ## 🎬 Demo
 
 <div align="center">
-  <video src="frontend/public/BePreparedMP4.mp4" controls width="100%" poster="frontend/public/gallery.jpg">
-    <a href="frontend/public/BePreparedMP4.mp4">Watch local demo video</a>
+  <video src="https://github.com/user-attachments/assets/bb5d22e4-83ad-4cc4-a5e2-ec0cf8835046" controls width="100%" poster="frontend/public/gallery.jpg">
+    <a href="[frontend/public/BePreparedMP4.mp4](https://github.com/user-attachments/assets/bb5d22e4-83ad-4cc4-a5e2-ec0cf8835046)">Watch local demo video</a>
   </video>
   <p><em>Turn a 2-hour lecture into a complete study pack in seconds.</em></p>
 </div>
