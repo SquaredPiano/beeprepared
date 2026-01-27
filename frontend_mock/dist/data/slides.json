@@ -1,0 +1,138 @@
+{
+  "title": "Introductory Calculus Lecture 1",
+  "audience_level": "Beginner/Intermediate",
+  "slides": [
+    {
+      "heading": "Welcome to Introductory Calculus",
+      "main_idea": "This lecture introduces the course structure, syllabus, and reviews foundational integration techniques necessary for solving differential equations.",
+      "bullet_points": [
+        "Introduction to the instructor and course goals.",
+        "Overview of today's lecture plan.",
+        "Quick poll: What topics are you most looking forward to?",
+        "Key skills review: Integration, differentiation, algebra."
+      ],
+      "visual_cue": "Image of classical mathematics tools (e.g., chalk board with a simple integral sign ∫).",
+      "speaker_notes": "Welcome everyone! This is the mandatory Introductory Calculus course. We will cover three major areas. Today, we focus on course structure and refreshing the integration skills you will need immediately."
+    },
+    {
+      "heading": "Course Logistics & Resources",
+      "main_idea": "Essential information regarding lecture times, assignments, and required reading material.",
+      "bullet_points": [
+        "16 Lectures total: Mondays and Wednesdays at 10 AM.",
+        "8 Problem Sheets (4 formally covered in college tutorials).",
+        "Lecture notes are available online (authored by Cath Wilkins).",
+        "Recommended Reading: *Mathematical Methods in the Physical Sciences* by Mary Boas."
+      ],
+      "visual_cue": "Icon representation of a calendar, a book, and a computer monitor.",
+      "speaker_notes": "Please note the timing and ensure you start on the problem sheets immediately. The first two sheets are crucial revision material. Mary Boas' book is highly recommended for supplementary problems and context."
+    },
+    {
+      "heading": "Syllabus Overview: Three Main Areas",
+      "main_idea": "The course is divided into three major thematic areas focusing on differential equations, integrals, and multivariable functions.",
+      "bullet_points": [
+        "Part 1 (7-8 lectures): Differential Equations (ODEs and PDEs).",
+        "Part 2 (3 lectures): Line and Double Integrals.",
+        "Part 3: Calculus of Functions in Two Variables (Surfaces, Gradients, Critical Points).",
+        "This course builds foundations for Dynamics, Analysis 2, and further PDE study."
+      ],
+      "visual_cue": "A simple flow chart showing three linked boxes labeled 'DEs', 'Integrals', and 'Multivariable'.",
+      "speaker_notes": "We will spend the majority of the first half on Differential Equations, as solving them requires a solid grasp of integration. The final part is a gentle introduction to multivariable calculus concepts like Taylor's theorem in 2D."
+    },
+    {
+      "heading": "Introduction to Differential Equations (DEs)",
+      "main_idea": "A differential equation relates a function to its derivatives and describes processes of continuous change.",
+      "bullet_points": [
+        "Definition: An equation involving an independent variable (x), a function (y), and derivatives (dy/dx, d²y/dx²).",
+        "Ordinary Differential Equations (ODEs): Involve only standard derivatives.",
+        "Partial Differential Equations (PDEs): Involve partial derivatives (e.g., ∂u/∂t).",
+        "Order: Determined by the highest derivative present (e.g., d²y/dx² is a second-order DE)."
+      ],
+      "visual_cue": "A magnified view of a basic ODE notation: dy/dx = y.",
+      "speaker_notes": "In essence, DEs are the language of physics and engineering. They tell us how quickly something changes or how its rate of change itself changes."
+    },
+    {
+      "heading": "DE Example: Mechanics (F = ma)",
+      "main_idea": "Newton's Second Law provides a classic example of a second-order ODE.",
+      "bullet_points": [
+        "Force (F) equals mass (m) times acceleration (a).",
+        "Acceleration is the second time derivative of displacement (r): a = d²r/dt².",
+        "The resulting DE is: F(t) = m (d²r/dt²).",
+        "This equation governs all classical motion."
+      ],
+      "visual_cue": "Diagram illustrating a mass (m) being acted upon by an external force (F) on an axis.",
+      "speaker_notes": "If we know the force acting on an object, we use this DE to determine its position over time. This is a crucial application of second-order equations."
+    },
+    {
+      "heading": "DE Example: The RLC Circuit",
+      "main_idea": "Electrical circuits involving resistance (R), inductance (L), and capacitance (C) are modeled by second-order linear ODEs.",
+      "bullet_points": [
+        "Based on Kirchhoff's Voltage Law: V(t) = RI + Q/C + L(dI/dt).",
+        "Since Current (I) is the rate of change of Charge (Q): I = dQ/dt.",
+        "Substituting I leads to the governing equation for Q:",
+        "L(d²Q/dt²) + R(dQ/dt) + (1/C)Q = V(t)."
+      ],
+      "visual_cue": "A schematic diagram of a series RLC electrical circuit.",
+      "speaker_notes": "This circuit model is foundational in electrical engineering and shows how derivatives (rates of change of charge and current) interact with fixed components (R, L, C). The equation structure is very similar to damped harmonic oscillators in mechanics."
+    },
+    {
+      "heading": "Review: Essential Integration Techniques",
+      "main_idea": "A strong grasp of advanced integration is non-negotiable for solving differential equations.",
+      "bullet_points": [
+        "Solving DEs often reduces the problem to evaluating complex integrals.",
+        "Focus Area 1: Integration by Parts.",
+        "Focus Area 2: Integration for Separable Equations.",
+        "Remember standard substitutions and partial fractions."
+      ],
+      "visual_cue": "Large, clear visual representation of the integral symbol (∫).",
+      "speaker_notes": "We cannot move forward with ODEs until these integration techniques are automatic. If you struggle with the first problem sheet, review your previous material immediately."
+    },
+    {
+      "heading": "Technique 1: Integration by Parts",
+      "main_idea": "Integration by Parts is derived from the product rule and is used primarily for integrals of products of functions.",
+      "bullet_points": [
+        "Product Rule of Differentiation: (fg)' = f'g + fg'.",
+        "Integration by Parts Formula: ∫fg' dx = fg - ∫f'g dx.",
+        "The key challenge is the correct choice of f and g' to simplify the right-hand integral.",
+        "Example requiring iteration: ∫x² sin(x) dx."
+      ],
+      "visual_cue": "The formula ∫u dv = uv - ∫v du displayed prominently.",
+      "speaker_notes": "Remember the pneumonic LIATE (Logs, Inverse Trig, Algebra, Trig, Exponentials) can help you decide which function should be designated as 'f' (or 'u') for differentiation."
+    },
+    {
+      "heading": "Application: Reduction Formulae",
+      "main_idea": "Integration by Parts can be used recursively to generate reduction formulas that simplify integrals involving powers.",
+      "bullet_points": [
+        "Define Iₙ = ∫cosⁿ(x) dx.",
+        "Applying integration by parts iteratively generates a relationship between Iₙ and Iₙ₋₂.",
+        "Resulting formula: Iₙ = (1/n)cosⁿ⁻¹(x)sin(x) + ((n-1)/n)Iₙ₋₂.",
+        "This recursive formula allows calculation for any integer n."
+      ],
+      "visual_cue": "Chart showing how I₅ is reduced to I₃, then to I₁.",
+      "speaker_notes": "Reduction formulas are powerful tools, especially useful when we deal with large powers in physics applications. You must be able to derive this formula when required."
+    },
+    {
+      "heading": "Technique 2: Separable Equations",
+      "main_idea": "A separable differential equation can be solved by isolating the variables on opposite sides of the equation and integrating.",
+      "bullet_points": [
+        "Form: dy/dx = a(x)b(y).",
+        "Steps: Separate variables: (1/b(y)) dy = a(x) dx.",
+        "Integrate both sides: ∫(1/b(y)) dy = ∫a(x) dx.",
+        "Example solution: x(y²-1) + y(x²-1)(dy/dx) = 0 results in (1-y²)(1-x²) = C."
+      ],
+      "visual_cue": "An algebraic depiction of the separation process: f(y) dy = g(x) dx.",
+      "speaker_notes": "Separable equations are the easiest type of first-order ODEs to solve. The key is careful algebra to isolate the 'y' terms with dy and the 'x' terms with dx."
+    },
+    {
+      "heading": "Summary and Next Steps",
+      "main_idea": "We concluded the practical introduction and foundational review, setting the stage for solving first-order ODEs in the next lecture.",
+      "bullet_points": [
+        "We covered the syllabus: DEs, Integrals, and Multivariable Calculus.",
+        "We defined the structure and order of Differential Equations.",
+        "We reviewed critical techniques: Integration by Parts and Separable Integration.",
+        "Action Item: Complete Problem Sheet 1 (Integration review) before next session."
+      ],
+      "visual_cue": "Checkmark icons confirming topics covered.",
+      "speaker_notes": "Next time, we dive into solving various types of first-order differential equations, including linear, homogeneous, and exact forms. Please ensure your integration skills are sharp for Monday."
+    }
+  ]
+}
