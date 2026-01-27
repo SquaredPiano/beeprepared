@@ -123,6 +123,36 @@ function BeeCanvasInner() {
         const activeNow = jobs.filter((j: any) => ['pending', 'running'].includes(j.status));
         setActiveJobs(activeNow);
 
+        // SYNC STATUS TO NODES
+        // This ensures nodes show "Generating..." if a background job exists
+        setNodes(currentNodes =>
+          currentNodes.map(node => {
+            if (node.type === 'generator') {
+              // Find matching job for this generator type
+              const matchingJob = activeNow.find((j: any) =>
+                j.payload?.target_type === node.data.subType
+              );
+
+              if (matchingJob) {
+                // If node is already generating, don't clobber local progress logic if we had it
+                // But generally force it to pending/running
+                if (node.data.status !== 'running' && node.data.status !== 'pending') {
+                  return {
+                    ...node,
+                    data: { ...node.data, status: 'running', progress: 50 } // Mock progress for now
+                  };
+                }
+              } else {
+                // If it WAS running but no longer is (and not handled by completion logic yet), 
+                // it might have finished or failed. 
+                // Completion logic below handles 'completed', but we might need to reset 'stuck' nodes?
+                // For now, let's only set running if found.
+              }
+            }
+            return node;
+          })
+        );
+
         // Check if any previously active jobs are now completed
         const currentActiveIds = new Set(activeNow.map((j: any) => j.id));
         const completedIds = [...previousActiveJobIds.current].filter(id => !currentActiveIds.has(id));
@@ -132,16 +162,30 @@ function BeeCanvasInner() {
           const completedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'completed');
           if (completedJobs.length > 0) {
             console.log('[BeeCanvas] Detected completed jobs via polling:', completedJobs.map((j: any) => j.id));
-            refreshArtifacts();
+            await refreshArtifacts(); // This will update nodes to 'completed' with artifact data
             playComplete();
             toast.success("Processing Complete!");
           }
 
           // Check for failed jobs
           const failedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'failed');
-          failedJobs.forEach((job: any) => {
-            toast.error("Processing Failed", { description: job.error_message });
-          });
+          if (failedJobs.length > 0) {
+            setNodes(currentNodes =>
+              currentNodes.map(node => {
+                const failedJob = failedJobs.find((j: any) => j.payload?.target_type === node.data.subType);
+                if (failedJob && node.type === 'generator') {
+                  return {
+                    ...node,
+                    data: { ...node.data, status: 'failed', error: failedJob.error_message }
+                  };
+                }
+                return node;
+              })
+            );
+            failedJobs.forEach((job: any) => {
+              toast.error("Processing Failed", { description: job.error_message });
+            });
+          }
         }
 
         previousActiveJobIds.current = currentActiveIds;

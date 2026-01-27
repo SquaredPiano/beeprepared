@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -811,55 +811,72 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
 
       {/* Questions Mode */}
       {viewMode === 'questions' && (
-        <>
-          {data.instructions && (
-            <div className="p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
-              <strong>Instructions:</strong> {data.instructions}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            {data.questions.map((q: any, idx: number) => (
-              <div key={q.id || idx} className="bg-white p-6 rounded-2xl border border-wax transition-all hover:shadow-md">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-bold text-honey">Q{idx + 1}</span>
-                  <div className="flex gap-2">
-                    <Badge variant="outline">{q.type}</Badge>
-                    <Badge className="bg-honey/10 text-honey">{q.points} pts</Badge>
-                  </div>
-                </div>
-                <div className="font-medium mb-3">
-                  <MathText>{q.text}</MathText>
-                </div>
-
-                {q.options && q.type === 'MCQ' && (
-                  <div className="space-y-2 mb-3">
-                    {q.options.map((opt: string, i: number) => (
-                      <div key={i} className="p-2 bg-cream rounded-lg text-sm transition-colors hover:bg-honey/10">
-                        <span className="font-medium mr-1">{String.fromCharCode(65 + i)}.</span>
-                        <MathTextInline>{opt}</MathTextInline>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {showAnswers && (
-                  <div className="mt-4 pt-4 border-t border-wax space-y-2">
-                    <div className="text-sm">
-                      <strong className="text-green-600">Model Answer:</strong>{' '}
-                      <MathTextInline>{q.model_answer || 'See grading notes'}</MathTextInline>
-                    </div>
-                    {q.grading_notes && (
-                      <div className="text-xs text-bee-black/60">
-                        <strong>Grading:</strong> <MathTextInline>{q.grading_notes}</MathTextInline>
-                      </div>
-                    )}
-                  </div>
-                )}
+        <div className="h-full overflow-y-auto custom-scrollbar px-10 pb-20">
+          <div className="max-w-4xl mx-auto space-y-8">
+            {data.instructions && (
+              <div className="p-6 bg-honey/5 border border-honey/20 rounded-2xl text-sm text-bee-black/80 leading-relaxed font-serif italic relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-honey" />
+                <strong className="block mb-2 text-honey font-sans uppercase tracking-widest text-[10px]">Instructions</strong>
+                {data.instructions}
               </div>
-            ))}
+            )}
+
+            <div className="space-y-6">
+              {data.questions.map((q: any, idx: number) => (
+                <div key={q.id || idx} className="bg-white p-8 rounded-[2rem] border border-wax shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex items-start justify-between mb-6 border-b border-wax pb-4">
+                    <div className="flex items-center gap-4">
+                      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-bee-black text-honey font-serif font-bold text-lg shadow-lg shadow-bee-black/10">
+                        {idx + 1}
+                      </span>
+                      <Badge variant="outline" className="border-wax text-bee-black/40 text-[10px] uppercase tracking-widest bg-cream/50">
+                        {q.type}
+                      </Badge>
+                    </div>
+                    <Badge className="bg-honey/10 text-honey hover:bg-honey/20 border-none font-bold tabular-nums">
+                      {q.points} pts
+                    </Badge>
+                  </div>
+
+                  <div className="text-xl font-medium text-bee-black/90 leading-relaxed mb-6 font-serif">
+                    <MathText>{q.text}</MathText>
+                  </div>
+
+                  {q.options && (
+                    <div className="space-y-3 pl-4 border-l-2 border-wax group-hover:border-honey/30 transition-colors">
+                      {q.options.map((opt: string, i: number) => (
+                        <div key={i} className="flex items-center gap-3 text-bee-black/70 hover:text-bee-black transition-colors">
+                          <div className="w-6 h-6 rounded-full border border-wax flex items-center justify-center text-[10px] font-bold text-bee-black/30">
+                            {String.fromCharCode(65 + i)}
+                          </div>
+                          <MathTextInline>{opt}</MathTextInline>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {showAnswers && (
+                    <div className="mt-8 pt-6 border-t border-wax animate-in fade-in slide-in-from-top-2">
+                      <div className="bg-green-50 border border-green-100 rounded-xl p-5">
+                        <div className="flex items-center gap-2 mb-2 text-green-700 font-bold text-xs uppercase tracking-widest">
+                          <CheckCircle2 size={14} /> Correct Answer
+                        </div>
+                        <div className="text-green-900 font-medium">
+                          {q.options ? q.options[q.correct_answer_index] : q.correct_answer}
+                        </div>
+                        {q.explanation && (
+                          <div className="mt-3 text-green-800/70 text-sm leading-relaxed border-t border-green-200/50 pt-3">
+                            {q.explanation}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
