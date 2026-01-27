@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Artifact, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import MDEditor from '@uiw/react-md-editor';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -167,19 +168,58 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
   if (!artifact?.content) return null;
   const content = artifact.content;
 
+  // Helper to ensure we don't strip the root key if the renderer needs it
+  // But also handle cases where content IS the data directly
+  const wrap = (key: string, data: any) => {
+    if (!data) return null;
+    // If data already has the key, return it as is
+    if (data[key]) return data;
+    // Otherwise wrap it
+    return { [key]: data };
+  };
+
   switch (type) {
     case 'quiz':
-      return content.data || content.core?.quiz || content.quiz || null;
+      // QuizRenderer expects { questions: [...] }
+      // Content might be { quiz: { questions: ... } } or { questions: ... } or { data: { questions: ... } }
+      const quizData = content.data || content.core?.quiz || content.quiz || content;
+      if (quizData?.questions) return quizData;
+      return null;
+
     case 'notes':
-      return content.data || content.core?.notes || content.notes || null;
+      // NotesRenderer expects { markdown: string } or string
+      const notesData = content.data || content.core?.notes || content.notes || content;
+      // If it's just a string, wrap it? No, renderer handles string.
+      // But we prefer consistent object.
+      if (typeof notesData === 'string') return { markdown: notesData };
+      if (notesData?.markdown || notesData?.content) return notesData;
+      // Fallback for legacy
+      if (notesData?.sections) return { markdown: "Legacy notes format not supported in editor." };
+      return { markdown: "" }; // Default empty
+
     case 'slides':
-      return content.data || content.core?.slides || content.slides || null;
+      // SlidesRenderer expects { slides: [...] }
+      const slidesData = content.data || content.core?.slides || content.slides || content;
+      if (slidesData?.slides) return slidesData;
+      return null;
+
     case 'flashcards':
-      return content.data || content.core?.flashcards || content.flashcards || null;
+      // FlashcardRenderer expects { flashcards: [...] }
+      const fcData = content.data || content.core?.flashcards || content.flashcards || content;
+      // Handle "cards" vs "flashcards" key
+      if (fcData?.flashcards) return fcData;
+      if (fcData?.cards) return { flashcards: fcData.cards };
+      return null;
+
     case 'exam':
-      return content.data || content.core?.exam || content.exam || null;
+      // ExamRenderer expects { questions: [...] }
+      const examData = content.data || content.core?.exam || content.exam || content;
+      if (examData?.questions) return examData;
+      return null;
+
     case 'knowledge_core':
       return content.core || content;
+
     default:
       return content.data || content;
   }
@@ -282,11 +322,11 @@ function QuizRenderer({ data }: { data: any }) {
   const correctIdx = currentQuestion.correct_answer_index;
 
   return (
-    <div className="h-full bg-bee-black text-white flex flex-col">
+    <div className="h-full bg-white text-bee-black flex flex-col">
       {/* Progress Header */}
-      <div className="p-8 pb-4 shrink-0">
+      <div className="p-8 pb-4 shrink-0 border-b border-wax">
         <div className="flex justify-between items-center mb-6">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/30">
             Question {currentIndex + 1} / {total}
           </span>
           <div className="flex gap-1">
@@ -294,10 +334,10 @@ function QuizRenderer({ data }: { data: any }) {
               <div
                 key={idx}
                 className={cn(
-                  "h-1 w-6 rounded-full transition-all duration-300",
-                  idx === currentIndex ? "bg-honey w-12" :
-                    idx < currentIndex ? (answers[idx] === data.questions[idx].correct_answer_index ? "bg-green-500/50" : "bg-red-500/50") :
-                      "bg-white/10"
+                  "h-1.5 w-6 rounded-full transition-all duration-300",
+                  idx === currentIndex ? "bg-honey w-12 shadow-sm" :
+                    idx < currentIndex ? (answers[idx] === data.questions[idx].correct_answer_index ? "bg-green-500/80" : "bg-red-500/80") :
+                      "bg-bee-black/5"
                 )}
               />
             ))}
@@ -306,23 +346,23 @@ function QuizRenderer({ data }: { data: any }) {
       </div>
 
       {/* Main Question Area */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar bg-cream/30">
         <div className="max-w-3xl mx-auto h-full flex flex-col justify-center min-h-[500px]">
-          <h3 className="text-2xl md:text-3xl font-serif font-medium leading-relaxed mb-12 text-white/90">
+          <h3 className="text-2xl md:text-3xl font-serif font-bold leading-relaxed mb-12 text-bee-black/90 selection:bg-honey/30">
             <MathText>{currentQuestion.text}</MathText>
           </h3>
 
           <div className="grid gap-4">
             {currentQuestion.options?.map((opt: string, idx: number) => {
-              let stateClass = "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 text-white/70";
               const isSelected = isAnswered && idx === selectedIdx;
               const isCorrect = isAnswered && idx === correctIdx;
               const isWrong = isSelected && !isCorrect;
 
+              let stateClass = "bg-white border-wax hover:border-honey/50 hover:bg-honey/5 cursor-pointer text-bee-black/80";
               if (isAnswered) {
-                if (idx === correctIdx) stateClass = "bg-green-500/20 border-green-500/50 text-green-200 ring-1 ring-green-500/50";
-                else if (isSelected) stateClass = "bg-red-500/20 border-red-500/50 text-red-200";
-                else stateClass = "bg-white/5 border-white/5 text-white/20 opacity-50";
+                if (idx === correctIdx) stateClass = "bg-green-50 border-green-200 text-green-800 ring-2 ring-green-500/20";
+                else if (isSelected) stateClass = "bg-red-50 border-red-200 text-red-800";
+                else stateClass = "bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed opacity-60";
               }
 
               return (
@@ -331,22 +371,22 @@ function QuizRenderer({ data }: { data: any }) {
                   disabled={isAnswered}
                   onClick={() => handleSelect(currentIndex, idx)}
                   className={cn(
-                    "w-full text-left p-6 rounded-2xl border transition-all duration-200 flex items-center justify-between group relative overflow-hidden",
+                    "w-full text-left p-6 rounded-2xl border-2 transition-all duration-200 flex items-center justify-between group relative overflow-hidden shadow-sm",
                     stateClass
                   )}
                 >
                   <div className="flex items-center gap-6 relative z-10">
                     <span className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-colors",
-                      isCorrect ? "bg-green-500 text-black border-green-500" :
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
+                      isCorrect ? "bg-green-500 text-white border-green-500" :
                         isWrong ? "bg-red-500 text-white border-red-500" :
-                          "border-white/20 text-white/40 group-hover:border-honey/50 group-hover:text-honey"
+                          "border-bee-black/10 text-bee-black/40 group-hover:border-honey group-hover:text-honey bg-white"
                     )}>
                       {String.fromCharCode(65 + idx)}
                     </span>
-                    <span className="font-medium text-lg"><MathTextInline>{opt}</MathTextInline></span>
+                    <span className="font-medium text-lg leading-snug"><MathTextInline>{opt}</MathTextInline></span>
                   </div>
-                  {isCorrect && <CheckCircle2 className="text-green-500 animate-in zoom-in spin-in-180 duration-300" />}
+                  {isCorrect && <CheckCircle2 className="text-green-600 animate-in zoom-in spin-in-180 duration-300" />}
                   {isWrong && <XCircle className="text-red-500 animate-in zoom-in duration-300" />}
                 </button>
               );
@@ -360,7 +400,7 @@ function QuizRenderer({ data }: { data: any }) {
 
 function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [content, setContent] = useState(data.markdown || data.body || "");
+  const [content, setContent] = useState(data.markdown || data.content || "");
   const [isSaving, setIsSaving] = useState(false);
 
   // Parse markdown to ensure it's a string
@@ -369,8 +409,7 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Optimistic update
-      await api.artifacts.update(artifactId, { content: { ...data, markdown: content } }); // Assuming content is nested
+      await api.artifacts.update(artifactId, { content: { ...data, markdown: content } });
       toast.success("Notes saved successfully");
       setIsEditing(false);
     } catch (error) {
@@ -382,7 +421,7 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
   };
 
   return (
-    <div className="h-full flex flex-col relative w-full pt-6">
+    <div className="h-full flex flex-col relative w-full pt-6 bg-white">
       <div className="px-10 flex justify-between items-center mb-6 shrink-0">
         <div>
           <h2 className="text-3xl font-serif font-bold text-bee-black">Study Notes</h2>
@@ -419,22 +458,25 @@ function NotesRenderer({ data, artifactId }: { data: any, artifactId: string }) 
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative px-10 pb-10">
         {isEditing ? (
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full h-full p-10 resize-none outline-none font-mono text-sm leading-relaxed bg-white/50 text-bee-black focus:bg-white transition-colors overflow-y-auto"
-            placeholder="# Start typing your notes..."
-          />
+          <div className="h-full border border-wax rounded-2xl overflow-hidden shadow-sm" data-color-mode="light">
+            <MDEditor
+              value={content}
+              onChange={(val) => setContent(val || "")}
+              height="100%"
+              preview="edit"
+              className="!border-none !h-full"
+              visibleDragbar={false}
+            />
+          </div>
         ) : (
-          <div className="h-full overflow-y-auto custom-scrollbar px-10 pb-20">
-            <div className="max-w-3xl mx-auto bg-white/80 p-12 rounded-[2rem] shadow-sm min-h-full">
+          <div className="h-full overflow-y-auto custom-scrollbar">
+            <div className="max-w-4xl mx-auto bg-white p-12 shadow-sm min-h-full prose prose-lg prose-headings:font-serif prose-headings:text-bee-black text-bee-black/80">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
                 components={MarkdownRenderers}
-                className="prose prose-slate max-w-none"
               >
                 {markdownContent}
               </ReactMarkdown>
