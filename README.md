@@ -1,365 +1,469 @@
-# BeePrepared
+<div align="center">
+  <img src="./frontend/public/logo.png" alt="BeePrepared Logo" width="120"/>
+  
+  # BeePrepared 🐝
+  
+  **Transform lectures into study materials in under three minutes**
+  
+  [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+  [![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev/)
+  [![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+  [![Python](https://img.shields.io/badge/Python-3.11+-yellow?style=for-the-badge&logo=python)](https://python.org/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+  
+  [📺 Demo Video (5 min)](https://www.youtube.com/watch?v=S2ZwaheHSiY) · [⚡ Quick Demo (1:42)](https://youtu.be/VUVFwkcULzk) · [🏆 Devpost](https://devpost.com/software/beeprepared) · [💻 GitHub](https://github.com/SquaredPiano/beeprepared)
+</div>
 
-Transform lectures into study materials in under three minutes.
+---
 
-BeePrepared is an AI-powered educational platform that converts lecture recordings, documents, and slides into comprehensive study materials. Upload any lecture format and receive notes, flashcards, practice exams, and audio guides optimized for your learning style.
+## 🎬 Demo
 
-## Getting Started
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=S2ZwaheHSiY">
+    <img src="https://img.shields.io/badge/▶️_Watch_Full_Demo_(5_min)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo Video"/>
+  </a>
+  <a href="https://youtu.be/VUVFwkcULzk">
+    <img src="https://img.shields.io/badge/▶️_Quick_Demo_(1:42)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Quick Demo"/>
+  </a>
+</div>
+
+---
+
+## 🌟 Overview
+
+BeePrepared is an **AI-powered educational platform** that transforms lecture recordings, documents, and slides into comprehensive study materials. Upload any lecture format and receive notes, flashcards, practice exams, and audio guides—all generated in under three minutes.
+
+> *Upload a 60-minute lecture video → Get study notes, 20 flashcards, a practice exam, and presentation slides* — Done.
+
+### ✨ Why BeePrepared?
+
+| Feature | Description |
+|---------|-------------|
+| 📹 **Multi-Format Ingestion** | Upload video (MP4, MOV), audio (MP3, WAV), PDFs, PowerPoint, or plain text |
+| 🧠 **Knowledge Core Extraction** | AI extracts concepts, relationships, and key facts into a structured graph |
+| 🎨 **Visual Canvas Workflow** | Drag-and-drop interface with React Flow for intuitive artifact generation |
+| 📝 **5 Study Artifacts** | Study Notes, Flashcards, Practice Quizzes, Mock Exams, and Presentation Slides |
+| ⚡ **Parallel Processing** | Generate all artifacts simultaneously in under 3 minutes |
+| 🎯 **Chain Artifacts** | Generate flashcards from a quiz, or notes from an exam—full DAG support |
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-Before running BeePrepared, ensure you have:
+Before running BeePrepared, install:
 
-- Python 3.11 or higher
-- Node.js 20 or higher
-- FFmpeg (for video processing)
-- API keys for Azure Speech, Google Gemini, and Supabase
+| Dependency | Version | Installation |
+|------------|---------|--------------|
+| **Python** | 3.11+ | [python.org](https://python.org) |
+| **Node.js** | 20+ | [nodejs.org](https://nodejs.org) |
+| **FFmpeg** | Latest | `brew install ffmpeg` (macOS) or [ffmpeg.org](https://ffmpeg.org) |
 
-### Backend Setup
+### Required API Keys
 
-1. Navigate to the backend directory:
+| Service | Purpose | Get Key |
+|---------|---------|---------|
+| **Supabase** | Database & Auth | [supabase.com](https://supabase.com) |
+| **Google Gemini** | AI/LLM for extraction | [ai.google.dev](https://ai.google.dev) |
+| **Azure Speech** | Audio transcription | [azure.microsoft.com](https://azure.microsoft.com/en-us/products/cognitive-services/speech-services/) |
+| **Cloudflare R2** | Object storage | [cloudflare.com/r2](https://www.cloudflare.com/products/r2/) |
+
+---
+
+## 🛠️ Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/SquaredPiano/beeprepared.git
+cd beeprepared
+```
+
+### 2. Backend Setup
+
 ```bash
 cd backend
-```
 
-2. Create and activate a virtual environment:
-```bash
+# Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-3. Install dependencies:
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-4. Configure environment variables:
+**Configure environment variables:**
+
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` with your credentials:
-- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-- `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`
-- `GEMINI_API_KEY`
-- Cloudflare R2 credentials (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`)
 
-5. Initialize the database schema:
-```bash
-python scripts/apply_supabase_schema.py
+```env
+# Cloudflare R2 (Object Storage)
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=beeprepared-storage
+R2_ENDPOINT_URL=https://{account_id}.r2.cloudflarestorage.com
+
+# Google Gemini (AI/LLM)
+GEMINI_API_KEY=your_gemini_key
+
+# Supabase (Database & Auth)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_service_role_key
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+
+# Azure Speech (Transcription)
+AZURE_SPEECH_KEY=your_key
+AZURE_SPEECH_REGION=eastus
+
+# Server Config
+API_HOST=0.0.0.0
+API_PORT=8000
+CORS_ORIGINS=http://localhost:3000
 ```
 
-6. Start the FastAPI server:
+**Start the backend:**
+
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --port 8000
 ```
 
-The backend will run at `http://localhost:8000`.
+### 3. Frontend Setup
 
-### Frontend Setup
-
-1. Navigate to the frontend directory:
 ```bash
 cd frontend
-```
 
-2. Install dependencies:
-```bash
+# Install dependencies
 npm install
 ```
 
-3. Configure environment variables:
-```bash
-cp .env.example .env.local
+**Configure environment variables:**
+
+Create `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_public_key
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 ```
 
-Edit `.env.local` with:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_API_URL=http://localhost:8000`
+**Start the frontend:**
 
-4. Start the development server:
 ```bash
 npm run dev
 ```
 
-The frontend will run at `http://localhost:3000`.
+### 4. Access the Application
 
-### Testing Your Setup
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
 
-Verify the extraction pipeline works:
-```bash
-cd backend
-python scripts/test_extraction.py
+---
+
+## 🎮 Usage
+
+### Canvas Workflow
+
+1. **Upload Source** → Drag a video, audio, or document into the canvas
+2. **Wait for Ingestion** → The "Forager Bee" processes your file and creates a Knowledge Core
+3. **Add Generators** → Drag Quiz, Notes, Flashcards, Exam, or Slides nodes from the sidebar
+4. **Connect & Generate** → Link nodes with edges and click Generate
+5. **Chain Artifacts** → Connect a Flashcards node to a Quiz node to generate flashcards from quiz content
+
+### Supported Formats
+
+| Category | Formats |
+|----------|---------|
+| **Audio** | MP3, WAV, M4A, OGG, FLAC |
+| **Video** | MP4, MOV, AVI, WebM, MKV |
+| **Documents** | PDF, PPTX |
+| **Text** | MD, TXT |
+
+---
+
+## 🏗️ Architecture
+
+### System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND                                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │   Canvas    │  │  Generator  │  │   Artifact  │  │   Polling   │    │
+│  │   (React    │→ │    Nodes    │→ │   Preview   │← │   System    │    │
+│  │    Flow)    │  │             │  │    Modal    │  │  (5s loop)  │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │ HTTP (REST)
+┌────────────────────────────────▼────────────────────────────────────────┐
+│                              BACKEND                                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │  FastAPI    │  │   Ingest    │  │  Generate   │  │   Binary    │    │
+│  │  Router     │→ │   Handler   │→ │   Handler   │→ │  Renderer   │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
+│                          │                │                │            │
+│                          ▼                ▼                ▼            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │   Azure     │  │   Gemini    │  │  Knowledge  │  │   PyLaTeX   │    │
+│  │   Speech    │  │   2.5 Pro   │  │    Core     │  │   python-   │    │
+│  │             │  │             │  │   Builder   │  │    pptx     │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼────────────────────────────────────────┐
+│                          DATA LAYER                                      │
+│  ┌─────────────────────┐           ┌─────────────────────┐              │
+│  │      Supabase       │           │    Cloudflare R2    │              │
+│  │   (PostgreSQL +     │           │   (Object Storage)  │              │
+│  │    Auth + RLS)      │           │                     │              │
+│  └─────────────────────┘           └─────────────────────┘              │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Test database connectivity:
-```bash
-python scripts/test_supabase_connection.py
+### Processing Pipeline
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Upload  │ →  │ Transcr. │ →  │ Extract  │ →  │ Generate │
+│  (R2)    │    │ (Azure)  │    │ (Gemini) │    │ (Gemini) │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+     │               │               │               │
+     ▼               ▼               ▼               ▼
+   Video          Flat Text      Knowledge        Artifacts
+   stored         transcript       Core          (Quiz, Notes,
+                                                 Flashcards...)
 ```
 
-## Usage
+---
 
-### Uploading Content
+## 🛠️ Tech Stack
 
-1. Navigate to the upload page or click "New Task" in the sidebar
-2. Drag and drop your lecture file into the upload zone
-3. Select desired artifact types: notes, flashcards, exam, or audio guide
-4. Choose difficulty level: beginner, intermediate, or advanced
-5. Click upload to begin processing
+<div align="center">
 
-Supported formats include audio (MP3, WAV, M4A), video (MP4, MOV, AVI), and documents (PDF, PPTX, DOCX, MD, TXT).
+### Frontend
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
+![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript)
+![Tailwind](https://img.shields.io/badge/Tailwind-4-38bdf8?style=for-the-badge&logo=tailwind-css)
+![React Flow](https://img.shields.io/badge/React_Flow-12-purple?style=for-the-badge)
 
-### Monitoring Progress
+### Backend
+![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?style=for-the-badge&logo=fastapi)
+![Python](https://img.shields.io/badge/Python-3.11+-yellow?style=for-the-badge&logo=python)
+![Pydantic](https://img.shields.io/badge/Pydantic-2.12-red?style=for-the-badge)
 
-The processing page displays a visual pipeline with four stages:
+### AI & Services
+![Gemini](https://img.shields.io/badge/Gemini-2.5_Pro-4285F4?style=for-the-badge&logo=google)
+![Azure](https://img.shields.io/badge/Azure_Speech-0078D4?style=for-the-badge&logo=microsoft-azure)
 
-- **Forager Bee**: Validates and stores your uploaded file
-- **Transcriber Bee**: Converts audio to text or extracts document content
-- **Extractor Bee**: Identifies key concepts and relationships
-- **Builder Bee**: Generates your requested study materials
+### Infrastructure
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/Cloudflare_R2-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
 
-Real-time progress updates appear every two seconds, showing completion percentage and estimated time remaining.
+</div>
 
-### Accessing Your Materials
+### Full Dependency List
 
-Completed artifacts appear in your library with options to preview PDFs, download files, play audio guides, or regenerate with different settings.
+<details>
+<summary><strong>Frontend Dependencies</strong></summary>
 
-## Technical Architecture
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `next` | 16.1.4 | React framework |
+| `react` | 19.2.3 | UI library |
+| `@xyflow/react` | 12.10.0 | Visual canvas |
+| `zustand` | 5.0.10 | State management |
+| `@tanstack/react-query` | 5.90.20 | Data fetching |
+| `framer-motion` | 12.29.0 | Animations |
+| `gsap` | 3.14.2 | Complex animations |
+| `@supabase/supabase-js` | 2.91.1 | Auth & database |
+| `react-markdown` | 9.0.1 | Markdown rendering |
+| `katex` | 0.16.11 | LaTeX math rendering |
+| `sonner` | 2.0.7 | Toast notifications |
+| `lucide-react` | 0.563.0 | Icons |
 
-### Frontend Stack
+</details>
 
-- **Framework**: Next.js 16.1 with App Router and React Server Components
-- **UI**: TailwindCSS 4.0 with custom honey-themed design tokens
-- **Animation**: GSAP 3.14 for complex motion and Framer Motion 11.15 for transitions
-- **Visualization**: React Flow 12.3 for interactive pipeline display
-- **State Management**: TanStack Query 5.62 for server state and Zustand 5.0 for client state
-- **Components**: Radix UI primitives, React Dropzone 14.3, Lucide React 0.460
+<details>
+<summary><strong>Backend Dependencies</strong></summary>
 
-### Backend Stack
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `fastapi` | 0.128.0 | API framework |
+| `uvicorn` | 0.40.0 | ASGI server |
+| `pydantic` | 2.12.5 | Data validation |
+| `supabase` | 2.27.2 | Database client |
+| `google-genai` | 1.60.0 | Gemini AI |
+| `azure-cognitiveservices-speech` | 1.47.0 | Transcription |
+| `boto3` | 1.42.34 | S3/R2 client |
+| `PyMuPDF` | 1.26.7 | PDF processing |
+| `python-pptx` | 1.0.2 | PowerPoint processing |
+| `PyLaTeX` | 1.4.2 | PDF generation |
+| `ffmpeg-python` | 0.2.0 | Video processing |
+| `httpx` | 0.28.1 | Async HTTP |
 
-- **API**: FastAPI with async request handling and Pydantic validation
-- **Database**: Supabase PostgreSQL with Row Level Security
-- **Storage**: Cloudflare R2 for S3-compatible object storage
-- **AI Services**: Azure Speech for transcription, Google Gemini 2.0 for extraction
-- **File Processing**: PyMuPDF for PDFs, python-pptx for presentations, FFmpeg for video
+</details>
 
-### System Design
+---
 
-**HTTP Polling Architecture**
-
-We use HTTP polling instead of WebSockets for real-time updates. The frontend polls the backend every two seconds to fetch task status. This approach provides several advantages for a hackathon project: simpler implementation without connection management, better reliability without firewall issues, easier debugging with standard HTTP requests, and stateless scaling without sticky sessions. For three-minute processing jobs, two-second polling intervals create imperceptible lag while maintaining system simplicity.
-
-**Knowledge Graph Pipeline**
-
-All artifact generators consume a shared knowledge graph rather than working directly from transcripts. The extraction phase runs once, creating a structured representation of lecture concepts with hierarchical relationships, definitions, and examples. This single source of truth prevents divergent outputs and hallucination across different artifact types.
-
-**Parallel Processing**
-
-When users request multiple artifact types, the system processes them concurrently. Four specialized workers handle different artifact types simultaneously, reducing total wait time from sequential processing. Uploading one lecture and generating four artifacts completes in approximately three minutes rather than twelve.
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 beeprepared/
 ├── backend/
 │   ├── main.py                    # FastAPI application entry
-│   ├── routes/
-│   │   ├── lectures.py            # File upload endpoints
-│   │   ├── tasks.py               # Status polling endpoints
-│   │   └── artifacts.py           # Artifact generation
+│   ├── handlers/
+│   │   ├── ingest_handler.py      # File upload & transcription
+│   │   ├── generate_handler.py    # Artifact generation
+│   │   └── base.py                # Handler base class
 │   ├── services/
-│   │   ├── extraction.py          # File format processing
-│   │   ├── transcription.py       # Azure Speech integration
-│   │   └── text_cleaning.py       # AI-powered cleanup
-│   ├── db/
-│   │   ├── init.sql               # Database schema
-│   │   └── supabase_client.py     # Database operations
-│   ├── scripts/
-│   │   ├── test_extraction.py
-│   │   └── apply_supabase_schema.py
-│   └── requirements.txt
+│   │   ├── generators.py          # LLM-powered artifact generators
+│   │   ├── db_interface.py        # Supabase operations
+│   │   ├── binary_renderer.py     # PDF/PPTX generation
+│   │   └── core_merger.py         # Multi-source knowledge merging
+│   ├── models/
+│   │   ├── artifacts.py           # Pydantic artifact models
+│   │   ├── jobs.py                # Job tracking models
+│   │   └── protocol.py            # API contracts
+│   ├── core/
+│   │   ├── knowledge_core.py      # Knowledge graph model
+│   │   └── llm_interface.py       # LLM abstraction
+│   ├── schema.sql                 # Supabase database schema
+│   ├── requirements.txt
+│   └── .env.example
 │
 ├── frontend/
 │   ├── app/
 │   │   ├── page.tsx               # Landing page
-│   │   ├── dashboard/             # User dashboard
-│   │   ├── upload/                # File upload interface
-│   │   ├── processing/[taskId]/   # Real-time progress
-│   │   ├── artifacts/[id]/        # Artifact viewer
-│   │   ├── flow/                  # Pipeline canvas
-│   │   └── library/               # Artifact library
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx           # Project library
+│   │   │   ├── canvas/page.tsx    # Main canvas interface
+│   │   │   └── settings/page.tsx  # User settings
+│   │   └── auth/                  # Authentication pages
 │   ├── components/
-│   │   ├── BeeWorkerPipeline.tsx  # React Flow visualization
-│   │   ├── HoneyDropZone.tsx      # Drag and drop upload
-│   │   ├── HoneyJar.tsx           # Gamification display
-│   │   ├── ProcessingQueue.tsx    # Multi-task tracking
-│   │   └── Sidebar.tsx            # Collapsible navigation
+│   │   ├── canvas/
+│   │   │   ├── BeeCanvas.tsx      # Main canvas component
+│   │   │   ├── nodes/             # Node types (Asset, Generator, etc.)
+│   │   │   └── modals/            # Preview modals
+│   │   └── ui/                    # Shadcn/ui components
 │   ├── hooks/
-│   │   ├── useTaskPolling.ts      # TanStack Query polling
-│   │   └── useTaskQueue.ts        # Multi-task management
+│   │   └── useArtifactGenerator.ts # Generation polling hook
 │   ├── store/
-│   │   └── queueStore.ts          # Zustand state
-│   └── lib/
-│       ├── supabase.ts            # Auth client
-│       └── sounds.ts              # Audio effects
+│   │   └── useCanvasStore.ts      # Zustand canvas state
+│   ├── lib/
+│   │   ├── api.ts                 # Backend API client
+│   │   ├── supabase.ts            # Auth client
+│   │   └── auth.ts                # Token management
+│   └── public/
+│       ├── logo.png               # Brand logo
+│       └── sounds/                # UI sound effects
 │
-└── docs/
-    └── architecture.md
+└── README.md
 ```
 
-## Database Schema
+---
+
+## 🗄️ Database Schema
 
 ### Core Tables
 
-**lectures**: Stores uploaded file metadata including filename, file type, storage URL, file size, duration for audio and video, and processing status.
+| Table | Purpose |
+|-------|---------|
+| `projects` | User projects (canvas state, name, description) |
+| `artifacts` | Generated content (notes, quizzes, flashcards, etc.) |
+| `artifact_edges` | DAG relationships between artifacts |
+| `jobs` | Background job tracking (ingest, generate) |
+| `users` | User accounts and profiles |
 
-**transcripts**: Contains extracted text content with word-level timestamps from audio transcription and metadata about language detection and confidence scores.
+### Key Relationships
 
-**knowledge_cores**: Stores structured concept graphs in JSONB format with hierarchical relationships, definitions, examples, and key facts extracted by AI.
-
-**artifacts**: Links generated study materials to source lectures with references to storage URLs, artifact type, difficulty level, and generation parameters.
-
-**processing_tasks**: Tracks real-time status for frontend polling including current stage, progress percentage, active worker type, estimated time remaining, and error messages.
-
-**users**: Records user account information and gamification state including honey points, current streak, longest streak, and achievement level.
-
-**honey_transactions**: Logs all point-earning actions with timestamps and multiplier values for analytics and reward calculations.
-
-### Security
-
-Row Level Security policies ensure users can only access their own data. JWT authentication via Supabase validates all requests. Rate limiting prevents abuse on upload endpoints.
-
-## API Reference
-
-### POST /api/lectures
-
-Upload a new lecture file.
-
-**Request**: Multipart form data with file attachment
-
-**Response**:
-```json
-{
-  "lecture_id": "uuid",
-  "task_id": "uuid",
-  "filename": "string",
-  "status": "queued"
-}
+```
+projects ─┬── artifacts ─── artifact_edges
+          └── jobs
 ```
 
-### GET /api/tasks/{task_id}/status
+---
 
-Poll processing status for real-time updates.
+## ⌨️ Keyboard Shortcuts
 
-**Response**:
-```json
-{
-  "task_id": "uuid",
-  "status": "processing",
-  "stage": "extraction",
-  "progress": 67,
-  "bee_worker": "extractor",
-  "eta_seconds": 45
-}
-```
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd + Z` | Undo |
+| `Ctrl/Cmd + Shift + Z` | Redo |
+| `Delete` | Delete selected node |
+| `Escape` | Close modals |
 
-### POST /api/artifacts/generate
+---
 
-Request artifact generation from an existing lecture.
+## 📊 Performance
 
-**Request**:
-```json
-{
-  "lecture_id": "uuid",
-  "artifact_type": "notes",
-  "difficulty": "intermediate"
-}
-```
+| Metric | Value |
+|--------|-------|
+| 60-min video transcription | ~90 seconds |
+| Knowledge extraction | ~30 seconds |
+| Single artifact generation | ~20 seconds |
+| **Complete pipeline** | **< 3 minutes** |
+| React Flow rendering | 60 FPS @ 50+ nodes |
 
-### POST /api/artifacts/generate-batch
+---
 
-Generate multiple artifact types simultaneously.
+## 🐛 Known Issues
 
-**Request**:
-```json
-{
-  "lecture_id": "uuid",
-  "artifact_types": ["notes", "flashcards", "exam", "audio"],
-  "difficulty": "intermediate"
-}
-```
+- Voice isolation requires clips to be uploaded to cloud storage first
+- Large video files (>500MB) may experience slower processing
+- Some LaTeX math may not render in all artifact types
 
-## Design Philosophy
+---
 
-### Transparency Through Visualization
+## 🤝 Contributing
 
-Students should understand what happens to their uploaded content. The bee worker pipeline visualization shows exactly which processing stage is active, transforming an opaque waiting period into an observable process. This design reduces anxiety and builds trust with users who can see their data moving through each stage.
+Contributions are welcome! Please:
 
-### Accessibility as Standard
-
-One in five students has a learning disability. Audio outputs serve both accessibility needs and auditory learning preferences. Keyboard navigation supports users with motor impairments and power users who prefer efficient workflows. High contrast mode aids visual disabilities. These features are core to the platform design rather than optional add-ons.
-
-### Gamification with Purpose
-
-Honey points and bee levels create engagement without manipulation. The reward system reinforces positive study habits through streak tracking and level progression. Progress bars provide concrete feedback about advancement while celebration animations feel earned rather than artificial.
-
-### Architectural Simplicity
-
-We chose HTTP polling over WebSockets and avoided microservices complexity despite their technical appeal. These decisions prioritize reliability and maintainability over architectural sophistication. Simple systems ship faster and break less often during critical demonstrations.
-
-## Performance Metrics
-
-### Processing Speed
-- 60-minute audio transcription: 90 seconds
-- Concept extraction from transcript: 30 seconds
-- Single artifact generation: 20 seconds
-- Complete pipeline: under 3 minutes
-
-### Frontend Performance
-- Initial page load: under 2 seconds
-- Time to interactive: under 3 seconds
-- Polling overhead: maximum 30 requests per minute
-- React Flow rendering: 60 FPS with 50+ nodes
-
-### Backend Scalability
-- Concurrent uploads: 100+
-- Parallel artifact generation: 4 per worker instance
-- Database query latency: under 50ms (p95)
-- R2 storage throughput: 5+ MB/s
-
-## Accessibility Compliance
-
-BeePrepared meets WCAG 2.1 AA standards:
-
-- Semantic HTML5 with proper heading hierarchy
-- ARIA labels for interactive elements and dynamic content
-- Complete keyboard navigation without mouse dependency
-- Color contrast ratios exceeding 4.5:1 for all text
-- Visible focus indicators on all focusable elements
-- Screen reader compatibility with announcements for status changes
-- Alternative text for meaningful images
-- Captions and transcripts for audio content
-- No content flashing more than three times per second
-- Responsive design supporting 200% text zoom
-
-## Contributing
-
-We welcome contributions from the community. Please fork the repository, create a feature branch, implement changes with tests, and submit a pull request with a clear description.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ### Code Style
 
-- Frontend: ESLint with standard configuration
-- Backend: Black formatter with 100-character line length
-- Commits: Conventional commit message format
-- Documentation: Update README for user-facing changes
+- **Frontend**: ESLint with Next.js configuration
+- **Backend**: Black formatter (100 char line length)
+- **Commits**: Conventional commit messages
 
-## License
+---
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+## 📝 License
 
-## Acknowledgments
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-This project draws inspiration from modern visual learning path builders and structured knowledge synthesis patterns. We also credit platforms like Duolingo for demonstrating how gamification can enhance the learning experience.
+---
 
-Built with care for students who understand the challenge of exam preparation. We hope BeePrepared makes studying more effective and less stressful.
+## 🙏 Acknowledgments
+
+- **Google** - Gemini 2.5 Pro for intelligent extraction
+- **Azure** - Speech Services for transcription
+- **Supabase** - Backend infrastructure
+- **Cloudflare** - R2 object storage
+
+---
+
+## 📧 Contact
+
+**Project Links:**
+- **GitHub**: [github.com/SquaredPiano/beeprepared](https://github.com/SquaredPiano/beeprepared)
+- **Devpost**: [devpost.com/software/beeprepared](https://devpost.com/software/beeprepared)
+- **Demo Video**: [youtube.com/watch?v=S2ZwaheHSiY](https://www.youtube.com/watch?v=S2ZwaheHSiY)
+
+---
+
+<div align="center">
+  <sub>Built with 🍯 for students who want to study smarter, not harder</sub>
+</div>
