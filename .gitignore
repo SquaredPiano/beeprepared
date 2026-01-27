@@ -1,2 +1,42 @@
-backend/venv
+# Environment
+.env
 .env*
+.env.local
+ENV_SETUP.md
+
+# Prompts (internal planning docs)
+.github/prompts
+
+# Virtual Environments
+backend/venv
+frontend/node_modules
+
+# Build outputs
+frontend/.next
+frontend/out
+
+# Testing temp
+eg_temp
+frontend/eg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+
+verify_rpc.sh
+
+/output
+/tests
+.orchids
+.pytest_cache
+backend/scripts
+backend/tests
+backend/repair_db.py
+backend/list_models
+docs
