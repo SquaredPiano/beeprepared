@@ -1,9 +1,10 @@
 import os
 import logging
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel, Field
-from google import genai
 from dotenv import load_dotenv
+
+from backend.core.services.llm_factory import LLMFactory
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # --- Pydantic Data Models (Schema) ---
-
+# (Keeping models same as before)
 class Concept(BaseModel):
     name: str = Field(description="Name of the core concept")
     description: str = Field(description="Detailed explanation of the concept")
@@ -54,40 +55,31 @@ class KnowledgeCore(BaseModel):
     examples: List[Example] = Field(description="List of illustrative examples")
     key_facts: List[KeyFact] = Field(description="List of key atomic facts")
 
-# --- Service Implementation ---
-
 class KnowledgeCoreService:
     def __init__(self):
-        self._setup_gemini()
+        self._setup_llm()
 
-    def _setup_gemini(self):
-        """Initialize Gemini client."""
-        api_key = os.getenv("GEMINI_API_KEY")
-        if api_key:
-            try:
-                self.client = genai.Client(api_key=api_key)
-                # Revert to 2.0-flash as requested, but allow override
-                self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini client: {e}")
-                self.client = None
-        else:
-            logger.warning("GEMINI_API_KEY not found. Knowledge Core generation will fail.")
-            self.client = None
+    def _setup_llm(self):
+        """Initialize LLM Provider via Factory."""
+        try:
+            self.llm = LLMFactory.get_provider()
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM Provider: {e}")
+            self.llm = None
 
 
-    def generate_knowledge_core(self, clean_text: str) -> KnowledgeCore:
+    async def generate_knowledge_core(self, clean_text: str) -> KnowledgeCore:
         """
-        Generates the Knowledge Core JSON structure from cleaned text.
-        Raises exception on failure so specific error is propagated.
+        Generates the Knowledge Core JSON structure from cleaned text using the abstract LLM provider.
+        Async execution.
         """
-        if not self.client:
-            raise RuntimeError("Gemini client is not initialized (missing API Key?)")
+        if not self.llm:
+            raise RuntimeError("LLM Provider is not initialized")
 
         if not clean_text:
             raise ValueError("Input text is empty")
 
-        logger.info("Generating Knowledge Core (this may take a moment)...")
+        logger.info("Generating Knowledge Core via LLM Provider (Async Pro Model)...")
 
         prompt = """
         You are an expert Knowledge Engineer. Your goal is to extract a definitive "Source of Truth" from the provided transcript.
@@ -106,54 +98,41 @@ class KnowledgeCoreService:
         """
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, clean_text],
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': KnowledgeCore
-                }
+            # Request High Quality Model (Pro)
+            # Fallback handling: provider logs warning if model not found and uses default? 
+            # Or implementation throws? Vertex usually supports it.
+            model_to_use = "gemini-2.0-flash-exp" 
+            
+            # Check if using Gemini provider (names might differ slightly or just use same)
+            # Currently VertexLLM and GeminiLLM both accept model_name overrides.
+            
+            response_model = await self.llm.generate_content_async(
+                prompt=prompt,
+                context=clean_text,
+                schema=KnowledgeCore,
+                model_name=model_to_use
             )
             
-            # The SDK returns a parsed object if response_schema is a Pydantic model
-            if response.parsed:
-                return response.parsed
+            if isinstance(response_model, KnowledgeCore):
+                return response_model
             else:
-                # If parsed is missing but text exists, it's a schema violation or refusal
-                error_msg = f"Failed to parse structured output. Raw response: {response.text[:200]}..."
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                logger.error(f"Provider returned unexpected type: {type(response_model)}")
+                raise RuntimeError("LLM Provider returned invalid type (expected KnowledgeCore object)")
 
         except Exception as e:
             logger.error(f"Knowledge Core generation failed: {e}")
-            # Re-raise the exception to be captured by the Job Runner
             raise e
 
 if __name__ == "__main__":
-    # Test Block
-    import json
+    import asyncio
     
-    # Read the cleaned output file if it exists, otherwise use dummy text
-    input_file = "cleaned_output.txt"
-    if os.path.exists(input_file):
-        with open(input_file, "r") as f:
-            text_input = f.read()
-    else:
-        text_input = "This looks like a transcript about Software Engineering. The key concept is Modular Design. Ideally, files should be short."
+    async def test():
+        service = KnowledgeCoreService()
+        text = "This is a test transcript."
+        try:
+            res = await service.generate_knowledge_core(text)
+            print(res.title)
+        except Exception as e:
+            print(f"Error: {e}")
 
-    service = KnowledgeCoreService()
-    core = service.generate_knowledge_core(text_input)
-    
-    if core:
-        print("\n--- Knowledge Core Generated Successfully ---\n")
-        print(f"Title: {core.title}")
-        print(f"Concepts Found: {len(core.concepts)}")
-        print(f"Main Sections: {len(core.section_hierarchy)}")
-        
-        # Save to JSON for inspection
-        output_json = "knowledge_core.json"
-        with open(output_json, "w") as f:
-            f.write(core.model_dump_json(indent=2))
-        print(f"\nFull Knowledge Core saved to {output_json}")
-    else:
-        print("Failed to generate Knowledge Core.")
+    asyncio.run(test())

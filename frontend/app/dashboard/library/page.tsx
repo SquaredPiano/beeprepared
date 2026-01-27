@@ -61,20 +61,29 @@ export default function LibraryPage() {
 
     fetchData();
 
-    // Poll for job updates every 5s if there are active jobs
-    const interval = setInterval(async () => {
-      try {
-        const jobsData = await api.jobs.list();
-        setJobs(jobsData || []);
-        // Also refresh artifacts if jobs complete
-        const hasCompletedRecent = jobsData.some((j: any) => j.status === 'completed' && new Date(j.created_at).getTime() > Date.now() - 10000);
-        if (hasCompletedRecent) {
-          const vaultData = await api.vault.list("/");
-          setArtifacts(vaultData.files || []);
+    // Realtime Subscription (Push-based updates)
+    const channel = supabase.channel('active-jobs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'jobs' },
+        (payload) => {
+          console.log('Realtime update:', payload);
+          // Refresh jobs list on any change
+          api.jobs.list().then((updatedJobs) => {
+            setJobs(updatedJobs || []);
+            // Check if a job just completed to refresh artifacts
+            if (payload.eventType === 'UPDATE' && payload.new.status === 'completed') {
+              api.vault.list("/").then(vaultData => setArtifacts(vaultData.files || []));
+              toast.success("Job completed!");
+            }
+          });
         }
-      } catch (e) { console.error("Poll error", e); }
-    }, 5000);
-    return () => clearInterval(interval);
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const activeJobs = jobs.filter(j => ['pending', 'running', 'failed'].includes(j.status));

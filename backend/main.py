@@ -25,6 +25,8 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -99,6 +101,19 @@ class SupabaseTable:
     def delete(self):
         """Queue a delete operation."""
         self._is_delete = True
+        return self
+
+    def limit(self, count: int):
+        """Limit results."""
+        self._params.append(("limit", str(count)))
+        return self
+
+    def order(self, column: str, desc: bool = False):
+        """Order results."""
+        # PostgREST format: order=column.desc or order=column.asc
+        direction = "desc" if desc else "asc"
+        logger.info(f"Adding order: {column}.{direction}")
+        self._params.append(("order", f"{column}.{direction}"))
         return self
     
     def execute(self):
@@ -445,12 +460,17 @@ async def list_active_jobs(project_id: str = None, user_id: str = Depends(get_cu
     """
     List recent jobs for user/project.
     """
+    logger.info(f"API: list_active_jobs called by user: {user_id} for project: {project_id}")
     try:
         supabase = get_supabase()
         
         # Get projects owned by user to filter jobs
+        logger.info(f"Fetching projects for user: {user_id}")
         projects_resp = supabase.table("projects").select("id").eq("user_id", user_id).execute()
-        user_project_ids = [p["id"] for p in projects_resp.data]
+        # Handle case where data is None
+        projects_data = projects_resp.data or []
+        user_project_ids = [p["id"] for p in projects_data]
+        logger.info(f"Found project IDs: {user_project_ids}")
         
         if not user_project_ids:
             return []
@@ -575,19 +595,6 @@ async def download_artifact_binary(artifact_id: str, inline: bool = False, user_
         
         # Generate presigned URL with proper response headers
         # This forces the browser to download with correct Content-Type and filename
-        disposition_type = 'inline' if inline else 'attachment'
-        
-        presigned_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={
-                'Bucket': r2_bucket, 
-                'Key': storage_path,
-                'ResponseContentType': mime_type,
-                'ResponseContentDisposition': f'{disposition_type}; filename="{filename}"',
-            },
-            ExpiresIn=3600
-        )
-        
         return {
             "download_url": presigned_url,
             "format": file_format,
@@ -599,6 +606,56 @@ async def download_artifact_binary(artifact_id: str, inline: bool = False, user_
         raise
     except Exception as e:
         logger.error(f"Failed to generate download URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ArtifactUpdate(BaseModel):
+    """Request body for PATCH /api/artifacts/{id}."""
+    content: Optional[dict] = None
+
+
+@app.patch("/api/artifacts/{artifact_id}")
+async def update_artifact(artifact_id: str, updates: ArtifactUpdate, user_id: str = Depends(get_current_user)):
+    """
+    Update an artifact (e.g. save edited notes).
+    """
+    try:
+        supabase = get_supabase()
+        
+        # specific check for ownership
+        # 1. Get artifact to find project_id
+        # 2. Check project ownership
+        
+        art_resp = supabase.table("artifacts").select("project_id").eq("id", artifact_id).execute()
+        if not art_resp.data:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+            
+        project_id = art_resp.data[0]["project_id"]
+        
+        proj_resp = supabase.table("projects").select("user_id").eq("id", project_id).execute()
+        if not proj_resp.data or proj_resp.data[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+            
+        # Perform update
+        # Only update fields that are provided
+        data = {}
+        if updates.content is not None:
+            data["content"] = updates.content
+            
+        if not data:
+            return {"status": "no_change"}
+            
+        upd_resp = supabase.table("artifacts").update(data).eq("id", artifact_id).execute()
+        
+        if not upd_resp.data:
+             raise HTTPException(status_code=500, detail="Update failed")
+             
+        return upd_resp.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update artifact: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

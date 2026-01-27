@@ -23,9 +23,12 @@ import "@xyflow/react/dist/style.css";
 import useSound from "use-sound";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { useCanvasStore } from "@/store/useCanvasStore";
+import { api } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { AssetNode } from "./nodes/AssetNode";
 import { ProcessNode } from "./nodes/ProcessNode";
 import { ResultNode } from "./nodes/ResultNode";
@@ -104,16 +107,76 @@ function BeeCanvasInner() {
     }
   }, [projectId, loadProject, currentProjectId]);
 
-  // Polling for Updates
+  // Realtime Jobs & Artifacts
+  const [activeJobs, setActiveJobs] = useState<any[]>([]);
+  const previousActiveJobIds = useRef<Set<string>>(new Set());
+
+  // Fallback polling for job completion (in case Realtime doesn't fire)
   useEffect(() => {
     if (!currentProjectId) return;
 
-    const interval = setInterval(() => {
-      refreshArtifacts();
-    }, 5000); // Poll every 5 seconds
+    const pollJobs = async () => {
+      try {
+        const jobs = await api.jobs.list(currentProjectId);
+        if (!jobs) return;
 
-    return () => clearInterval(interval);
-  }, [currentProjectId, refreshArtifacts]);
+        const activeNow = jobs.filter((j: any) => ['pending', 'running'].includes(j.status));
+        setActiveJobs(activeNow);
+
+        // Check if any previously active jobs are now completed
+        const currentActiveIds = new Set(activeNow.map((j: any) => j.id));
+        const completedIds = [...previousActiveJobIds.current].filter(id => !currentActiveIds.has(id));
+
+        if (completedIds.length > 0) {
+          // Some jobs completed - check their status
+          const completedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'completed');
+          if (completedJobs.length > 0) {
+            console.log('[BeeCanvas] Detected completed jobs via polling:', completedJobs.map((j: any) => j.id));
+            refreshArtifacts();
+            playComplete();
+            toast.success("Processing Complete!");
+          }
+
+          // Check for failed jobs
+          const failedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'failed');
+          failedJobs.forEach((job: any) => {
+            toast.error("Processing Failed", { description: job.error_message });
+          });
+        }
+
+        previousActiveJobIds.current = currentActiveIds;
+      } catch (error) {
+        console.warn('[BeeCanvas] Job polling error:', error);
+      }
+    };
+
+    // Initial fetch
+    pollJobs();
+
+    // Poll every 5 seconds as fallback to Realtime
+    const pollInterval = setInterval(pollJobs, 5000);
+
+    // Realtime Subscription (may or may not be enabled in Supabase)
+    const channel = supabase.channel(`canvas-${currentProjectId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'jobs', filter: `project_id=eq.${currentProjectId}` },
+        (payload) => {
+          const newRecord = payload.new as { status?: string } | undefined;
+          console.log('[BeeCanvas] Realtime event:', payload.eventType, newRecord?.status);
+          // Trigger immediate poll when we get a realtime event
+          pollJobs();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[BeeCanvas] Realtime subscription status:', status);
+      });
+
+    return () => {
+      clearInterval(pollInterval);
+      supabase.removeChannel(channel);
+    };
+  }, [currentProjectId, refreshArtifacts, playComplete]);
 
   // Constraints & Auto-connect logic
   const findNearestCompatibleNode = (
@@ -374,6 +437,38 @@ function BeeCanvasInner() {
       <CanvasHeader />
       <CanvasSidebar onIngestClick={() => setIsUploadModalOpen(true)} />
       <CanvasControls />
+
+      {/* Active Jobs Indicator */}
+      <AnimatePresence>
+        {activeJobs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: -20, x: 20 }}
+            className="absolute top-24 right-6 z-[60] flex flex-col gap-2 pointer-events-none"
+          >
+            {activeJobs.map((job: any) => (
+              <div key={job.id} className="bg-white/80 backdrop-blur-xl border border-honey/20 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-4 rounded-2xl flex items-center gap-4 min-w-[200px]">
+                <div className="relative flex-shrink-0">
+                  <div className="w-2.5 h-2.5 bg-honey rounded-full animate-ping absolute inset-0 opacity-50" />
+                  <div className="w-2.5 h-2.5 bg-honey rounded-full relative shadow-sm" />
+                </div>
+                <div className="flex flex-col flex-grow">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-bee-black leading-none mb-1">
+                    {job.type === 'ingest' ? 'Ingesting Media' : 'Generating'}
+                  </span>
+                  <span className="text-[9px] text-bee-black/40 font-bold tracking-wide">
+                    {job.status === 'running' ? 'Processing...' : 'Queued'}
+                  </span>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-honey/10 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 text-honey animate-spin" />
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <ReactFlow
         nodes={nodes}

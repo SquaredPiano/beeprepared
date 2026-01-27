@@ -1,16 +1,16 @@
 "use client";
 
 import React from "react";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
-import { 
-  FileText, 
-  Video, 
-  Presentation, 
+import {
+  FileText,
+  Video,
+  Presentation,
   Download,
   ExternalLink,
   Clock,
@@ -39,14 +39,27 @@ export function AssetPreviewModal({ isOpen, onClose, asset }: AssetPreviewModalP
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl rounded-[32px] border-wax bg-cream/95 backdrop-blur-xl p-0 overflow-hidden shadow-2xl">
+        <DialogTitle className="sr-only">
+          {asset.label} Preview
+        </DialogTitle>
         <div className="relative aspect-video bg-bee-black/5 flex items-center justify-center border-b border-wax">
           {asset.type === 'video' ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <Video size={64} className="text-bee-black/10 animate-pulse" />
-              <p className="absolute bottom-8 text-[10px] font-bold uppercase tracking-widest text-bee-black/40">
-                Media Relay Pending Integration
-              </p>
-            </div>
+            asset.url ? (
+              <video
+                src={asset.url}
+                controls
+                className="w-full h-full object-contain"
+              >
+                Your browser does not support the video tag.
+              </video>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Video size={64} className="text-bee-black/10 animate-pulse" />
+                <p className="absolute bottom-8 text-[10px] font-bold uppercase tracking-widest text-bee-black/40">
+                  Video URL not available
+                </p>
+              </div>
+            )
           ) : (
             <div className="flex flex-col items-center gap-4">
               <div className="w-20 h-20 rounded-[2rem] bg-white shadow-xl flex items-center justify-center border border-wax">
@@ -76,7 +89,7 @@ export function AssetPreviewModal({ isOpen, onClose, asset }: AssetPreviewModalP
                 </div>
               </div>
             </div>
-            
+
             <div className="flex gap-2">
               <Button variant="outline" className="rounded-xl border-wax h-12 px-6 font-bold uppercase text-[10px] tracking-widest hover:bg-honey transition-all cursor-pointer">
                 <Download size={14} className="mr-2" /> Download

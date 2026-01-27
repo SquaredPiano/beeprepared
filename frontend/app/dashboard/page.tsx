@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/store/useStore";
+import { useCanvasStore } from "@/store/useCanvasStore";
 import {
   Dialog,
   DialogContent,
@@ -118,6 +119,12 @@ export default function DashboardPage() {
 
   const handleDeleteProject = async (id: string) => {
     try {
+      // Clear from global store if it's the current project
+      const { currentProjectId, clearProject } = useCanvasStore.getState();
+      if (currentProjectId === id) {
+        clearProject();
+      }
+
       await api.projects.delete(id);
       setProjects(prev => prev.filter(p => p.id !== id));
       toast.success("Project deleted");

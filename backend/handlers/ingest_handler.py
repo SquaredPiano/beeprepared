@@ -113,13 +113,13 @@ class IngestHandler(JobHandler):
         logger.info(f"[IngestHandler] Extracted {len(text)} chars")
         
         # --- Step 3: Clean Text ---
-        logger.info(f"[IngestHandler] Step 3: Cleaning text...")
-        cleaned_text = self.cleaner.clean_with_gemini(text)
+        logger.info(f"[IngestHandler] Step 3: Cleaning text (Async Parallel)...")
+        cleaned_text = await self.cleaner.clean_text(text)
         logger.info(f"[IngestHandler] Cleaned text: {len(cleaned_text)} chars")
         
         # --- Step 4: Generate Knowledge Core ---
-        logger.info(f"[IngestHandler] Step 4: Generating Knowledge Core...")
-        knowledge_core = self.core_service.generate_knowledge_core(cleaned_text)
+        logger.info(f"[IngestHandler] Step 4: Generating Knowledge Core (Async)...")
+        knowledge_core = await self.core_service.generate_knowledge_core(cleaned_text)
         
         if not knowledge_core:
             raise RuntimeError("Knowledge Core generation failed")
