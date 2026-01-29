@@ -454,12 +454,22 @@ function BeeCanvasInner() {
     // but typically we can match by checking if the node's artifact.id matches the *current* previewArtifact.id)
     if (!previewArtifact) return;
 
+
+    // Define the shape we expect
+    type NodeData = {
+      artifact?: { id: string;[key: string]: any };
+      [key: string]: any;
+    };
+
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
-        if (node.type === 'artifactNode' && node.data?.artifact?.id === previewArtifact.id) {
+        // Narrow type for access
+        const data = node.data as NodeData;
+
+        if (node.type === 'artifactNode' && data.artifact?.id === previewArtifact.id) {
           return {
             ...node,
-            data: { ...node.data, artifact: newArtifact }
+            data: { ...data, artifact: newArtifact }
           };
         }
         return node;
