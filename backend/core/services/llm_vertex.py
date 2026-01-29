@@ -124,11 +124,10 @@ class VertexLLM(LLMProvider):
         if context:
             full_prompt.append(context)
 
-        # Attempt 1: With Strict Schema
+        # With Schema: Use JSON mode with structured output
         if schema:
             try:
                 vertex_schema = _prepare_vertex_schema(schema)
-                # logger.debug(f"Using Vertex Schema: {vertex_schema}")
                 config = GenerationConfig(
                     response_mime_type="application/json",
                     response_schema=vertex_schema
@@ -139,24 +138,28 @@ class VertexLLM(LLMProvider):
                 )
                 return self._parse_response(response, schema)
             except Exception as e:
-                logger.warning(f"Strict schema generation failed ({str(e)}). Falling back to standard JSON generation.")
-                # Fallthrough to retry without schema
+                logger.warning(f"Strict schema generation failed ({str(e)}). Falling back to JSON without schema constraint.")
+                # Fallback: JSON mode without schema
+                try:
+                    config = GenerationConfig(
+                        response_mime_type="application/json"
+                    )
+                    response = model.generate_content(
+                        full_prompt,
+                        generation_config=config
+                    )
+                    return self._parse_response(response, schema)
+                except Exception as e2:
+                    logger.error(f"JSON fallback also failed: {e2}")
+                    raise e2
 
-        # Attempt 2: Standard JSON Mode (Fallback)
-        # We still ask for JSON, but without the strict schema constraint
-        config = GenerationConfig(
-            response_mime_type="application/json"
-        )
-        
+        # No Schema: Plain text generation (for notes, etc.)
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=config
-            )
-            return self._parse_response(response, schema)
+            response = model.generate_content(full_prompt)
+            return response.text
 
         except Exception as e:
-            logger.error(f"Vertex AI generation failed: {e}")
+            logger.error(f"Vertex AI text generation failed: {e}")
             raise e
 
     async def generate_content_async(
@@ -175,7 +178,7 @@ class VertexLLM(LLMProvider):
         if context:
             full_prompt.append(context)
 
-        # Attempt 1: With Strict Schema
+        # With Schema: Use JSON mode with structured output
         if schema:
             try:
                 vertex_schema = _prepare_vertex_schema(schema)
@@ -189,23 +192,28 @@ class VertexLLM(LLMProvider):
                 )
                 return self._parse_response(response, schema)
             except Exception as e:
-                logger.warning(f"Async strict schema generation failed ({str(e)}). Falling back to standard JSON generation.")
-                # Fallthrough to retry without schema
+                logger.warning(f"Async strict schema generation failed ({str(e)}). Falling back to JSON without schema constraint.")
+                # Fallback: JSON mode without schema
+                try:
+                    config = GenerationConfig(
+                        response_mime_type="application/json"
+                    )
+                    response = await model.generate_content_async(
+                        full_prompt,
+                        generation_config=config
+                    )
+                    return self._parse_response(response, schema)
+                except Exception as e2:
+                    logger.error(f"Async JSON fallback also failed: {e2}")
+                    raise e2
 
-        # Attempt 2: Standard JSON Mode (Fallback)
-        config = GenerationConfig(
-            response_mime_type="application/json"
-        )
-        
+        # No Schema: Plain text generation (for notes, etc.)
         try:
-            response = await model.generate_content_async(
-                full_prompt,
-                generation_config=config
-            )
-            return self._parse_response(response, schema)
+            response = await model.generate_content_async(full_prompt)
+            return response.text
 
         except Exception as e:
-            logger.error(f"Vertex AI Async generation failed: {e}")
+            logger.error(f"Vertex AI Async text generation failed: {e}")
             raise e
 
     def _parse_response(self, response, schema):
