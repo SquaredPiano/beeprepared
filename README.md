@@ -59,72 +59,32 @@ BeePrepared is an **AI-native learning platform** that ingests raw lecture conte
 
 ---
 
-## 🚀 Local Setup
+## 🚀 Setup & Deployment
 
-### Prerequisites
+**The only requirement is Docker Desktop.**
 
-- **Python** 3.10+
-- **Node.js** 20+
-- **FFmpeg** (Required for audio processing)
-- **Supabase** Project
+We strongly recommend using Docker to ensure all system dependencies (FFmpeg, LaTeX for PDFs, etc.) are correctly installed without polluting your host machine.
 
-### 1. Backend
+### Quick Start
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate
-pip install -r requirements.txt
-```
+1. **Clone & Config**
+   ```bash
+   git clone https://github.com/SquaredPiano/beeprepared.git
+   cd beeprepared
+   cp .env.example .env
+   # Add your API keys to .env
+   ```
 
-**`.env` Configuration:**
-```env
-# Core Services
-GEMINI_API_KEY=your_gemini_key
-DEEPGRAM_API_KEY=your_deepgram_key
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_service_role_key
+2. **Run**
+   ```bash
+   docker-compose up --build
+   ```
 
-# Database (Direct Connection)
-DATABASE_URL=postgresql://postgres:password@db.project.supabase.co:5432/postgres
+3. **Visit**
+   - App: [http://localhost:3000](http://localhost:3000)
+   - API Health: [http://localhost:8000/health](http://localhost:8000/health)
 
-# Object Storage (Cloudflare R2)
-R2_ACCOUNT_ID=your_id
-R2_ACCESS_KEY_ID=your_key
-R2_SECRET_ACCESS_KEY=your_secret
-R2_BUCKET_NAME=beeprepared-storage
-R2_ENDPOINT_URL=https://{id}.r2.cloudflarestorage.com
-```
-
-**Run Server:**
-```bash
-python -m uvicorn main:app --reload --port 8000
-```
-
-### 2. Database
-
-Execute the content of [`backend/schema.sql`](./backend/schema.sql) in your Supabase SQL Editor to set up the schema, RPC functions, and triggers.
-
-### 3. Frontend
-
-```bash
-cd frontend
-npm install
-```
-
-**`.env.local` Configuration:**
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-```
-
-**Run Client:**
-```bash
-npm run dev
-```
-
-Visit [http://localhost:3000](http://localhost:3000).
+📄 **[Read the Full Setup Guide](./docs/SETUP_GUIDE.md)** for detailed troubleshooting and verification steps.
 
 ---
 
@@ -141,6 +101,7 @@ BPP (BeePrepared Platform) uses a **Generator-Node** architecture.
 - **Frontend**: Next.js 16 (App Router), React Flow, Tailwind 4, Zustand.
 - **Backend**: FastAPI, Pydantic, Supabase (pgvector + jsonb).
 - **AI**: Gemini 2.5 Pro (Reasoning), Deepgram Nova-2 (Audio).
+- **Core Dependencies**: FFmpeg (Media), TeXLive (PDFs), Cloudflare R2 (Storage).
 
 ---
 

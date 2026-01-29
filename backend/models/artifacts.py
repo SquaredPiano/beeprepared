@@ -48,7 +48,7 @@ class Flashcard(BaseModel):
     front: str = Field(description="Concept or Question. Use LaTeX for math.")
     back: str = Field(description="Definition or Answer. Use LaTeX for math.")
     hint: Optional[str] = Field(None, description="Optional hint for the user")
-    source_reference: str = Field(description="Where in the material this comes from")
+    source_reference: Optional[str] = Field(None, description="Where in the material this comes from")
 
 class FlashcardModel(BaseModel):
     cards: List[Flashcard] = Field(description="List of flashcards")
