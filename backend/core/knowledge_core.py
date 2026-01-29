@@ -101,7 +101,7 @@ class KnowledgeCoreService:
             # Request High Quality Model (Pro)
             # Fallback handling: provider logs warning if model not found and uses default? 
             # Or implementation throws? Vertex usually supports it.
-            model_to_use = "gemini-2.0-flash-exp" 
+            model_to_use = "gemini-2.5-flash" 
             
             # Check if using Gemini provider (names might differ slightly or just use same)
             # Currently VertexLLM and GeminiLLM both accept model_name overrides.

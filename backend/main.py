@@ -667,27 +667,22 @@ async def update_artifact(artifact_id: str, updates: ArtifactUpdate, user_id: st
             else:
                 new_content = updates.content
 
-        # 3. Insert NEW artifact
-        new_artifact_data = {
-            "project_id": old_art["project_id"],
-            "type": old_art["type"],
+        # 3. Update EXISTING artifact (Mutable Notes)
+        # We update in-place so the ID remains stable for the frontend.
+        update_data = {
             "content": new_content,
-            "created_by_job_id": old_art.get("created_by_job_id") 
+            # Updated_at is handled by Postgres trigger usually, or we can set it if we had the field
         }
         
-        ins_resp = supabase.table("artifacts").insert(new_artifact_data).execute()
+        upd_resp = supabase.table("artifacts").update(update_data).eq("id", artifact_id).execute()
         
-        if not ins_resp.data:
-             raise HTTPException(status_code=500, detail="Failed to create new artifact version")
+        if not upd_resp.data:
+             raise HTTPException(status_code=500, detail="Failed to update artifact")
              
-        new_artifact = ins_resp.data[0]
+        updated_artifact = upd_resp.data[0]
+        logger.info(f"Updated artifact {artifact_id} content")
         
-        # 4. (Optional) Re-link edges? 
-        # If we want the graph to point to the new note, we might need to move edges.
-        # But for 'Notes', usually they are leaf nodes or we just use the new ID in the UI.
-        # We will return the new artifact and let the UI switch to it.
-        
-        return new_artifact
+        return updated_artifact
 
     except HTTPException:
         raise

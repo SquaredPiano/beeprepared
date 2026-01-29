@@ -2,23 +2,88 @@ import os
 import logging
 import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
-from typing import Optional, Type, Union, Any
+from typing import Optional, Type, Union, Any, Dict, List
 from pydantic import BaseModel
 from backend.core.llm_interface import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+def _sanitize_schema_for_vertex(schema: Dict[str, Any], definitions: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Converts a Pydantic JSON schema to Vertex AI-compatible format.
+    Recursively inlines $refs and removes unsupported types (null).
+    """
+    if not isinstance(schema, dict):
+        return schema
+    
+    if definitions is None:
+        definitions = {}
+    
+    result = {}
+    
+    for key, value in schema.items():
+        # Skip $defs/definitions keys - we use the passed 'definitions' map
+        if key in ('$defs', 'definitions'):
+            continue
+            
+        # Handle 'anyOf' with null types (Optional fields)
+        if key == 'anyOf' and isinstance(value, list):
+            # Filter out null types
+            non_null_types = [t for t in value if not (isinstance(t, dict) and t.get('type') == 'null')]
+            
+            if len(non_null_types) == 1:
+                # Single type remaining - flatten anyOf
+                result.update(_sanitize_schema_for_vertex(non_null_types[0], definitions))
+            elif len(non_null_types) > 1:
+                # Multiple non-null types
+                result['anyOf'] = [_sanitize_schema_for_vertex(t, definitions) for t in non_null_types]
+            continue
+        
+        # Handle $ref - inline the definition
+        if key == '$ref' and isinstance(value, str):
+            ref_name = value.split('/')[-1]
+            if ref_name in definitions:
+                # Recursively sanitize the resolved definition
+                result.update(_sanitize_schema_for_vertex(definitions[ref_name], definitions))
+            else:
+                # If we can't resolve it, keep it
+                result['$ref'] = value
+            continue
+        
+        # Recursively sanitize nested objects
+        if isinstance(value, dict):
+            result[key] = _sanitize_schema_for_vertex(value, definitions)
+        elif isinstance(value, list):
+            result[key] = [_sanitize_schema_for_vertex(item, definitions) if isinstance(item, dict) else item for item in value]
+        else:
+            result[key] = value
+            
+    return result
+
+def _prepare_vertex_schema(pydantic_model: Type[BaseModel]) -> Dict[str, Any]:
+    """
+    Prepares a Pydantic model's JSON schema for use with Vertex AI.
+    extracts definitions and recursively inlines them.
+    """
+    raw_schema = pydantic_model.model_json_schema()
+    defs = raw_schema.get('$defs', raw_schema.get('definitions', {}))
+    
+    sanitized = _sanitize_schema_for_vertex(raw_schema, defs)
+    
+    logger.debug(f"Sanitized schema for {pydantic_model.__name__}: {list(sanitized.keys())}")
+    return sanitized
+
 class VertexLLM(LLMProvider):
     def __init__(self):
         self.project_id = os.getenv("VERTEX_PROJECT_ID")
         self.location = os.getenv("VERTEX_LOCATION", "us-central1")
-        self.model_name = os.getenv("VERTEX_MODEL", "gemini-1.5-flash") # Stable alias
+        self.model_name = os.getenv("VERTEX_MODEL", "gemini-2.5-flash") # Stable alias
         self.api_key = os.getenv("VERTEX_API_KEY") # Optional, if user uses API Key with Vertex
 
         if not self.project_id:
              # Try to infer from default credentials or warn
              logger.warning("VERTEX_PROJECT_ID not set. Vertex AI might fail if not running in GCP.")
-
+             
         try:
             # Explicitly load credentials if available
             # This is critical for local/docker environments where ADC might not be auto-detected correctly by the async client
@@ -59,12 +124,29 @@ class VertexLLM(LLMProvider):
         if context:
             full_prompt.append(context)
 
-        config = {}
+        # Attempt 1: With Strict Schema
         if schema:
-            config = GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=schema.model_json_schema()
-            )
+            try:
+                vertex_schema = _prepare_vertex_schema(schema)
+                # logger.debug(f"Using Vertex Schema: {vertex_schema}")
+                config = GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=vertex_schema
+                )
+                response = model.generate_content(
+                    full_prompt,
+                    generation_config=config
+                )
+                return self._parse_response(response, schema)
+            except Exception as e:
+                logger.warning(f"Strict schema generation failed ({str(e)}). Falling back to standard JSON generation.")
+                # Fallthrough to retry without schema
+
+        # Attempt 2: Standard JSON Mode (Fallback)
+        # We still ask for JSON, but without the strict schema constraint
+        config = GenerationConfig(
+            response_mime_type="application/json"
+        )
         
         try:
             response = model.generate_content(
@@ -93,15 +175,29 @@ class VertexLLM(LLMProvider):
         if context:
             full_prompt.append(context)
 
-        config = {}
+        # Attempt 1: With Strict Schema
         if schema:
-            config = GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=schema.model_json_schema()
-            )
+            try:
+                vertex_schema = _prepare_vertex_schema(schema)
+                config = GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=vertex_schema
+                )
+                response = await model.generate_content_async(
+                    full_prompt,
+                    generation_config=config
+                )
+                return self._parse_response(response, schema)
+            except Exception as e:
+                logger.warning(f"Async strict schema generation failed ({str(e)}). Falling back to standard JSON generation.")
+                # Fallthrough to retry without schema
+
+        # Attempt 2: Standard JSON Mode (Fallback)
+        config = GenerationConfig(
+            response_mime_type="application/json"
+        )
         
         try:
-            # Async generation
             response = await model.generate_content_async(
                 full_prompt,
                 generation_config=config

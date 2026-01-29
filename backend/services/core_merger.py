@@ -11,9 +11,11 @@ INVARIANTS:
 import os
 import logging
 import json
+import asyncio
 from typing import List, Optional
 from pydantic import BaseModel, Field
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 from dotenv import load_dotenv
 
 from backend.core.knowledge_core import KnowledgeCore
@@ -27,6 +29,7 @@ load_dotenv()
 class CoreSummary(BaseModel):
     """A compressed representation of a single Knowledge Core."""
     source_title: str = Field(description="Title of the original source")
+    key_concepts: List[str] = Field(description="Top 5-7 most important concepts")
     key_concepts: List[str] = Field(description="Top 5-7 most important concepts")
     key_facts: List[str] = Field(description="Top 5-7 critical facts")
     summary: str = Field(description="2-3 sentence high-level summary")
@@ -56,21 +59,23 @@ class CoreMerger:
     - 4+ Cores: Hierarchical (pairs → synth → meta-merge)
     """
     
-    def __init__(self, model_name: str = 'gemini-2.0-flash'):
-        self._setup_gemini(model_name)
+    def __init__(self, model_name: str = 'gemini-2.5-flash'):
+        self._setup_vertex(model_name)
     
-    def _setup_gemini(self, model_name: str):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if api_key:
+    def _setup_vertex(self, model_name: str):
+        project = os.getenv("GOOGLE_CLOUD_PROJECT")
+        location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        
+        if project:
             try:
-                genai.configure(api_key=api_key)
-                self.model = genai.GenerativeModel(model_name)
-                logger.info(f"[CoreMerger] Initialized with model: {model_name}")
+                vertexai.init(project=project, location=location)
+                self.model = GenerativeModel(model_name)
+                logger.info(f"[CoreMerger] Vertex AI initialized with model: {model_name} (project={project}, location={location})")
             except Exception as e:
-                logger.error(f"[CoreMerger] Failed to initialize Gemini: {e}")
+                logger.error(f"[CoreMerger] Failed to initialize Vertex AI: {e}")
                 self.model = None
         else:
-            logger.warning("[CoreMerger] GEMINI_API_KEY not found.")
+            logger.warning("[CoreMerger] GOOGLE_CLOUD_PROJECT not found. Vertex AI will fall back to naive merge.")
             self.model = None
     
     def summarize_core(self, core: KnowledgeCore) -> CoreSummary:
@@ -107,7 +112,7 @@ You are a Knowledge Compressor. Your task is to create a concise summary of the 
             core_json = core.model_dump_json(indent=2)
             response = self.model.generate_content(
                 [prompt, core_json],
-                generation_config=genai.GenerationConfig(
+                generation_config=GenerationConfig(
                     response_mime_type="application/json",
                     temperature=0.2
                 )
@@ -158,8 +163,8 @@ You are a Knowledge Compressor. Your task is to create a concise summary of the 
             return self._fallback_merge(summaries)
         
         # Build input for LLM
-        summaries_text = "\n\n".join([
-            f"### Source: {s.source_title}\n**Concepts**: {', '.join(s.key_concepts)}\n**Facts**: {'; '.join(s.key_facts)}\n**Summary**: {s.summary}"
+        summaries_text = "\\n\\n".join([
+            f"### Source: {s.source_title}\\n**Concepts**: {', '.join(s.key_concepts)}\\n**Facts**: {'; '.join(s.key_facts)}\\n**Summary**: {s.summary}"
             for s in summaries
         ])
         
@@ -192,7 +197,7 @@ You are merging knowledge from {len(summaries)} different sources.
         try:
             response = self.model.generate_content(
                 prompt,
-                generation_config=genai.GenerationConfig(
+                generation_config=GenerationConfig(
                     response_mime_type="application/json",
                     temperature=0.3
                 )

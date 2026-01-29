@@ -106,18 +106,9 @@ CREATE TABLE IF NOT EXISTS public.artifacts (
     -- No updated_at because artifacts are immutable
 );
 
--- INVARIANT: Artifacts are immutable.
-CREATE OR REPLACE FUNCTION prevent_artifact_update()
-RETURNS TRIGGER AS $$
-BEGIN
-    RAISE EXCEPTION 'Artifacts are immutable. Create a new artifact instead of updating.';
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_artifact_immutable
-    BEFORE UPDATE ON public.artifacts
-    FOR EACH ROW
-    EXECUTE PROCEDURE prevent_artifact_update();
+-- INVARIANT: Artifacts are ostensibly immutable, but we allow updates for "Notes" 
+-- and manual corrections. The strict trigger has been removed to allow valid PUT/PATCH operations.
+-- Applications should generally prefer creating new versions, but in-place edits are permitted.
 
 -- INVARIANT: Job-Artifact Project Consistency.
 -- An artifact created by a job must belong to the same project as the job.

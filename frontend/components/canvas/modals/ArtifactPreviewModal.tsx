@@ -183,17 +183,78 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
       if (quizData?.questions) return quizData;
       return null;
 
-    case 'notes':
+    case 'notes': {
       // NotesRenderer expects { markdown: string } or string
-      const notesData = content.data || content.core?.notes || content.notes || content;
-      // If it's just a string, wrap it? No, renderer handles string.
-      // But we prefer consistent object.
+      let notesData = content.data || content.core?.notes || content.notes || content;
+
+      // 1. Try to parse stringified JSON (common from some LLM outputs)
+      if (typeof notesData === 'string' && /^\s*[\{\[]/.test(notesData)) {
+        try {
+          notesData = JSON.parse(notesData);
+        } catch (e) {
+          // Keep as string if parsing fails
+        }
+      }
+
+      let parentTitle = "";
+
+      // 2. Smart unwrapping of structured notes
+      if (notesData && typeof notesData === 'object' && !Array.isArray(notesData)) {
+        // Capture parent title if present
+        if (notesData.title || notesData.heading) {
+          parentTitle = `# ${notesData.title || notesData.heading}\n\n`;
+        }
+
+        if (Array.isArray(notesData.notes)) notesData = notesData.notes;
+        else if (Array.isArray(notesData.sections)) notesData = notesData.sections;
+      }
+
+      // 3. If we have a structured array (list of sections/notes), convert to Markdown
+      if (Array.isArray(notesData)) {
+        const processNode = (node: any, depth: number = 1): string => {
+          if (typeof node === 'string') return node + "\n\n";
+
+          let md = "";
+          const heading = node.heading || node.title;
+          // Use provided level or autocalculate, max 6
+          const level = Math.min(node.level || depth, 6);
+
+          if (heading) {
+            // Remove existing leading hashes to avoid double ##
+            const cleanHeading = heading.replace(/^#+\s*/, '');
+            md += `${"#".repeat(level)} ${cleanHeading}\n\n`;
+          }
+
+          if (node.content) {
+            const text = Array.isArray(node.content) ? node.content.join('\n\n') : node.content;
+            md += text + "\n\n";
+          }
+
+          // Recursively handle children
+          const children = node.sub_sections || node.subsections || node.sections || [];
+          if (Array.isArray(children)) {
+            md += children.map((c: any) => processNode(c, level + 1)).join("");
+          }
+          return md;
+        };
+
+        try {
+          const bodyMd = notesData.map((n: any) => processNode(n, 1)).join("\n\n");
+          return { markdown: parentTitle + bodyMd };
+        } catch (e) {
+          console.error("Notes conversion error", e);
+          return { markdown: "_Error converting notes format._" };
+        }
+      }
+
+      // Standard formats
       if (typeof notesData === 'string') return { markdown: notesData };
-      if (notesData?.markdown || notesData?.content) return notesData;
+      if (notesData?.markdown) return notesData;
+      if (notesData?.content && typeof notesData.content === 'string') return { markdown: notesData.content };
       if (notesData?.body) return { markdown: notesData.body };
-      // Fallback for legacy
-      if (notesData?.sections) return { markdown: "Legacy notes format not supported in editor." };
-      return { markdown: "" }; // Default empty
+
+      return { markdown: "" };
+    }
 
     case 'slides':
       // SlidesRenderer expects { slides: [...] }
@@ -765,8 +826,8 @@ function FlashcardRenderer({ data }: { data: any }) {
       </div>
 
       {/* Card Area */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-2xl aspect-[4/3] relative perspective-[1000px]">
+      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+        <div className="w-full max-w-2xl max-h-full aspect-[4/3] relative perspective-[1000px] shrink-1">
           <div
             className={cn(
               "w-full h-full relative cursor-pointer transition-all duration-500 ease-out",
@@ -777,7 +838,7 @@ function FlashcardRenderer({ data }: { data: any }) {
           >
             {/* Front */}
             <div
-              className="absolute inset-0 bg-white rounded-3xl p-10 flex flex-col items-center justify-center border border-gray-200 shadow-xl"
+              className="absolute inset-0 bg-white rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center border border-gray-200 shadow-xl"
               style={{ backfaceVisibility: 'hidden' }}
             >
               <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
@@ -787,26 +848,26 @@ function FlashcardRenderer({ data }: { data: any }) {
                 </span>
               </div>
 
-              <div className="flex-1 flex items-center justify-center w-full">
-                <h3 className="text-2xl md:text-3xl font-serif font-bold text-gray-900 text-center leading-snug">
+              <div className="flex-1 flex items-center justify-center w-full overflow-y-auto custom-scrollbar">
+                <h3 className="text-xl md:text-3xl font-serif font-bold text-gray-900 text-center leading-snug max-h-full">
                   <MathText>{currentCard.front}</MathText>
                 </h3>
               </div>
 
-              <p className="text-gray-400 text-xs font-medium mt-auto">Tap to reveal answer</p>
+              <p className="text-gray-400 text-xs font-medium mt-4 shrink-0">Tap to reveal answer</p>
             </div>
 
             {/* Back */}
             <div
-              className="absolute inset-0 bg-gray-900 rounded-3xl p-10 flex flex-col items-center justify-center shadow-xl force-white-text [transform:rotateY(180deg)]"
+              className="absolute inset-0 bg-gray-900 rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center shadow-xl force-white-text [transform:rotateY(180deg)]"
               style={{ backfaceVisibility: 'hidden' }}
             >
               <div className="absolute top-6 left-6">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Answer</span>
               </div>
 
-              <div className="flex-1 flex items-center justify-center w-full overflow-y-auto">
-                <div className="text-xl md:text-2xl font-serif font-medium text-center leading-relaxed" style={{ color: 'white' }}>
+              <div className="flex-1 flex items-center justify-center w-full overflow-y-auto custom-scrollbar">
+                <div className="text-lg md:text-2xl font-serif font-medium text-center leading-relaxed max-h-full" style={{ color: 'white' }}>
                   <MathText>{currentCard.back}</MathText>
                 </div>
               </div>
@@ -816,38 +877,38 @@ function FlashcardRenderer({ data }: { data: any }) {
       </div>
 
       {/* Controls */}
-      <div className="shrink-0 py-6 bg-white border-t border-gray-100">
-        <div className="flex items-center justify-center gap-6">
+      <div className="shrink-0 py-4 bg-white border-t border-gray-100">
+        <div className="flex items-center justify-center gap-4 max-w-xl mx-auto px-4">
           <Button
             onClick={handlePrev}
             variant="outline"
             size="icon"
-            className="w-12 h-12 rounded-full border-gray-200 hover:bg-gray-50"
+            className="w-10 h-10 rounded-full border-gray-200 hover:bg-gray-50 shrink-0"
           >
-            <ChevronLeft size={20} className="text-gray-600" />
+            <ChevronLeft size={18} className="text-gray-600" />
           </Button>
 
-          {/* Progress dots */}
-          <div className="flex items-center gap-1.5">
-            {Array.from({ length: Math.min(total, 10) }).map((_, i) => (
+          {/* Progress dots - with overflow handling */}
+          <div className="flex items-center gap-1 overflow-hidden">
+            {Array.from({ length: Math.min(total, 7) }).map((_, i) => (
               <div
                 key={i}
                 className={cn(
-                  "w-2 h-2 rounded-full transition-colors",
-                  i === currentIndex ? "bg-gray-900" : "bg-gray-200"
+                  "w-2 h-2 rounded-full transition-colors shrink-0",
+                  i === currentIndex % 7 ? "bg-gray-900" : "bg-gray-200"
                 )}
               />
             ))}
-            {total > 10 && <span className="text-xs text-gray-400 ml-1">+{total - 10}</span>}
+            {total > 7 && <span className="text-xs text-gray-400 ml-1 shrink-0">+{total - 7}</span>}
           </div>
 
           <Button
             onClick={handleNext}
             variant="outline"
             size="icon"
-            className="w-12 h-12 rounded-full border-gray-200 hover:bg-gray-50"
+            className="w-10 h-10 rounded-full border-gray-200 hover:bg-gray-50 shrink-0"
           >
-            <ChevronRight size={20} className="text-gray-600" />
+            <ChevronRight size={18} className="text-gray-600" />
           </Button>
         </div>
       </div>

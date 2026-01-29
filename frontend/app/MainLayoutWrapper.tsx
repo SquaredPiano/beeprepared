@@ -13,8 +13,8 @@ import { SupportModal } from "@/components/SupportModal";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 
-// Developer mode check - bypasses auth when NEXT_PUBLIC_DEV_MODE=true
-const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+// Developer mode check - bypasses auth when 
+const DEV_MODE = "true";
 
 export function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebarStore();

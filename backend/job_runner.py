@@ -61,7 +61,10 @@ class JobRunner:
                     print(f"JobRunner: Job {job.id} Committed Successfully.")
 
                 except Exception as e:
-                    print(f"JobRunner: Job {job.id} FAILED during execution: {e}")
+                    print(f"JobRunner: Job {job.id} FAILED during execution")
+                    print(f"Error Type: {type(e)}")
+                    print(f"Error Args: {e.args}")
+                    print(f"Error Repr: {repr(e)}")
                     import traceback
                     traceback.print_exc()
                     self.db.fail_job(job.id, str(e))

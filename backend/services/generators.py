@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+# Module-level model for structured output
+class QuestionBatch(BaseModel):
+    questions: List[ExamQuestion]
+
 class ArtifactGenerator:
     def __init__(self):
         self._setup_llm()
@@ -112,38 +116,44 @@ class ArtifactGenerator:
         try:
             logger.info(f"Generating batch: {count} x {q_type}...")
             
-            # Since 'List[Dict]' isn't a pydantic model, needed for schema, we might get raw JSON text
-            # Or define a wrapper model like BatchResponse(questions: List[ExamQuestion])
-            
-            # Let's try raw JSON generation by *not* passing schema but asking for JSON in prompt (Vertex handles response_mime_type if set manually in provider, but interface hides it)
-            # Actually, `LLMProvider` interface implementation handles Pydantic schema.
-            # If I want raw JSON list, I should define a wrapper model.
-            
-            class QuestionBatch(BaseModel):
-                questions: List[ExamQuestion]
-
+            # Use module-level QuestionBatch model
             result = self.llm.generate_content(
                 prompt=prompt,
                 context=core_json,
                 schema=QuestionBatch
             )
             
+            if result is None:
+                logger.error(f"LLM returned None for {q_type} batch")
+                return []
+            
             if isinstance(result, QuestionBatch):
-                # Convert back to list of dicts for processing
+                logger.info(f"Successfully generated {len(result.questions)} {q_type} questions")
                 return [q.model_dump() for q in result.questions]
+            
+            # Handle dict result
+            if isinstance(result, dict) and 'questions' in result:
+                logger.info(f"Converting dict result for {q_type}")
+                return result.get('questions', [])
                 
+            logger.error(f"Unexpected result type for {q_type}: {type(result)}")
             return []
 
         except Exception as e:
-            logger.error(f"Failed to generate batch {q_type}: {e}")
+            logger.error(f"Failed to generate batch {q_type}: {e}", exc_info=True)
             return []
 
     def generate_exam(self, core: KnowledgeCore) -> Optional[FinalExamModel]:
-        if not self.llm: return None
+        if not self.llm: 
+            logger.error("LLM not initialized for exam generation")
+            return None
+        
+        logger.info("Starting exam generation...")
         core_json = core.model_dump_json(indent=2)
         
         spec = self._generate_exam_spec(core)
         if not spec:
+            logger.info("Using default ExamSpec")
             spec = ExamSpec(
                 discipline="General", 
                 exam_style="Standard", 
@@ -154,84 +164,191 @@ class ArtifactGenerator:
 
         all_questions = []
         # Phase 1: MCQs
+        logger.info("Generating MCQ batch...")
         mcqs = self._generate_questions_batch(core_json, spec, "MCQ", 15, 3)
         all_questions.extend(mcqs)
+        logger.info(f"Generated {len(mcqs)} MCQs")
+        
         # Phase 2: Short Answer
+        logger.info("Generating Short Answer batch...")
         shorts = self._generate_questions_batch(core_json, spec, "Short Answer", 5, 5)
         all_questions.extend(shorts)
+        logger.info(f"Generated {len(shorts)} short answers")
+        
         # Phase 3: Problem Sets
+        logger.info("Generating Problem Set batch...")
         problems = self._generate_questions_batch(core_json, spec, "Problem Set", 3, 10)
         all_questions.extend(problems)
+        logger.info(f"Generated {len(problems)} problem sets")
         
         if not all_questions:
+            logger.error("No questions generated for exam")
             return None
 
+        logger.info(f"Total questions generated: {len(all_questions)}")
+        
         # Fix IDs
         for i, q in enumerate(all_questions):
             q["id"] = f"Q-{i+1}"
 
         try:
-            return FinalExamModel(
+            exam = FinalExamModel(
                 title=f"Final Exam: {core.title}",
                 exam_spec=spec,
                 instructions=f"({spec.instructions_tone}) {spec.exam_style}. Answer all questions.",
                 rubric=spec.grading_philosophy,
                 questions=all_questions
             )
+            logger.info("Successfully created FinalExamModel")
+            return exam
         except Exception as e:
-            logger.error(f"Failed to assemble FinalExamModel: {e}")
+            logger.error(f"Failed to assemble FinalExamModel: {e}", exc_info=True)
             return None
 
     def generate_quiz(self, core: KnowledgeCore) -> Optional[QuizModel]:
-        if not self.llm: return None
+        if not self.llm: 
+            logger.error("LLM not initialized for quiz generation")
+            return None
+        
         prompt = """
-        You are an expert Examiner.
-        **Task**: Generate a QuizModel based on the provided content (10-15 questions).
-        **Formatting**: Use LaTeX for all math ($x^2$).
+        You are an expert Examiner creating a quiz.
+        
+        **Task**: Generate 10-15 quiz questions based on the provided course material.
+        
+        **Each question must have**:
+        - "id": Unique identifier (e.g., "Q1", "Q2")
+        - "text": The question text (use LaTeX for math, e.g., $x^2$)
+        - "type": Either "True/False" or "MCQ"
+        - "options": List of options (["True", "False"] for T/F, or ["A", "B", "C", "D"] for MCQ)
+        - "correct_answer_index": Index of the correct option (0-based)
+        - "explanation": Why this answer is correct
+        - "topic_focus": The specific concept being tested
+        
+        **Rules**:
+        1. Mix True/False and MCQ questions
+        2. Cover the most important concepts
+        3. Make questions clear and unambiguous
+        4. Use LaTeX for all mathematical expressions
+        
+        **Output**: A JSON object with "title" and "questions" array.
         """
+        
         try:
-            return self.llm.generate_content(
+            logger.info("Starting quiz generation...")
+            result = self.llm.generate_content(
                 prompt=prompt,
                 context=core.model_dump_json(),
                 schema=QuizModel
             )
+            
+            if result is None:
+                logger.error("LLM returned None for quiz")
+                return None
+                
+            if isinstance(result, QuizModel):
+                logger.info(f"Successfully generated quiz with {len(result.questions)} questions")
+                return result
+            
+            if isinstance(result, dict):
+                logger.info("Converting dict result to QuizModel")
+                return QuizModel(**result)
+                
+            logger.error(f"Unexpected result type: {type(result)}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Failed to generate Quiz: {e}")
+            logger.error(f"Failed to generate Quiz: {e}", exc_info=True)
             return None
 
     def generate_flashcards(self, core: KnowledgeCore) -> Optional[FlashcardModel]:
-        if not self.llm: return None
+        if not self.llm: 
+            logger.error("LLM not initialized for flashcard generation")
+            return None
+        
         prompt = """
-        You are an expert Tutor.
-        **Task**: Generate a FlashcardModel (15-20 cards).
-        **Formatting**: Use LaTeX for all math ($x^2$).
+        You are an expert Tutor creating study flashcards.
+        
+        **Task**: Generate 15-20 flashcards based on the provided course material.
+        
+        **Each flashcard must have**:
+        - "front": The question or concept (use LaTeX for math, e.g., $x^2$)
+        - "back": The answer or definition (use LaTeX for math)
+        - "hint": Optional hint to help recall (can be null)
+        
+        **Rules**:
+        1. Cover the most important concepts from the material
+        2. Make questions clear and unambiguous
+        3. Keep answers concise but complete
+        4. Use LaTeX notation for all mathematical expressions
+        
+        **Output**: A JSON object with a "cards" array containing the flashcards.
         """
+        
         try:
-            return self.llm.generate_content(
+            logger.info("Starting flashcard generation...")
+            result = self.llm.generate_content(
                 prompt=prompt,
                 context=core.model_dump_json(),
                 schema=FlashcardModel
             )
+            
+            if result is None:
+                logger.error("LLM returned None for flashcards")
+                return None
+                
+            if isinstance(result, FlashcardModel):
+                logger.info(f"Successfully generated {len(result.cards)} flashcards")
+                return result
+            
+            # If we got a dict, try to parse it
+            if isinstance(result, dict):
+                logger.info("Converting dict result to FlashcardModel")
+                return FlashcardModel(**result)
+                
+            logger.error(f"Unexpected result type: {type(result)}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Failed to generate Flashcards: {e}")
+            logger.error(f"Failed to generate Flashcards: {e}", exc_info=True)
             return None
 
     def generate_notes(self, core: KnowledgeCore) -> Optional[MarkdownNotesModel]:
-        if not self.llm: return None
+        if not self.llm: 
+            logger.error("LLM not initialized for notes generation")
+            return None
+        
         prompt = """
         You are an expert Academic Note-Taker.
-         **Task**: Generate detailed study notes in Markdown format.
-         **Output**: Pure Markdown text.
-         **Formatting**: Use LaTeX for ALL mathematical formulas ($...$ or $$...$$).
+        
+        **Task**: Generate detailed study notes in Markdown format based on the provided material.
+        
+        **Requirements**:
+        1. Start with a heading using # syntax
+        2. Organize content into clear sections with ## and ### headings
+        3. Use bullet points for key concepts
+        4. Use LaTeX for ALL mathematical formulas ($...$ for inline, $$...$$ for block)
+        5. Include definitions, examples, and key takeaways
+        
+        **Output**: Pure Markdown text (not JSON).
         """
+        
         try:
+            logger.info("Starting notes generation...")
             # No schema -> returns string
             text = self.llm.generate_content(
                 prompt=prompt,
                 context=core.model_dump_json()
             )
-            if not text or not isinstance(text, str): 
+            
+            if not text:
+                logger.error("LLM returned empty response for notes")
                 return None
+                
+            if not isinstance(text, str):
+                logger.error(f"Expected string but got {type(text)}")
+                return None
+            
+            logger.info(f"Generated notes with {len(text)} characters")
             
             title = f"Notes: {core.title}"
             lines = text.split('\n')
@@ -244,21 +361,58 @@ class ArtifactGenerator:
                 body=text
             )
         except Exception as e:
-            logger.error(f"Failed to generate Notes: {e}")
+            logger.error(f"Failed to generate Notes: {e}", exc_info=True)
             return None
 
     def generate_slides(self, core: KnowledgeCore) -> Optional[SlidesModel]:
-        if not self.llm: return None
+        if not self.llm: 
+            logger.error("LLM not initialized for slides generation")
+            return None
+        
         prompt = """
-        You are an expert Content Designer.
-        **Task**: Generate a SlidesModel (10-12 slides).
+        You are an expert Content Designer creating a presentation.
+        
+        **Task**: Generate 10-12 presentation slides based on the provided course material.
+        
+        **Each slide must have**:
+        - "heading": Slide headline
+        - "main_idea": One sentence summary
+        - "bullet_points": 3-5 brief bullet points
+        - "visual_cue": Description for image/chart
+        - "speaker_notes": What the presenter should say
+        
+        **Rules**:
+        1. Cover the most important concepts
+        2. Keep slides concise and scannable
+        3. Use LaTeX for mathematical expressions
+        4. Include a title slide and conclusion slide
+        
+        **Output**: A JSON object with "title", "audience_level", and "slides" array.
         """
+        
         try:
-            return self.llm.generate_content(
+            logger.info("Starting slides generation...")
+            result = self.llm.generate_content(
                 prompt=prompt,
                 context=core.model_dump_json(),
                 schema=SlidesModel
             )
+            
+            if result is None:
+                logger.error("LLM returned None for slides")
+                return None
+                
+            if isinstance(result, SlidesModel):
+                logger.info(f"Successfully generated {len(result.slides)} slides")
+                return result
+            
+            if isinstance(result, dict):
+                logger.info("Converting dict result to SlidesModel")
+                return SlidesModel(**result)
+                
+            logger.error(f"Unexpected result type: {type(result)}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Failed to generate Slides: {e}")
+            logger.error(f"Failed to generate Slides: {e}", exc_info=True)
             return None

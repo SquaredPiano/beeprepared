@@ -1,0 +1,77 @@
+# Environment
+.env
+.env*
+.env.local
+ENV_SETUP.md
+
+# Application Data
+db_data/
+uploads/
+artifacts/
+
+# Version Control
+.git
+.gitignore
+.github
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Python
+backend/venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov/
+
+# Build outputs
+frontend/.next
+frontend/out
+frontend/build
+dist/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/Temp
+test_results/
+tmp/
+*.log
+verify_rpc.sh
+backend/scripts
+backend/tests
+backend/repair_db.py
+.git
+.gitignore
+
+node_modules
+frontend/node_modules
+
+.venv
+venv
+__pycache__
+
+.env
+.env.*
+
+dist
+build
+
+*.log
+*.pdf
+*.mp4
+*.wav
+*.zip
+lyrical-epigram-484715-v6-f865e736b70b.json
