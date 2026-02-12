@@ -1,44 +1,44 @@
-# Environment
+# --- Secrets -----------------------------------------------------------------
+# Real env files never get committed; the .example templates always do.
 .env
-.env*
-.env.local
-ENV_SETUP.md
+.env.*
+!.env.example
+!.env.*.example
+service_account.json
+*service-account*.json
+lyrical-epigram-*.json
 
-# Prompts (internal planning docs)
-.github/prompts
+# --- Dependencies ------------------------------------------------------------
+backend/venv/
+.venv/
+frontend/node_modules/
 
-# Virtual Environments
-backend/venv
-frontend/node_modules
+# --- Build output ------------------------------------------------------------
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+/output
 
-# Build outputs
-frontend/.next
-frontend/out
+# --- Local runtime data ------------------------------------------------------
+# The embedded SQLite database and locally stored artifacts.
+backend/.storage/
+*.db
+*.db-wal
+*.db-shm
 
-# Testing temp
-eg_temp
-frontend/eg
-
-# Python cache
+# --- Python ------------------------------------------------------------------
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
 
-# IDE
+# --- Editors and OS ----------------------------------------------------------
 .vscode/
 .idea/
+.DS_Store
 
-verify_rpc.sh
-
-/output
-/tests
-.orchids
-.pytest_cache
-backend/scripts
-backend/tests
-backend/repair_db.py
-backend/list_models
-docs
-lyrical-epigram-484715-v6-f865e736b70b.json
-service_account.json
+# --- Scratch -----------------------------------------------------------------
+eg_temp/
+frontend/eg/
+.orchids/
