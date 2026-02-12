@@ -30,6 +30,7 @@ const tabs = [
   { id: "recent", label: "Recently Visited", icon: History },
 ];
 
+const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState("projects");
@@ -60,6 +61,10 @@ export default function LibraryPage() {
     }
 
     fetchData();
+
+    if (DEV_MODE) {
+      return;
+    }
 
     // Realtime Subscription (Push-based updates)
     const channel = supabase.channel('active-jobs')

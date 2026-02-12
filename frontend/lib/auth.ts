@@ -1,6 +1,9 @@
 "use client";
 
 import { supabase } from "./supabase";
+import { getMockAccessToken, mockUser } from "./mockAuth";
+
+const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 /**
  * AuthError represents authentication-related errors.
@@ -25,6 +28,10 @@ export class AuthError extends Error {
  * @throws AuthError if no valid session exists or refresh fails
  */
 export async function getAccessToken(): Promise<string> {
+    if (DEV_MODE) {
+        return getMockAccessToken();
+    }
+
     const { data: { session }, error } = await supabase.auth.getSession();
 
     if (error) {
@@ -65,6 +72,10 @@ export async function getAccessToken(): Promise<string> {
  * Non-throwing version of getAccessToken for conditional checks.
  */
 export async function isAuthenticated(): Promise<boolean> {
+    if (DEV_MODE) {
+        return true;
+    }
+
     try {
         await getAccessToken();
         return true;
@@ -78,6 +89,10 @@ export async function isAuthenticated(): Promise<boolean> {
  * @throws AuthError if not authenticated
  */
 export async function getUserId(): Promise<string> {
+    if (DEV_MODE) {
+        return mockUser.id;
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.user?.id) {
