@@ -2,14 +2,14 @@ import re
 import os
 import logging
 import asyncio
-from dotenv import load_dotenv
+from backend.env import load_environment
 from backend.core.services.llm_factory import LLMFactory
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_environment()
 
 class TextCleaningService:
     def __init__(self):
