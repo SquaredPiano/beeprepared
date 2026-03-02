@@ -1,42 +1,37 @@
-import os
-import uuid
-import time
-import logging
-import tempfile
-import boto3
-from botocore.config import Config
-import yt_dlp
-import ffmpeg
-from dotenv import load_dotenv
+"""
+Source ingestion: get the raw material into object storage in a usable form.
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+Audio and video are normalised to 16 kHz mono PCM WAV before storage, because
+that is what every speech-to-text backend wants and doing it once at ingest
+keeps the extraction path simple. Documents are stored as-is.
+
+Storage goes through ``ObjectStore``, so this works against local disk or R2
+without the caller knowing which.
+"""
+
+import logging
+import os
+import tempfile
+import time
+import uuid
+from typing import Optional
+
+import ffmpeg
+import yt_dlp
+
+from backend.env import load_environment
+from backend.services.storage import ObjectStore, get_object_store
+
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_environment()
+
 
 class IngestionService:
-    def __init__(self):
-        self._setup_r2()
+    """Normalises and stores uploaded sources, returning provenance metadata."""
 
-    def _setup_r2(self):
-        """Initialize Cloudflare R2 client with SigV4."""
-        self.r2_endpoint = os.getenv("R2_ENDPOINT_URL")
-        self.r2_key = os.getenv("R2_ACCESS_KEY_ID")
-        self.r2_secret = os.getenv("R2_SECRET_ACCESS_KEY")
-        self.r2_bucket = os.getenv("R2_BUCKET_NAME")
-
-        if self.r2_endpoint and self.r2_key and self.r2_secret:
-            self.s3_client = boto3.client(
-                service_name='s3',
-                endpoint_url=self.r2_endpoint,
-                aws_access_key_id=self.r2_key,
-                aws_secret_access_key=self.r2_secret,
-                region_name='auto',
-                config=Config(signature_version='s3v4')
-            )
-        else:
-            logger.warning("R2 credentials missing. Uploads will fail.")
+    def __init__(self, store: Optional[ObjectStore] = None):
+        self.store = store or get_object_store()
 
     def _convert_to_azure_wav(self, input_path: str, output_path: str):
         """
@@ -55,16 +50,10 @@ class IngestionService:
             logger.error(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
             raise
 
-    def _upload_to_r2(self, file_path: str, object_key: str) -> str:
-        """
-        Uploads file to R2 and returns the key.
-        """
-        logger.info(f"Uploading to R2: {object_key}")
-        self.s3_client.upload_file(file_path, self.r2_bucket, object_key)
-        # Construct a public or presigned URL if needed, but for now returning key/ID
-        # usually R2 public URL is https://<bucket>.<account>.r2.cloudflarestorage.com/<key>
-        # or custom domain. For this backend, the key might be enough.
-        return object_key 
+    def _store_file(self, file_path: str, object_key: str) -> str:
+        """Store a file and return the key that identifies it."""
+        logger.info("Storing source object: %s", object_key)
+        return self.store.put_file(file_path, object_key)
 
     def _generate_metadata(self, file_id, user_id, file_url, file_name, file_type, status="COMPLETED"):
         return {
@@ -82,7 +71,7 @@ class IngestionService:
         """
         1. Download Audio
         2. Convert to Azure WAV
-        3. Upload to R2
+        3. Store the normalised audio
         4. Return Metadata
         """
         file_id = str(uuid.uuid4())
@@ -108,14 +97,14 @@ class IngestionService:
                 self._convert_to_azure_wav(downloaded_path, wav_path)
 
                 # 3. Upload
-                r2_key = f"uploads/{wav_filename}"
-                self._upload_to_r2(wav_path, r2_key)
+                storage_key = f"uploads/{wav_filename}"
+                self._store_file(wav_path, storage_key)
 
                 # 4. Metadata
                 return self._generate_metadata(
                     file_id=file_id,
                     user_id=user_id,
-                    file_url=r2_key,
+                    file_url=storage_key,
                     file_name=video_title,
                     file_type="YOUTUBE"
                 )
@@ -126,7 +115,7 @@ class IngestionService:
     def process_audio_upload(self, file_path: str, user_id: str, original_name: str) -> dict:
         """
         1. Convert to Azure WAV
-        2. Upload to R2
+        2. Store the normalised audio
         3. Return Metadata
         """
         file_id = str(uuid.uuid4())
@@ -140,13 +129,13 @@ class IngestionService:
                 self._convert_to_azure_wav(file_path, wav_path)
 
                 # 2. Upload
-                r2_key = f"uploads/{wav_filename}"
-                self._upload_to_r2(wav_path, r2_key)
+                storage_key = f"uploads/{wav_filename}"
+                self._store_file(wav_path, storage_key)
 
                 return self._generate_metadata(
                     file_id=file_id,
                     user_id=user_id,
-                    file_url=r2_key,
+                    file_url=storage_key,
                     file_name=original_name,
                     file_type="AUDIO"
                 )
@@ -156,22 +145,17 @@ class IngestionService:
                 traceback.print_exc()
                 return self._generate_metadata(file_id, user_id, "", original_name, "AUDIO", status="FAILED")
 
-    def _delete_from_r2(self, object_key: str):
-        """
-        Deletes a file from R2.
-        """
-        logger.info(f"Deleting from R2: {object_key}")
-        try:
-            self.s3_client.delete_object(Bucket=self.r2_bucket, Key=object_key)
-        except Exception as e:
-            logger.error(f"Failed to delete {object_key} from R2: {e}")
+    def _delete_object(self, object_key: str):
+        """Remove a stored object. Used to drop the source video once audio is extracted."""
+        logger.info("Deleting stored object: %s", object_key)
+        self.store.delete(object_key)
 
     def process_video_upload(self, file_path: str, user_id: str, original_name: str) -> dict:
         """
-        1. Upload Video to R2
+        1. Store the source video
         2. Extract Audio -> Azure WAV
-        3. Upload WAV to R2
-        4. Delete Video from R2
+        3. Store the WAV
+        4. Drop the source video
         5. Return Metadata (pointing to Audio)
         """
         file_id = str(uuid.uuid4())
@@ -181,7 +165,7 @@ class IngestionService:
 
         try:
             # 1. Upload Video
-            self._upload_to_r2(file_path, video_key)
+            self._store_file(file_path, video_key)
             
             with tempfile.TemporaryDirectory() as temp_dir:
                 # 2. Convert/Extract
@@ -191,10 +175,10 @@ class IngestionService:
 
                 # 3. Upload Audio
                 audio_key = f"uploads/{wav_filename}"
-                self._upload_to_r2(wav_path, audio_key)
+                self._store_file(wav_path, audio_key)
 
                 # 4. Delete Video
-                self._delete_from_r2(video_key)
+                self._delete_object(video_key)
 
                 return self._generate_metadata(
                     file_id=file_id,
@@ -207,15 +191,15 @@ class IngestionService:
             logger.error(f"Video processing failed: {e}")
             # Attempt cleanup if video was uploaded
             try:
-                self._delete_from_r2(video_key)
-            except:
-                pass
+                self._delete_object(video_key)
+            except Exception:
+                logger.debug("Could not clean up partial video upload %s", video_key)
             return self._generate_metadata(file_id, user_id, "", original_name, "VIDEO", status="FAILED")
 
     def process_document(self, file_path: str, user_id: str, original_name: str, doc_type: str) -> dict:
         """
         Handles PDF, SLIDES (PPTX), MD.
-        1. Upload Raw to R2
+        1. Store the document as-is
         2. Return Metadata
         """
         file_id = str(uuid.uuid4())
@@ -225,38 +209,16 @@ class IngestionService:
             # 1. Upload
             # Preserve extension or just use ID? Using ID to avoid collisions, keeping extension
             ext = os.path.splitext(original_name)[1]
-            r2_key = f"documents/{file_id}{ext}"
-            self._upload_to_r2(file_path, r2_key)
+            storage_key = f"documents/{file_id}{ext}"
+            self._store_file(file_path, storage_key)
 
             return self._generate_metadata(
                 file_id=file_id,
                 user_id=user_id,
-                file_url=r2_key,
+                file_url=storage_key,
                 file_name=original_name,
                 file_type=doc_type
             )
         except Exception as e:
             logger.error(f"Document processing failed: {e}")
             return self._generate_metadata(file_id, user_id, "", original_name, doc_type, status="FAILED")
-
-if __name__ == "__main__":
-    # Test Block
-    ingestor = IngestionService()
-    
-    # 1. Test YouTube
-    # print(ingestor.process_youtube("https://www.youtube.com/watch?v=MEUh_y1IFZY", "user_123"))
-
-    # 2. Test Local Audio
-    # print(ingestor.process_audio_upload("/Users/vishnu/Downloads/Maroon 5 - One More Night (Lyric Video).mp3", "user_123", "Maroon 5 - One More Night (Lyric Video).mp3"))
-    
-    # 3. Test Markdown
-    # print(ingestor.process_document("/Users/vishnu/Documents/Lumen/lumen/BACKEND_IMPLEMENTATION_PLAN.md", "user_123", "BACKEND_IMPLEMENTATION_PLAN.md", "MD"))
-
-    # 4. Test Video Upload
-    # print(ingestor.process_video_upload("/Users/vishnu/Movies/VersatileMageOpening.mp4", "user_123", "VersatileMageOpening.mp4"))
-
-    # 5. Test PPTX
-    # print(ingestor.process_document("/Users/vishnu/Documents/Google Takeout/Takeout/Drive/95942_Vishnu_Sai_Aleksandar_Srnec_1419951_12367456.pptx", "user_123", "95942_Vishnu_Sai_Aleksandar_Srnec_1419951_12367456.pptx", "pptx"))
-    
-    # 6. Test PDF
-    # print(ingestor.process_document("/Users/vishnu/Documents/_CSResumesInspo/Shayan_Syed_Resume.pdf", "user_123", "Shayan_Syed_Resume.pdf", "pdf"))
