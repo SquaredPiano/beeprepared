@@ -17,10 +17,8 @@ import time
 import shutil
 from pathlib import Path
 from typing import Optional, Tuple
-from dotenv import load_dotenv
+from backend.env import load_environment
 
-import boto3
-# import azure.cognitiveservices.speech as speechsdk
 import pypdf
 try:
     from pptx import Presentation
@@ -37,7 +35,7 @@ import ffmpeg
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_environment()
 
 
 class ExtractionService:
@@ -49,10 +47,11 @@ class ExtractionService:
     SUPPORTED_VIDEO = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv'}
     SUPPORTED_DOCS = {'.pdf', '.pptx', '.ppt', '.md', '.txt', '.docx'}
     
-    def __init__(self):
-        # self._setup_azure_speech()
+    def __init__(self, store=None):
+        from backend.services.storage import get_object_store
+
         self._setup_deepgram()
-        self._setup_r2()
+        self.store = store or get_object_store()
     
     def _setup_deepgram(self):
         """Initialize Deepgram SDK."""
@@ -69,49 +68,27 @@ class ExtractionService:
             logger.warning("DEEPGRAM_API_KEY not found. Audio transcription will fail.")
             self.deepgram = None
 
-    def _setup_r2(self):
-        """Initialize Cloudflare R2 client."""
-        self.r2_endpoint = os.getenv("R2_ENDPOINT_URL")
-        self.r2_key = os.getenv("R2_ACCESS_KEY_ID")
-        self.r2_secret = os.getenv("R2_SECRET_ACCESS_KEY")
-        self.r2_bucket = os.getenv("R2_BUCKET_NAME")
-
-        if self.r2_endpoint and self.r2_key and self.r2_secret:
-            try:
-                self.s3_client = boto3.client(
-                    service_name='s3',
-                    endpoint_url=self.r2_endpoint,
-                    aws_access_key_id=self.r2_key,
-                    aws_secret_access_key=self.r2_secret
-                )
-            except Exception as e:
-                logger.error(f"Failed to initialize R2 client: {e}")
-                self.s3_client = None
-        else:
-            logger.warning("R2 credentials missing. R2 download will fail.")
-            self.s3_client = None
-
-    def extract_from_r2(self, r2_key: str) -> Tuple[str, dict]:
+    def extract_from_storage(self, storage_key: str) -> Tuple[str, dict]:
         """
-        Download file from R2 -> Temp File -> Extract -> Return.
+        Pull an object out of storage into a temp file, extract it, then delete
+        the temp copy. Extraction always works on a real local path because the
+        PDF, PPTX and ffmpeg readers all want one.
         """
-        if not self.s3_client:
-            raise RuntimeError("R2 client not initialized. Check credentials.")
+        logger.info("Fetching source object for extraction: %s", storage_key)
+        ext = os.path.splitext(storage_key)[1]
 
-        logger.info(f"Downloading from R2: {r2_key}")
-        ext = os.path.splitext(r2_key)[1]
-        
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp_path = tmp.name
-        
+
         try:
-            self.s3_client.download_file(self.r2_bucket, r2_key, tmp_path)
-            logger.info(f"Downloaded to temp file: {tmp_path}")
+            self.store.download_to(storage_key, tmp_path)
             return self.extract(tmp_path)
-            
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+
+    # Retained under the original name so older callers keep working.
+    extract_from_r2 = extract_from_storage
     
     def detect_file_type(self, file_path: str) -> str:
         """Detect the type of file based on extension."""
