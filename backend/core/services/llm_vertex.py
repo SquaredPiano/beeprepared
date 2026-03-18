@@ -5,6 +5,7 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 from typing import Optional, Type, Union, Any, Dict, List
 from pydantic import BaseModel
 from backend.core.llm_interface import LLMProvider
+from backend.env import load_environment
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ def _prepare_vertex_schema(pydantic_model: Type[BaseModel]) -> Dict[str, Any]:
 
 class VertexLLM(LLMProvider):
     def __init__(self):
+        load_environment()
         self.project_id = os.getenv("VERTEX_PROJECT_ID")
         self.location = os.getenv("VERTEX_LOCATION", "us-central1")
         self.model_name = os.getenv("VERTEX_MODEL", "gemini-2.5-flash") # Stable alias
@@ -92,7 +94,10 @@ class VertexLLM(LLMProvider):
             credentials = None
             
             if creds_path and os.path.exists(creds_path):
-                credentials = service_account.Credentials.from_service_account_file(creds_path)
+                credentials = service_account.Credentials.from_service_account_file(
+                    creds_path,
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                )
             
             vertexai.init(project=self.project_id, location=self.location, credentials=credentials)
             
