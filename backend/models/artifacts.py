@@ -12,7 +12,7 @@ class ExamSpec(BaseModel):
 # --- 1. Final Exam Model ---
 class ExamQuestion(BaseModel):
     id: str = Field(description="Unique identifier for the question (e.g., 'Q1')")
-    text: str = Field(description="The question text. Use LaTeX for math (e.g., $\int x dx$).")
+    text: str = Field(description=r"The question text. Use LaTeX for math (e.g., $\int x dx$).")
     type: Literal['MCQ', 'Short Answer', 'Problem Set'] = Field(description="Type of question")
     options: Optional[List[str]] = Field(description="Options for MCQ, null for others")
     points: int = Field(description="Point value for this question")
@@ -84,3 +84,63 @@ class SlidesModel(BaseModel):
     title: str = Field(description="Presentation Title")
     audience_level: str = Field(description="Target audience (e.g., 'Beginner', 'Advanced')")
     slides: List[Slide] = Field(description="List of slides")
+
+# --- 6. Study Guide Model ---
+class StudyGuideModel(BaseModel):
+    """A time-boxed revision plan: what to learn, in what order, and how to self-check."""
+    title: str = Field(description="Title of the study guide")
+    estimated_minutes: int = Field(description="Rough time to work through the whole guide")
+    objectives: List[str] = Field(description="Learning objectives, most important first")
+    body: str = Field(description="The guide itself, in Markdown, ordered for a single study session")
+    checklist: List[str] = Field(description="Self-check questions the learner should be able to answer")
+
+# --- 7. Cheat Sheet Model ---
+class CheatSheetSection(BaseModel):
+    heading: str = Field(description="Section heading")
+    entries: List[str] = Field(description="Terse one-line facts, formulas or definitions")
+
+class CheatSheetModel(BaseModel):
+    """Dense single-page reference. Optimised for scanning, not for reading."""
+    title: str = Field(description="Title of the cheat sheet")
+    sections: List[CheatSheetSection] = Field(description="Sections of the cheat sheet")
+
+# --- 8. Mind Map Model ---
+# The depth levels are separate types on purpose. A self-referencing node
+# (`children: List["MindMapNode"]`) is the obvious modelling, but it compiles to
+# a JSON Schema with a `$ref` back to itself and no depth bound - and models
+# handed that schema will happily recurse until they hit their output limit.
+# Three concrete levels express the same tree, cap the depth in the schema
+# itself, and cost nothing at the call site.
+
+class MindMapLeaf(BaseModel):
+    label: str = Field(description="Short label, at most six words")
+    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
+
+class MindMapBranch(BaseModel):
+    label: str = Field(description="Short label, at most six words")
+    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
+    children: List[MindMapLeaf] = Field(default_factory=list, description="Leaf nodes")
+
+class MindMapRoot(BaseModel):
+    label: str = Field(description="The subject of the material")
+    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
+    children: List[MindMapBranch] = Field(default_factory=list, description="Top-level branches")
+
+class MindMapModel(BaseModel):
+    """Hierarchical concept map, rendered as an expandable tree in the UI."""
+    title: str = Field(description="Title of the mind map")
+    root: MindMapRoot = Field(description="Root node of the map")
+
+# Every artifact type the generator can produce, and the model it produces.
+GENERATED_ARTIFACT_MODELS = {
+    "quiz": QuizModel,
+    "exam": FinalExamModel,
+    "notes": MarkdownNotesModel,
+    "slides": SlidesModel,
+    "flashcards": FlashcardModel,
+    "study_guide": StudyGuideModel,
+    "cheatsheet": CheatSheetModel,
+    "mindmap": MindMapModel,
+}
+
+GENERATED_ARTIFACT_TYPES = frozenset(GENERATED_ARTIFACT_MODELS)
