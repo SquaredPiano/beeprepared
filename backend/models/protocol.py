@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # Matches SQL type 'artifact_type' via string serialization
 class ArtifactPayload(BaseModel):
@@ -9,11 +9,7 @@ class ArtifactPayload(BaseModel):
     type: str # 'video', 'text', 'knowledge_core', etc.
     content: Dict[str, Any] # JSONB
     
-    # Optional fields that might not always be set logic-side but are needed for DB
-    # or sometimes inferred. For now, strict as per requirement.
-    
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 # Matches SQL type 'edge_type' via string serialization 
 class EdgePayload(BaseModel):
