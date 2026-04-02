@@ -1,16 +1,17 @@
-import os
+import asyncio
 import logging
-from typing import List, Optional, Any
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 
 from backend.core.services.llm_factory import LLMFactory
+from backend.env import load_environment
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_environment()
 
 # --- Pydantic Data Models (Schema) ---
 # (Keeping models same as before)
@@ -55,73 +56,109 @@ class KnowledgeCore(BaseModel):
     examples: List[Example] = Field(description="List of illustrative examples")
     key_facts: List[KeyFact] = Field(description="List of key atomic facts")
 
+EXTRACTION_PROMPT = """
+You are an expert knowledge engineer. Extract a definitive "source of truth"
+from the provided material.
+
+Extract:
+1. **Concepts** - the core ideas and abstractions discussed.
+2. **Hierarchy** - a nested outline reflecting the logical flow of the material.
+3. **Notes** - comprehensive detailed notes, grouped by topic.
+4. **Definitions** - terminology, with the context it was used in.
+5. **Examples** - concrete examples, metaphors and stories used to illustrate points.
+6. **Key facts** - atomic, objective facts stated in the material.
+
+Be exhaustive. Capture every meaningful idea; prefer detail in the notes over
+brevity. Write plain text only - no LaTeX, no Markdown syntax.
+"""
+
+# Above this many characters a single request starts losing detail at the tail
+# of the document, so the extraction is mapped over chunks and reduced instead.
+SINGLE_PASS_CHAR_LIMIT = 24_000
+CHUNK_CHARS = 12_000
+
+
 class KnowledgeCoreService:
-    def __init__(self):
-        self._setup_llm()
+    """Extracts the structured ``KnowledgeCore`` that the whole graph derives from."""
 
-    def _setup_llm(self):
-        """Initialize LLM Provider via Factory."""
-        try:
-            self.llm = LLMFactory.get_provider()
-        except Exception as e:
-            logger.error(f"Failed to initialize LLM Provider: {e}")
-            self.llm = None
-
+    def __init__(self, llm=None):
+        self.llm = llm or LLMFactory.get_provider()
 
     async def generate_knowledge_core(self, clean_text: str) -> KnowledgeCore:
         """
-        Generates the Knowledge Core JSON structure from cleaned text using the abstract LLM provider.
-        Async execution.
-        """
-        if not self.llm:
-            raise RuntimeError("LLM Provider is not initialized")
+        Build a ``KnowledgeCore`` from cleaned source text.
 
-        if not clean_text:
+        Short documents go through in one request. Longer ones are chunked, each
+        chunk extracted concurrently, and the partial cores merged - a lecture
+        transcript can easily exceed what one request can attend to properly,
+        and the tail of the document is exactly where detail was being lost.
+        """
+        if not clean_text or not clean_text.strip():
             raise ValueError("Input text is empty")
 
-        logger.info("Generating Knowledge Core via LLM Provider (Async Pro Model)...")
+        if len(clean_text) <= SINGLE_PASS_CHAR_LIMIT:
+            logger.info("Generating Knowledge Core in a single pass (%d chars)", len(clean_text))
+            return await self._extract(clean_text)
 
-        prompt = """
-        You are an expert Knowledge Engineer. Your goal is to extract a definitive "Source of Truth" from the provided transcript.
-        
-        Analyze the text deeply and extract the following structured data:
-        1.  **Concepts**: The core ideas and abstract concepts discussed.
-        2.  **Hierarchy**: A nested outline of the content (Sections/Subsections).
-        3.  **Notes**: Comprehensive, detailed notes organized by topic.
-        4.  **Definitions**: Specific terminology and their definitions.
-        5.  **Examples**: Concrete examples, metaphors, or stories used to illustrate points.
-        6.  **Key Facts**: Atomic, objective facts mentioned.
+        chunks = [clean_text[i:i + CHUNK_CHARS] for i in range(0, len(clean_text), CHUNK_CHARS)]
+        logger.info("Generating Knowledge Core map/reduce over %d chunks", len(chunks))
 
-        Be exhaustive. Capture ALL meaningful information.
-        Do not summarize wildly; prefer detail in the Notes section.
-        Ensure the 'section_hierarchy' reflects the logical flow of the lecture/text.
+        results = await asyncio.gather(
+            *(self._extract(chunk) for chunk in chunks), return_exceptions=True
+        )
+        partials = [r for r in results if isinstance(r, KnowledgeCore)]
+        if not partials:
+            failures = "; ".join(str(r) for r in results if isinstance(r, Exception))
+            raise RuntimeError(f"Knowledge Core extraction failed for every chunk: {failures}")
+
+        if len(partials) < len(chunks):
+            logger.warning("%d/%d chunks failed extraction; merging what succeeded",
+                           len(chunks) - len(partials), len(chunks))
+        return self._merge(partials)
+
+    async def _extract(self, text: str) -> KnowledgeCore:
+        result = await self.llm.generate_content_async(
+            prompt=EXTRACTION_PROMPT,
+            context=text,
+            schema=KnowledgeCore,
+        )
+        if isinstance(result, KnowledgeCore):
+            return result
+        if isinstance(result, dict):
+            return KnowledgeCore(**result)
+        raise RuntimeError(f"LLM returned {type(result).__name__}, expected KnowledgeCore")
+
+    @staticmethod
+    def _merge(cores: List[KnowledgeCore]) -> KnowledgeCore:
         """
+        Reduce partial cores into one, de-duplicating on the natural key of each
+        collection so a concept discussed in three chunks appears once.
+        """
+        if len(cores) == 1:
+            return cores[0]
 
-        try:
-            # Request High Quality Model (Pro)
-            # Fallback handling: provider logs warning if model not found and uses default? 
-            # Or implementation throws? Vertex usually supports it.
-            model_to_use = "gemini-2.5-flash" 
-            
-            # Check if using Gemini provider (names might differ slightly or just use same)
-            # Currently VertexLLM and GeminiLLM both accept model_name overrides.
-            
-            response_model = await self.llm.generate_content_async(
-                prompt=prompt,
-                context=clean_text,
-                schema=KnowledgeCore,
-                model_name=model_to_use
-            )
-            
-            if isinstance(response_model, KnowledgeCore):
-                return response_model
-            else:
-                logger.error(f"Provider returned unexpected type: {type(response_model)}")
-                raise RuntimeError("LLM Provider returned invalid type (expected KnowledgeCore object)")
+        def dedupe(items: List[Any], key) -> List[Any]:
+            seen: set = set()
+            out: List[Any] = []
+            for item in items:
+                identity = str(key(item)).strip().lower()
+                if identity and identity not in seen:
+                    seen.add(identity)
+                    out.append(item)
+            return out
 
-        except Exception as e:
-            logger.error(f"Knowledge Core generation failed: {e}")
-            raise e
+        return KnowledgeCore(
+            title=cores[0].title,
+            summary=" ".join(core.summary for core in cores if core.summary)[:4000],
+            concepts=dedupe([c for core in cores for c in core.concepts], lambda c: c.name),
+            section_hierarchy=dedupe(
+                [s for core in cores for s in core.section_hierarchy], lambda s: s.title
+            ),
+            notes=dedupe([n for core in cores for n in core.notes], lambda n: n.heading),
+            definitions=dedupe([d for core in cores for d in core.definitions], lambda d: d.term),
+            examples=dedupe([e for core in cores for e in core.examples], lambda e: e.description),
+            key_facts=dedupe([k for core in cores for k in core.key_facts], lambda k: k.fact),
+        )
 
 if __name__ == "__main__":
     import asyncio
