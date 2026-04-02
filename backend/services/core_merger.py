@@ -1,293 +1,228 @@
 """
-CoreMerger: Hierarchical summarization and merge for multi-parent Knowledge Cores.
+Multi-source context merging.
 
-INVARIANTS:
-- Each Core is summarized to ~500-800 tokens
-- Summaries are merged with provenance preservation
-- Conflicts are labeled, not resolved silently
-- The output is a CombinedContext, not a KnowledgeCore
+When a generator node has several inputs - three lecture recordings, or a slide
+deck plus a textbook chapter - their Knowledge Cores have to become one context
+before generation. Concatenating them does not scale: the combined document
+overruns the context window and the model attends mostly to whichever source
+happened to come first.
+
+So this does a map/reduce instead:
+
+1. **Map**: compress each core to a fixed-size summary. Runs concurrently, one
+   request per source.
+2. **Reduce**: synthesise the summaries into a single ``CombinedContext``,
+   de-duplicating concepts and *labelling* contradictions between sources
+   rather than silently picking a winner.
+3. Past a handful of sources the reduce is done pairwise up a tree, so the
+   prompt stays a bounded size no matter how many lectures are wired in.
+
+The merger talks to ``LLMProvider``, so it works with whichever model is
+configured, and it degrades to a deterministic structural merge if the model
+call fails - a plainer merge beats a failed job.
 """
 
-import os
-import logging
-import json
+from __future__ import annotations
+
 import asyncio
+import logging
 from typing import List, Optional
+
 from pydantic import BaseModel, Field
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
-from dotenv import load_dotenv
 
 from backend.core.knowledge_core import KnowledgeCore
+from backend.core.llm_interface import LLMProvider
+from backend.core.services.llm_factory import LLMFactory
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+# Carried per source into the reduce step. Enough to preserve the shape of each
+# source without letting one long document dominate the prompt.
+PER_SOURCE_CONCEPTS = 7
+PER_SOURCE_FACTS = 7
+
+# Above this many sources, reduce pairwise up a tree instead of in one request.
+DIRECT_MERGE_LIMIT = 3
 
 
 class CoreSummary(BaseModel):
     """A compressed representation of a single Knowledge Core."""
+
     source_title: str = Field(description="Title of the original source")
-    key_concepts: List[str] = Field(description="Top 5-7 most important concepts")
-    key_concepts: List[str] = Field(description="Top 5-7 most important concepts")
-    key_facts: List[str] = Field(description="Top 5-7 critical facts")
-    summary: str = Field(description="2-3 sentence high-level summary")
-    token_estimate: int = Field(default=0, description="Estimated token count of this summary")
+    key_concepts: List[str] = Field(description="The 5-7 most important concepts")
+    key_facts: List[str] = Field(description="The 5-7 most critical facts")
+    summary: str = Field(description="Two or three sentence high-level summary")
 
 
 class CombinedContext(BaseModel):
-    """
-    The merged context from multiple Knowledge Cores.
-    This is what gets passed to artifact generators.
-    """
+    """Merged context across sources. This is what generators consume."""
+
     source_count: int = Field(description="Number of sources merged")
     source_titles: List[str] = Field(description="Titles of all merged sources")
-    unified_summary: str = Field(description="Synthesized summary across all sources")
-    all_concepts: List[str] = Field(description="Deduplicated list of key concepts")
-    all_facts: List[str] = Field(description="Deduplicated list of key facts")
-    conflict_notes: Optional[str] = Field(default=None, description="Any noted conflicts between sources")
+    unified_summary: str = Field(description="Synthesised summary across all sources")
+    all_concepts: List[str] = Field(description="De-duplicated concepts")
+    all_facts: List[str] = Field(description="De-duplicated facts")
+    conflict_notes: Optional[str] = Field(
+        default=None, description="Contradictions between sources, labelled rather than resolved"
+    )
 
 
 class CoreMerger:
-    """
-    Service for hierarchical summarization and merge of Knowledge Cores.
-    
-    Strategy:
-    - 1 Core: Pass through (no summarization needed)
-    - 2-3 Cores: Summarize each, then merge
-    - 4+ Cores: Hierarchical (pairs → synth → meta-merge)
-    """
-    
-    def __init__(self, model_name: str = 'gemini-2.5-flash'):
-        self._setup_vertex(model_name)
-    
-    def _setup_vertex(self, model_name: str):
-        project = os.getenv("GOOGLE_CLOUD_PROJECT")
-        location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-        
-        if project:
-            try:
-                vertexai.init(project=project, location=location)
-                self.model = GenerativeModel(model_name)
-                logger.info(f"[CoreMerger] Vertex AI initialized with model: {model_name} (project={project}, location={location})")
-            except Exception as e:
-                logger.error(f"[CoreMerger] Failed to initialize Vertex AI: {e}")
-                self.model = None
-        else:
-            logger.warning("[CoreMerger] GOOGLE_CLOUD_PROJECT not found. Vertex AI will fall back to naive merge.")
-            self.model = None
-    
-    def summarize_core(self, core: KnowledgeCore) -> CoreSummary:
-        """
-        Compress a Knowledge Core into a bounded summary (~500 tokens).
-        If LLM fails, falls back to naive extraction.
-        """
-        if not self.model:
-            return self._fallback_summarize(core)
-        
-        prompt = """
-You are a Knowledge Compressor. Your task is to create a concise summary of the provided Knowledge Core.
+    """Compresses and merges Knowledge Cores from multiple sources."""
 
-**Requirements**:
-1. **key_concepts**: Extract the 5-7 MOST important concepts (just the names/terms).
-2. **key_facts**: Extract the 5-7 MOST critical facts (one sentence each).
-3. **summary**: Write a 2-3 sentence high-level summary of what this material covers.
+    def __init__(self, llm: Optional[LLMProvider] = None):
+        self.llm = llm or LLMFactory.get_provider()
+
+    # -- map ----------------------------------------------------------------
+
+    async def summarize_core(self, core: KnowledgeCore) -> CoreSummary:
+        """Compress one core to a bounded summary."""
+        prompt = f"""
+You are compressing one source into a fixed-size summary for cross-source merging.
+
+**Task**: Produce at most {PER_SOURCE_CONCEPTS} key concepts, at most
+{PER_SOURCE_FACTS} key facts, and a two to three sentence summary.
 
 **Rules**:
-- Be ruthlessly concise. Every word must earn its place.
-- Preserve domain-specific terminology.
-- Do not invent information. Only extract from the source.
-
-**Output**: Return strictly valid JSON matching this schema:
-{
-  "source_title": "string",
-  "key_concepts": ["string", ...],
-  "key_facts": ["string", ...],
-  "summary": "string"
-}
+1. Keep what a learner would be tested on; drop asides and repetition.
+2. Concepts are noun phrases; facts are complete statements.
+3. Preserve the source's own terminology - it matters when merging.
+4. Do not invent anything that is not in the source.
 """
-        
         try:
-            core_json = core.model_dump_json(indent=2)
-            response = self.model.generate_content(
-                [prompt, core_json],
-                generation_config=GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.2
-                )
+            result = await self.llm.generate_content_async(
+                prompt=prompt, context=core.model_dump_json(), schema=CoreSummary
             )
-            
-            if response.text:
-                data = json.loads(response.text)
-                data["source_title"] = core.title
-                # Estimate tokens (rough: 1 token ≈ 4 chars)
-                data["token_estimate"] = len(response.text) // 4
-                return CoreSummary(**data)
-            
-        except Exception as e:
-            logger.error(f"[CoreMerger] Summarization failed: {e}")
-        
-        return self._fallback_summarize(core)
-    
-    def _fallback_summarize(self, core: KnowledgeCore) -> CoreSummary:
-        """Naive extraction if LLM fails."""
+            summary = result if isinstance(result, CoreSummary) else CoreSummary(**result)
+            summary.source_title = core.title or summary.source_title
+            return summary
+        except Exception as exc:
+            logger.warning("Summarisation failed for '%s' (%s); using structural fallback", core.title, exc)
+            return self._structural_summary(core)
+
+    @staticmethod
+    def _structural_summary(core: KnowledgeCore) -> CoreSummary:
+        """Deterministic compression straight from the core's own fields."""
+        ranked = sorted(core.concepts, key=lambda c: -(c.importance_score or 0))
         return CoreSummary(
             source_title=core.title,
-            key_concepts=[c.name for c in core.concepts[:7]],
-            key_facts=[f.fact for f in core.key_facts[:7]],
-            summary=core.summary[:500] if core.summary else "Summary unavailable.",
-            token_estimate=200
+            key_concepts=[c.name for c in ranked[:PER_SOURCE_CONCEPTS]],
+            key_facts=[f.fact for f in core.key_facts[:PER_SOURCE_FACTS]],
+            summary=(core.summary or "Summary unavailable.")[:800],
         )
-    
-    def merge_summaries(self, summaries: List[CoreSummary]) -> CombinedContext:
-        """
-        Merge multiple CoreSummaries into a unified CombinedContext.
-        Preserves provenance and labels conflicts.
-        """
-        if len(summaries) == 0:
+
+    # -- reduce -------------------------------------------------------------
+
+    async def merge_summaries(self, summaries: List[CoreSummary]) -> CombinedContext:
+        """Synthesise summaries into one context, labelling any contradictions."""
+        if not summaries:
             raise ValueError("Cannot merge zero summaries")
-        
+
         if len(summaries) == 1:
-            s = summaries[0]
+            only = summaries[0]
             return CombinedContext(
                 source_count=1,
-                source_titles=[s.source_title],
-                unified_summary=s.summary,
-                all_concepts=s.key_concepts,
-                all_facts=s.key_facts,
-                conflict_notes=None
+                source_titles=[only.source_title],
+                unified_summary=only.summary,
+                all_concepts=only.key_concepts,
+                all_facts=only.key_facts,
             )
-        
-        if not self.model:
-            return self._fallback_merge(summaries)
-        
-        # Build input for LLM
-        summaries_text = "\\n\\n".join([
-            f"### Source: {s.source_title}\\n**Concepts**: {', '.join(s.key_concepts)}\\n**Facts**: {'; '.join(s.key_facts)}\\n**Summary**: {s.summary}"
-            for s in summaries
-        ])
-        
-        prompt = f"""
-You are merging knowledge from {len(summaries)} different sources.
 
-**Your Task**:
-1. Create a unified summary that synthesizes all sources (2-3 sentences).
-2. Combine all concepts (deduplicate if same concept appears in multiple sources).
-3. Combine all facts (deduplicate, but preserve unique information).
-4. If sources contradict each other, note the conflict explicitly.
+        rendered = "\n\n".join(
+            f"### Source {index + 1}: {summary.source_title}\n"
+            f"Summary: {summary.summary}\n"
+            f"Concepts: {', '.join(summary.key_concepts)}\n"
+            "Facts:\n" + "\n".join(f"- {fact}" for fact in summary.key_facts)
+            for index, summary in enumerate(summaries)
+        )
+
+        prompt = f"""
+You are synthesising {len(summaries)} sources into one study context.
+
+**Task**: Produce a unified summary, a de-duplicated concept list, a
+de-duplicated fact list, and conflict notes.
 
 **Rules**:
-- Each source is authoritative within its own scope.
-- Do not invent new information.
-- If facts conflict, label them: "Source A says X; Source B says Y."
-
-**Sources**:
-{summaries_text}
-
-**Output**: Return strictly valid JSON:
-{{
-  "unified_summary": "string",
-  "all_concepts": ["string", ...],
-  "all_facts": ["string", ...],
-  "conflict_notes": "string or null"
-}}
+1. Merge concepts that are the same idea under different names; keep both
+   namings in the concept string when the wording differs meaningfully.
+2. If two sources disagree on a fact, keep BOTH and record the disagreement in
+   "conflict_notes", naming the sources. Never silently pick a winner.
+3. The unified summary must reflect every source, not just the longest one.
+4. Each source is authoritative within its own scope. Invent nothing.
+5. Plain text only - no Markdown, no LaTeX.
 """
-        
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config=GenerationConfig(
-                    response_mime_type="application/json",
-                    temperature=0.3
-                )
+            result = await self.llm.generate_content_async(
+                prompt=prompt, context=rendered, schema=CombinedContext
             )
-            
-            if response.text:
-                data = json.loads(response.text)
-                return CombinedContext(
-                    source_count=len(summaries),
-                    source_titles=[s.source_title for s in summaries],
-                    unified_summary=data.get("unified_summary", ""),
-                    all_concepts=data.get("all_concepts", []),
-                    all_facts=data.get("all_facts", []),
-                    conflict_notes=data.get("conflict_notes")
-                )
-        
-        except Exception as e:
-            logger.error(f"[CoreMerger] Merge failed: {e}")
-        
-        return self._fallback_merge(summaries)
-    
-    def _fallback_merge(self, summaries: List[CoreSummary]) -> CombinedContext:
-        """Naive merge if LLM fails."""
-        all_concepts = []
-        all_facts = []
-        
-        for s in summaries:
-            all_concepts.extend(s.key_concepts)
-            all_facts.extend(s.key_facts)
-        
-        # Deduplicate
-        all_concepts = list(dict.fromkeys(all_concepts))
-        all_facts = list(dict.fromkeys(all_facts))
-        
-        combined_summary = " ".join([s.summary for s in summaries])
-        
+            merged = result if isinstance(result, CombinedContext) else CombinedContext(**result)
+            # The model does not reliably echo bookkeeping fields back.
+            merged.source_count = len(summaries)
+            merged.source_titles = [s.source_title for s in summaries]
+            return merged
+        except Exception as exc:
+            logger.warning("Cross-source synthesis failed (%s); using structural merge", exc)
+            return self._structural_merge(summaries)
+
+    @staticmethod
+    def _structural_merge(summaries: List[CoreSummary]) -> CombinedContext:
+        """Order-preserving de-duplicated union, used when the model is unavailable."""
+
+        def union(values: List[str]) -> List[str]:
+            seen: set = set()
+            out: List[str] = []
+            for value in values:
+                identity = value.strip().lower()
+                if identity and identity not in seen:
+                    seen.add(identity)
+                    out.append(value.strip())
+            return out
+
         return CombinedContext(
             source_count=len(summaries),
             source_titles=[s.source_title for s in summaries],
-            unified_summary=combined_summary[:500],
-            all_concepts=all_concepts[:15],
-            all_facts=all_facts[:15],
-            conflict_notes=None
+            unified_summary=" ".join(
+                f"From {s.source_title}: {s.summary}" for s in summaries
+            )[:4000],
+            all_concepts=union([c for s in summaries for c in s.key_concepts]),
+            all_facts=union([f for s in summaries for f in s.key_facts]),
+            conflict_notes=None,
         )
-    
-    def merge_cores(self, cores: List[KnowledgeCore]) -> CombinedContext:
-        """
-        Main entry point: Takes N Knowledge Cores and returns a CombinedContext.
-        
-        Strategy:
-        - 1 Core: Summarize directly
-        - 2-3 Cores: Summarize each, then merge
-        - 4+ Cores: Hierarchical (pairs → merge → final merge)
-        """
-        if len(cores) == 0:
-            raise ValueError("Cannot merge zero cores")
-        
-        if len(cores) == 1:
-            summary = self.summarize_core(cores[0])
-            return self.merge_summaries([summary])
-        
-        # Summarize all cores
-        logger.info(f"[CoreMerger] Summarizing {len(cores)} Knowledge Cores...")
-        summaries = [self.summarize_core(c) for c in cores]
-        
-        if len(cores) <= 3:
-            # Direct merge
-            logger.info(f"[CoreMerger] Direct merge of {len(summaries)} summaries")
-            return self.merge_summaries(summaries)
-        
-        # Hierarchical merge for 4+ cores
-        logger.info(f"[CoreMerger] Hierarchical merge for {len(cores)} cores")
-        
-        # Pair-wise merge first
-        intermediate_contexts = []
-        for i in range(0, len(summaries), 2):
-            pair = summaries[i:i+2]
-            intermediate = self.merge_summaries(pair)
-            intermediate_contexts.append(intermediate)
-        
-        # Convert intermediate contexts back to summary-like format for final merge
-        final_summaries = [
-            CoreSummary(
-                source_title=f"Merged: {', '.join(ctx.source_titles)}",
-                key_concepts=ctx.all_concepts[:7],
-                key_facts=ctx.all_facts[:7],
-                summary=ctx.unified_summary,
-                token_estimate=300
-            )
-            for ctx in intermediate_contexts
+
+    @staticmethod
+    def _as_summary(context: CombinedContext) -> CoreSummary:
+        """Fold an intermediate context back into a summary for the next level up."""
+        return CoreSummary(
+            source_title=f"Merged: {', '.join(context.source_titles)}",
+            key_concepts=context.all_concepts[:PER_SOURCE_CONCEPTS],
+            key_facts=context.all_facts[:PER_SOURCE_FACTS],
+            summary=context.unified_summary,
+        )
+
+    # -- entry point --------------------------------------------------------
+
+    async def merge_cores(self, cores: List[KnowledgeCore]) -> CombinedContext:
+        """Compress every core concurrently, then reduce them into one context."""
+        if not cores:
+            raise ValueError("merge_cores requires at least one Knowledge Core")
+
+        results = await asyncio.gather(
+            *(self.summarize_core(core) for core in cores), return_exceptions=True
+        )
+        summaries = [
+            result if isinstance(result, CoreSummary) else self._structural_summary(core)
+            for core, result in zip(cores, results)
         ]
-        
-        return self.merge_summaries(final_summaries)
+
+        if len(summaries) <= DIRECT_MERGE_LIMIT:
+            return await self.merge_summaries(summaries)
+
+        # Reduce pairwise up a tree so the prompt never grows with source count.
+        level = summaries
+        while len(level) > DIRECT_MERGE_LIMIT:
+            pairs = [level[i:i + 2] for i in range(0, len(level), 2)]
+            logger.info("Hierarchical merge: reducing %d summaries into %d", len(level), len(pairs))
+            contexts = await asyncio.gather(*(self.merge_summaries(pair) for pair in pairs))
+            level = [self._as_summary(context) for context in contexts]
+
+        return await self.merge_summaries(level)
