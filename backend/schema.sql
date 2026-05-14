@@ -22,18 +22,20 @@ CREATE TABLE IF NOT EXISTS public.projects (
 -- ==========================================
 -- Tracks all asynchronous operations.
 CREATE TYPE job_type AS ENUM (
-    'ingest', 
-    'extract', 
-    'clean', 
-    'generate', 
-    'render'
+    'ingest',    -- raw source -> knowledge core
+    'generate',  -- knowledge core (or artifacts) -> new artifact
+    'refine',    -- existing artifact + instructions -> revised artifact
+    'extract',   -- reserved: standalone text extraction
+    'clean',     -- reserved: standalone text cleaning
+    'render'     -- reserved: standalone binary rendering
 );
 
 CREATE TYPE job_status AS ENUM (
     'pending', 
     'running', 
     'completed', 
-    'failed'
+    'failed',
+    'cancelled'
 );
 
 CREATE TABLE IF NOT EXISTS public.jobs (
@@ -44,6 +46,10 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     
     -- Arguments for the job
     payload JSONB NOT NULL DEFAULT '{}',
+    
+    -- Attempts so far. A transient failure (rate limit, timeout) returns the
+    -- job to the queue until this reaches the configured maximum.
+    attempts INTEGER NOT NULL DEFAULT 0,
     
     -- Output: {'artifact_ids': [...], 'error': ...}
     -- Note: Ideally this is empty, as artifacts link back to jobs. 
@@ -62,9 +68,17 @@ CREATE TABLE IF NOT EXISTS public.jobs (
 CREATE OR REPLACE FUNCTION prevent_job_history_rewrite()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF OLD.status IN ('completed', 'failed') THEN
-        RAISE EXCEPTION 'Cannot modify a finalized job. Jobs are immutable history.';
+    -- A completed job is a historical fact and can never change.
+    IF OLD.status = 'completed' THEN
+        RAISE EXCEPTION 'Cannot modify a completed job. Completed jobs are immutable history.';
     END IF;
+
+    -- A failed job may be retried (failed -> pending) but not rewritten into a
+    -- success, which would fabricate a result that was never produced.
+    IF OLD.status = 'failed' AND NEW.status = 'completed' THEN
+        RAISE EXCEPTION 'A failed job cannot be marked completed. Retry it instead.';
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -80,16 +94,26 @@ CREATE TRIGGER trigger_job_immutable_history
 -- Immutable nodes in the knowledge graph.
 -- Once created, an artifact is NEVER updated.
 CREATE TYPE artifact_type AS ENUM (
-    'video', 
-    'audio', 
-    'text',       -- Raw text
-    'flat_text',  -- Cleaned text
-    'knowledge_core', 
-    'quiz', 
-    'flashcards', 
-    'notes', 
-    'slides', 
-    'exam'
+    -- Sources
+    'video',
+    'audio',
+    'pdf',
+    'pptx',
+    'md',
+    'youtube',
+    'text',           -- Raw extracted text
+    'flat_text',      -- Cleaned text
+    -- The semantic root
+    'knowledge_core',
+    -- Generated study artifacts
+    'quiz',
+    'flashcards',
+    'notes',
+    'slides',
+    'exam',
+    'study_guide',
+    'cheatsheet',
+    'mindmap'
 );
 
 CREATE TABLE IF NOT EXISTS public.artifacts (
@@ -411,5 +435,134 @@ BEGIN
     WHERE id = _job_id;
     
     -- Trigger 'trigger_job_immutable_history' will protect against re-completing.
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==========================================
+-- 7. Flow Runs
+-- ==========================================
+-- One execution of a canvas graph.
+--
+-- The engine holds no state between calls: the job that unblocks a step may
+-- finish in a different process (a Celery worker) than the one that started the
+-- run, so progress has to be readable from the database rather than from memory.
+CREATE TABLE IF NOT EXISTS public.flow_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+
+    status TEXT NOT NULL DEFAULT 'running',  -- running | completed | failed
+
+    -- The compiled plan: ordered steps, their parents, and their wave depth.
+    plan JSONB NOT NULL DEFAULT '{}',
+
+    -- canvas node id -> { status, job_id, artifact_id, error }
+    node_states JSONB NOT NULL DEFAULT '{}',
+
+    result JSONB DEFAULT '{}',
+
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Jobs dispatched by a flow carry their run id, so a completion can be routed
+-- back to the step that produced it.
+ALTER TABLE public.jobs
+    ADD COLUMN IF NOT EXISTS flow_run_id UUID REFERENCES public.flow_runs(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_flow_runs_project ON public.flow_runs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_flow_run     ON public.jobs(flow_run_id);
+
+CREATE TRIGGER update_flow_runs_modtime
+    BEFORE UPDATE ON public.flow_runs
+    FOR EACH ROW
+    EXECUTE PROCEDURE update_modified_column();
+
+-- ==========================================
+-- 8. Chat Messages
+-- ==========================================
+-- The assistant panel's conversation, scoped to a project and optionally to the
+-- artifact that was open when the message was sent.
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id  UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    artifact_id UUID REFERENCES public.artifacts(id) ON DELETE SET NULL,
+
+    role    TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+
+    -- { action: 'answer' | 'refine', job_id: ... }
+    metadata JSONB NOT NULL DEFAULT '{}',
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_project ON public.chat_messages(project_id, created_at);
+
+-- ==========================================
+-- 9. Stale Job Reaper
+-- ==========================================
+-- A worker that dies mid-job leaves the row in 'running' forever: claim_next_job
+-- skips it, so the user's node spins indefinitely. This returns those jobs to
+-- the queue, or fails them once they are out of attempts.
+--
+-- Schedule with pg_cron:
+--   SELECT cron.schedule('reap-stale-jobs', '*/5 * * * *', 'SELECT reap_stale_jobs(1800, 3)');
+CREATE OR REPLACE FUNCTION reap_stale_jobs(
+    _older_than_seconds INTEGER DEFAULT 1800,
+    _max_attempts INTEGER DEFAULT 3
+)
+RETURNS TABLE (reaped_id UUID, new_status job_status) AS $$
+BEGIN
+    RETURN QUERY
+    UPDATE jobs
+    SET
+        status        = CASE WHEN attempts < _max_attempts THEN 'pending'::job_status
+                             ELSE 'failed'::job_status END,
+        started_at    = CASE WHEN attempts < _max_attempts THEN NULL ELSE started_at END,
+        completed_at  = CASE WHEN attempts < _max_attempts THEN NULL ELSE NOW() END,
+        error_message = 'Requeued after worker timeout'
+    WHERE status = 'running'
+      AND started_at IS NOT NULL
+      AND started_at < NOW() - make_interval(secs => _older_than_seconds)
+    RETURNING id, status;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Bump the attempt counter when a job is claimed, so the reaper can tell a
+-- first-time failure from one that has already been retried twice.
+CREATE OR REPLACE FUNCTION claim_next_job()
+RETURNS TABLE (
+    j_id UUID,
+    j_project_id UUID,
+    j_type job_type,
+    j_status job_status,
+    j_payload JSONB,
+    j_result JSONB,
+    j_created_at TIMESTAMP WITH TIME ZONE,
+    j_started_at TIMESTAMP WITH TIME ZONE,
+    j_completed_at TIMESTAMP WITH TIME ZONE,
+    j_error_message TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    UPDATE jobs
+    SET
+        status     = 'running',
+        started_at = NOW(),
+        attempts   = attempts + 1
+    WHERE id = (
+        SELECT id
+        FROM jobs
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        -- SKIP LOCKED is what makes several workers safe on one queue: a row
+        -- another worker is already claiming is passed over, not waited on.
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+    )
+    RETURNING
+        id, project_id, type, status, payload, result,
+        created_at, started_at, completed_at, error_message;
 END;
 $$ LANGUAGE plpgsql;
