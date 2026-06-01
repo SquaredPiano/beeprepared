@@ -1,12 +1,15 @@
+amqp==5.3.1
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1
 asn1crypto==1.5.1
 azure-cognitiveservices-speech==1.47.0
 azure-core==1.38.0
+billiard==4.2.1
 boto3==1.42.34
 botocore==1.42.34
 cachetools==6.2.4
+celery==5.4.0
 certifi==2026.1.4
 cffi==2.0.0
 charset-normalizer==3.4.4
@@ -24,8 +27,8 @@ future==1.0.0
 google-ai-generativelanguage==0.6.15
 google-api-core==2.29.0
 google-api-python-client==2.188.0
-google-auth==2.47.0
 google-auth-httplib2==0.3.0
+google-auth==2.47.0
 google-cloud-aiplatform==1.134.0
 google-cloud-bigquery==3.40.0
 google-cloud-core==2.5.0
@@ -37,8 +40,8 @@ google-generativeai==0.8.6
 google-resumable-media==2.8.0
 googleapis-common-protos==1.72.0
 grpc-google-iam-v1==0.14.3
-grpcio==1.76.0
 grpcio-status==1.71.2
+grpcio==1.76.0
 h11==0.16.0
 h2==4.3.0
 hpack==4.1.0
@@ -50,6 +53,7 @@ idna==3.11
 iniconfig==2.3.0
 isodate==0.7.2
 jmespath==1.1.0
+kombu==5.4.2
 lxml==6.0.2
 markdown-it-py==4.0.0
 mdurl==0.1.2
@@ -61,6 +65,7 @@ pg8000==1.31.5
 pillow==12.1.0
 pluggy==1.6.0
 postgrest==2.27.2
+prompt_toolkit==3.0.48
 propcache==0.4.1
 proto-plus==1.27.0
 protobuf==5.29.5
@@ -84,6 +89,7 @@ python-dotenv==1.2.1
 python-multipart==0.0.22
 python-pptx==1.0.2
 realtime==2.27.2
+redis==5.2.1
 requests==2.32.5
 rich==14.2.0
 rsa==4.9.1
@@ -96,9 +102,9 @@ starlette==0.50.0
 storage3==2.27.2
 StrEnum==0.4.15
 strictyaml==1.7.3
-supabase==2.27.2
 supabase-auth==2.27.2
 supabase-functions==2.27.2
+supabase==2.27.2
 tenacity==9.1.2
 tomli==2.4.0
 tqdm==4.67.1
@@ -107,6 +113,8 @@ typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.6.3
 uvicorn==0.40.0
+vine==5.1.0
+wcwidth==0.2.13
 websockets==15.0.1
 xlsxwriter==3.2.9
 yarl==1.22.0
