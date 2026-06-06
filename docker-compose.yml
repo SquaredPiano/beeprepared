@@ -1,36 +1,123 @@
+# BeePrepared - full local stack.
+#
+#   docker compose up            api + worker + beat + redis + frontend
+#   docker compose up api        api only (jobs run in-process, no Redis needed)
+#
+# There is no external database here on purpose. The API keeps its state in an
+# embedded SQLite file on the `beedata` volume and writes artifacts to the same
+# volume, so a clone of this repo runs with one command and no accounts.
+# Point SUPABASE_URL / SUPABASE_KEY at a project to switch to hosted Postgres,
+# and R2_* to switch to object storage - the code uses whichever is configured.
+
+name: beeprepared
+
+x-backend-env: &backend-env
+  DATABASE_BACKEND: ${DATABASE_BACKEND:-local}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  BEE_STORAGE_DIR: /data
+  REDIS_URL: redis://redis:6379/0
+  LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  ALLOW_MOCK_AUTH: ${ALLOW_MOCK_AUTH:-true}
+  STORAGE_SIGNING_SECRET: ${STORAGE_SIGNING_SECRET:-change-me-in-production}
+
 services:
-  # ============================================================================
-  # BACKEND SERVICE
-  # ============================================================================
-  backend:
+  # ==========================================================================
+  # Redis - Celery broker, and the pub/sub channel behind the WebSocket API.
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: beeprepared-redis
+    # Cap memory and evict rather than OOM: everything held here is
+    # reconstructible from the database.
+    command: redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================================================
+  # API - HTTP + WebSocket. Does not execute jobs while a worker is running.
+  # ==========================================================================
+  api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: beeprepared-backend
+    container_name: beeprepared-api
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --proxy-headers
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      # Explicitly override if needed, otherwise uses .env
-      - PORT=8000
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/service_account.json
-    restart: unless-stopped
-    # Healthcheck ensures logic is ready before frontend logic starts
+      <<: *backend-env
+      CELERY_ENABLED: "true"
+    volumes:
+      - beedata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    volumes:
-      # Mount Service Account Key for Authentication
-      # Users must explicitly place their key as service_account.json or update this line
-      - ./service_account.json:/app/service_account.json
+      start_period: 15s
+    restart: unless-stopped
 
-  # ============================================================================
-  # FRONTEND SERVICE
-  # ============================================================================
+  # ==========================================================================
+  # Worker - runs the actual pipeline. Scale independently of the API:
+  #   docker compose up --scale worker=3
+  # ==========================================================================
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A backend.celery_app:celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+      CELERY_ENABLED: "true"
+    volumes:
+      - beedata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Beat - periodic maintenance: requeue stranded jobs, drain undispatched ones.
+  # ==========================================================================
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A backend.celery_app:celery_app beat --loglevel=info
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+      CELERY_ENABLED: "true"
+    volumes:
+      - beedata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Frontend
+  # ==========================================================================
   frontend:
     build:
       context: ./frontend
@@ -39,14 +126,18 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      # Inject backend URL for server-side rendering
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
-      # Ensure Supabase keys are passed (pulled from .env file)
-      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+      NEXT_PUBLIC_DEV_MODE: ${NEXT_PUBLIC_DEV_MODE:-true}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     depends_on:
-      backend:
+      api:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  # The SQLite database and every stored artifact. Delete it to reset.
+  beedata:
