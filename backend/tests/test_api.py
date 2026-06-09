@@ -1,0 +1,309 @@
+"""
+HTTP and WebSocket surface tests.
+
+Covers the contract the frontend depends on, the authorisation rules, and the
+realtime channel that replaced polling.
+"""
+
+from __future__ import annotations
+
+import io
+
+import pytest
+
+
+def create_project(client, name="API Project") -> dict:
+    response = client.post("/api/projects", json={"name": name})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+# --- meta ------------------------------------------------------------------
+
+class TestMeta:
+    def test_health_reports_what_it_is_wired_to(self, client):
+        body = client.get("/health").json()
+        assert body["status"] == "healthy"
+        assert body["database"] == "local"
+        assert body["storage"] == "local"
+        assert body["jobs"] in {"local", "celery"}
+
+    def test_capabilities_lists_every_artifact_type(self, client):
+        body = client.get("/api/capabilities").json()
+        assert "mindmap" in body["artifact_types"]
+        assert "cheatsheet" in body["artifact_types"]
+        assert body["features"]["flows"] is True
+
+
+# --- projects --------------------------------------------------------------
+
+class TestProjects:
+    def test_create_read_update_delete(self, client):
+        project = create_project(client)
+        project_id = project["id"]
+
+        assert client.get(f"/api/projects/{project_id}").json()["name"] == "API Project"
+
+        canvas = {"viewport": {"x": 1, "y": 2, "zoom": 1.5}, "nodes": [{"id": "n1"}], "edges": []}
+        updated = client.patch(f"/api/projects/{project_id}", json={"name": "Renamed", "canvas_state": canvas})
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Renamed"
+        assert updated.json()["canvas_state"]["viewport"]["zoom"] == 1.5
+
+        assert client.delete(f"/api/projects/{project_id}").status_code == 200
+        assert client.get(f"/api/projects/{project_id}").status_code == 404
+
+    def test_empty_update_is_rejected(self, client):
+        project = create_project(client)
+        assert client.patch(f"/api/projects/{project['id']}", json={}).status_code == 400
+
+    def test_another_users_project_is_not_visible(self, client, db):
+        """Ownership is enforced on read, not only on write."""
+        foreign = db.insert("projects", {"name": "Not yours", "user_id": "someone-else"})[0]
+        assert client.get(f"/api/projects/{foreign['id']}").status_code == 403
+        assert foreign["id"] not in [p["id"] for p in client.get("/api/projects").json()]
+
+    def test_missing_project_is_a_404_not_a_500(self, client):
+        assert client.get("/api/projects/00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+# --- uploads ---------------------------------------------------------------
+
+class TestUploads:
+    def test_upload_queues_an_ingest_job(self, client):
+        project = create_project(client)
+        response = client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("lecture.md", io.BytesIO(b"# Lecture\n\nConsensus is hard." * 20), "text/markdown")},
+            data={"source_type": "md"},
+        )
+        assert response.status_code == 202, response.text
+        assert response.json()["job_id"]
+
+    def test_unknown_source_type_is_rejected(self, client):
+        project = create_project(client)
+        response = client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("x.exe", io.BytesIO(b"binary"), "application/octet-stream")},
+            data={"source_type": "executable"},
+        )
+        assert response.status_code == 400
+
+    def test_empty_upload_is_rejected(self, client):
+        project = create_project(client)
+        response = client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("empty.md", io.BytesIO(b""), "text/markdown")},
+            data={"source_type": "md"},
+        )
+        assert response.status_code == 400
+
+    def test_oversized_upload_is_rejected(self, client, monkeypatch):
+        monkeypatch.setenv("MAX_FILE_SIZE_MB", "1")
+        from backend.core.config import get_settings
+
+        get_settings.cache_clear()
+
+        project = create_project(client)
+        response = client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("big.md", io.BytesIO(b"x" * (2 * 1024 * 1024)), "text/markdown")},
+            data={"source_type": "md"},
+        )
+        assert response.status_code == 413
+
+
+# --- jobs ------------------------------------------------------------------
+
+class TestJobs:
+    def test_create_and_read_a_generate_job(self, client, db, knowledge_core, project):
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "generate",
+            "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
+        })
+        assert response.status_code == 202, response.text
+        job_id = response.json()["job_id"]
+
+        status = client.get(f"/api/jobs/{job_id}")
+        assert status.status_code == 200
+        assert status.json()["type"] == "generate"
+
+    def test_invalid_target_type_is_a_400_with_a_useful_message(self, client, project, knowledge_core):
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "generate",
+            "payload": {"target_type": "horoscope", "source_artifact_ids": [knowledge_core["id"]]},
+        })
+        assert response.status_code == 400
+        assert "target_type must be one of" in response.json()["detail"]
+
+    def test_identical_in_flight_requests_are_deduplicated(self, client, project, knowledge_core):
+        payload = {
+            "project_id": project["id"],
+            "type": "generate",
+            "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
+        }
+        first = client.post("/api/jobs", json=payload).json()
+        second = client.post("/api/jobs", json=payload).json()
+
+        assert second["reused"] is True
+        assert second["job_id"] == first["job_id"]
+
+    def test_steered_requests_are_never_deduplicated(self, client, project, knowledge_core):
+        """Different instructions are different work, even for the same source."""
+        base = {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]}
+        first = client.post("/api/jobs", json={
+            "project_id": project["id"], "type": "generate", "payload": {**base, "instructions": "harder"},
+        }).json()
+        second = client.post("/api/jobs", json={
+            "project_id": project["id"], "type": "generate", "payload": {**base, "instructions": "easier"},
+        }).json()
+
+        assert first["job_id"] != second["job_id"]
+        assert second["reused"] is False
+
+    def test_a_job_in_another_users_project_is_hidden(self, client, db):
+        foreign = db.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
+        job = db.insert("jobs", {
+            "project_id": foreign["id"], "type": "generate", "status": "pending", "payload": {},
+        })[0]
+        assert client.get(f"/api/jobs/{job['id']}").status_code == 403
+
+    def test_cancelling_a_finished_job_conflicts(self, client, db, project):
+        job = db.insert("jobs", {
+            "project_id": project["id"], "type": "generate", "status": "completed", "payload": {},
+        })[0]
+        assert client.post(f"/api/jobs/{job['id']}/cancel").status_code == 409
+
+
+# --- flows -----------------------------------------------------------------
+
+class TestFlows:
+    @staticmethod
+    def graph(core_id):
+        return {
+            "nodes": [
+                {"id": "s1", "type": "artifactNode", "data": {"artifact": {"id": core_id}}},
+                {"id": "g1", "type": "generator", "data": {"subType": "notes"}},
+                {"id": "g2", "type": "generator", "data": {"subType": "quiz"}},
+                {"id": "g3", "type": "generator", "data": {"subType": "flashcards"}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "s1", "target": "g1"},
+                {"id": "e2", "source": "s1", "target": "g2"},
+                {"id": "e3", "source": "g2", "target": "g3"},
+            ],
+        }
+
+    def test_validate_returns_the_plan_without_running_anything(self, client, project, knowledge_core, db):
+        response = client.post(
+            f"/api/projects/{project['id']}/flow/validate", json=self.graph(knowledge_core["id"])
+        )
+        body = response.json()
+        assert body["valid"] is True
+        assert len(body["steps"]) == 3
+        assert body["waves"] == 2
+        assert db.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_validate_explains_why_a_bad_graph_will_not_run(self, client, project, knowledge_core):
+        graph = self.graph(knowledge_core["id"])
+        graph["edges"].append({"id": "e4", "source": "g3", "target": "g2"})  # cycle
+
+        body = client.post(f"/api/projects/{project['id']}/flow/validate", json=graph).json()
+        assert body["valid"] is False
+        assert "cycle" in body["error"]
+
+    def test_run_dispatches_the_first_wave_only(self, client, project, knowledge_core, db):
+        response = client.post(
+            f"/api/projects/{project['id']}/flow/run", json=self.graph(knowledge_core["id"])
+        )
+        assert response.status_code == 202, response.text
+        states = response.json()["node_states"]
+
+        assert states["g1"]["status"] == "running"
+        assert states["g2"]["status"] == "running"
+        assert states["g3"]["status"] == "pending", "g3 depends on g2 and must wait"
+
+    def test_run_rejects_an_invalid_graph_with_422(self, client, project):
+        response = client.post(f"/api/projects/{project['id']}/flow/run", json={"nodes": [], "edges": []})
+        assert response.status_code == 422
+
+    def test_run_falls_back_to_the_saved_canvas(self, client, project, knowledge_core, db):
+        """Running with no body uses the persisted canvas_state."""
+        db.update("projects", [("id", f"eq.{project['id']}")], {
+            "canvas_state": {"viewport": {}, **self.graph(knowledge_core["id"])},
+        })
+        response = client.post(f"/api/projects/{project['id']}/flow/run", json={})
+        assert response.status_code == 202
+        assert len(response.json()["node_states"]) == 4
+
+
+# --- realtime --------------------------------------------------------------
+
+class TestWebSocket:
+    def test_snapshot_is_sent_on_connect(self, client, project, db):
+        db.insert("jobs", {
+            "project_id": project["id"], "type": "generate", "status": "running", "payload": {},
+        })
+        with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
+            frame = socket.receive_json()
+            assert frame["type"] == "snapshot"
+            assert len(frame["data"]["jobs"]) == 1
+
+    def test_events_reach_a_connected_client(self, client, project):
+        from backend.services.events import publish
+
+        with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
+            socket.receive_json()  # snapshot
+            publish(project["id"], "job.progress", {"job_id": "j1", "stage": "generating", "percent": 40})
+
+            frame = socket.receive_json()
+            assert frame["type"] == "job.progress"
+            assert frame["data"]["percent"] == 40
+
+    def test_resync_returns_a_fresh_snapshot(self, client, project):
+        with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
+            socket.receive_json()
+            socket.send_json({"type": "resync"})
+            assert socket.receive_json()["type"] == "snapshot"
+
+    def test_a_foreign_project_socket_is_refused(self, client, db):
+        from starlette.websockets import WebSocketDisconnect
+
+        foreign = db.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
+        with pytest.raises(WebSocketDisconnect) as caught:
+            with client.websocket_connect(f"/ws/projects/{foreign['id']}?token=mock-token") as socket:
+                socket.receive_json()
+        assert caught.value.code == 4403
+
+
+# --- storage ---------------------------------------------------------------
+
+class TestFileServing:
+    def test_a_signed_link_serves_the_file(self, client, project):
+        from backend.services.storage import get_object_store
+
+        store = get_object_store()
+        store.put_bytes(b"hello world", f"{project['id']}/artifacts/test.md", "text/markdown")
+        url = store.signed_url(f"{project['id']}/artifacts/test.md", filename="test.md")
+
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.content == b"hello world"
+
+    def test_a_tampered_signature_is_refused(self, client, project):
+        from backend.services.storage import get_object_store
+
+        store = get_object_store()
+        key = f"{project['id']}/artifacts/secret.md"
+        store.put_bytes(b"secret", key, "text/markdown")
+        url = store.signed_url(key, filename="secret.md").replace("signature=", "signature=x")
+
+        assert client.get(url).status_code == 403
+
+    def test_path_traversal_is_refused(self, client):
+        from backend.services.storage import StorageError, get_object_store
+
+        with pytest.raises(StorageError):
+            get_object_store().put_bytes(b"pwn", "../../etc/passwd", "text/plain")
