@@ -18,10 +18,36 @@ export interface Project {
   updated_at: string;
 }
 
+/** Artifact types the backend can generate. Mirrors GENERATED_ARTIFACT_TYPES. */
+export const GENERATED_TYPES = [
+  "notes",
+  "quiz",
+  "flashcards",
+  "slides",
+  "exam",
+  "study_guide",
+  "cheatsheet",
+  "mindmap",
+] as const;
+
+export type GeneratedType = (typeof GENERATED_TYPES)[number];
+
+export type ArtifactType =
+  | "video"
+  | "audio"
+  | "pdf"
+  | "pptx"
+  | "md"
+  | "youtube"
+  | "text"
+  | "flat_text"
+  | "knowledge_core"
+  | GeneratedType;
+
 export interface Artifact {
   id: string;
   project_id: string;
-  type: "video" | "audio" | "text" | "flat_text" | "knowledge_core" | "quiz" | "flashcards" | "notes" | "slides" | "exam";
+  type: ArtifactType;
   content: any;
   created_at: string;
   created_by_job_id?: string;
@@ -39,13 +65,99 @@ export interface ArtifactEdge {
 export interface Job {
   id: string;
   project_id: string;
-  type: "ingest" | "extract" | "clean" | "generate" | "render";
-  status: "pending" | "running" | "completed" | "failed";
+  type: "ingest" | "generate" | "refine";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   payload: any;
   result?: any;
   error_message?: string;
   created_at: string;
+  attempts?: number;
 }
+
+/** One generator node in a compiled flow plan. */
+export interface FlowStep {
+  node_id: string;
+  target_type: GeneratedType;
+  parents: string[];
+  depth: number;
+}
+
+export interface FlowPlan {
+  valid: boolean;
+  steps: FlowStep[];
+  waves: number;
+  error?: string;
+}
+
+export type FlowNodeStatus =
+  | "pending"
+  | "ready"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export interface FlowNodeState {
+  status: FlowNodeStatus;
+  job_id?: string;
+  artifact_id?: string;
+  error?: string;
+  target_type?: GeneratedType;
+  source_artifact_ids?: string[];
+}
+
+export interface FlowRun {
+  id: string;
+  project_id: string;
+  status: "running" | "completed" | "failed";
+  node_states: Record<string, FlowNodeState>;
+  plan: { steps: FlowStep[]; seed_artifacts: Record<string, string> };
+  result?: { completed: number; failed: number; skipped: number };
+  created_at?: string;
+  completed_at?: string;
+}
+
+export interface ChatReply {
+  reply: string;
+  action: "answer" | "refine" | "generate";
+  job_id?: string;
+  target_type?: GeneratedType;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  artifact_id?: string;
+  metadata?: { action?: string; job_id?: string };
+  created_at: string;
+}
+
+/** What this backend deployment supports. Drives the node palette. */
+export interface Capabilities {
+  artifact_types: GeneratedType[];
+  source_types: string[];
+  features: {
+    flows: boolean;
+    refine: boolean;
+    assistant: boolean;
+    realtime: boolean;
+    offline_llm: boolean;
+  };
+}
+
+/** Raise the API's error detail instead of a generic "request failed". */
+async function failure(response: Response, fallback: string): Promise<Error> {
+  const body = await response.json().catch(() => null);
+  return new Error(body?.detail || body?.error || `${fallback} (HTTP ${response.status})`);
+}
+
+async function authorized(extra: Record<string, string> = {}): Promise<HeadersInit> {
+  const token = await getAccessToken();
+  return { Authorization: `Bearer ${token}`, ...extra };
+}
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
 export const api = {
   projects: {
@@ -146,6 +258,45 @@ export const api = {
   },
 
   artifacts: {
+    async get(id: string): Promise<Artifact> {
+      const response = await fetch(`${BACKEND_URL}/api/artifacts/${id}`, {
+        headers: await authorized(),
+      });
+      if (!response.ok) throw await failure(response, "Could not load the artifact");
+      return response.json();
+    },
+
+    /**
+     * Provenance: which artifacts this was built from, and what was built on it.
+     * Both sides are lists - an artifact generated from several sources has
+     * several parents.
+     */
+    async lineage(id: string): Promise<{ artifact: Artifact; parents: Artifact[]; children: Artifact[] }> {
+      const response = await fetch(`${BACKEND_URL}/api/artifacts/${id}/lineage`, {
+        headers: await authorized(),
+      });
+      if (!response.ok) throw await failure(response, "Could not load lineage");
+      return response.json();
+    },
+
+    /** A time-limited URL for the artifact's rendered file (PDF, PPTX, Markdown). */
+    async downloadUrl(
+      id: string,
+      inline = false,
+    ): Promise<{ download_url: string; format: string; mime_type: string; filename: string }> {
+      const response = await fetch(
+        `${BACKEND_URL}/api/artifacts/${id}/download?inline=${inline}`,
+        { headers: await authorized() },
+      );
+      if (!response.ok) throw await failure(response, "No download is available for this artifact");
+      const body = await response.json();
+      // Local storage returns a relative path; make it absolute for the browser.
+      if (body.download_url.startsWith("/")) {
+        body.download_url = `${BACKEND_URL}${body.download_url}`;
+      }
+      return body;
+    },
+
     async update(id: string, updates: { content?: any; markdown?: string }): Promise<Artifact> {
       const token = await getAccessToken();
       const response = await fetch(`${BACKEND_URL}/api/artifacts/${id}`, {
@@ -186,7 +337,20 @@ export const api = {
       return response.json();
     },
 
-    async create(projectId: string, type: "ingest" | "generate", payload: any): Promise<{ job_id: string }> {
+    /** Stop a queued or running job. */
+    async cancel(jobId: string): Promise<void> {
+      const response = await fetch(`${BACKEND_URL}/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: await authorized(),
+      });
+      if (!response.ok) throw await failure(response, "Could not cancel the job");
+    },
+
+    async create(
+      projectId: string,
+      type: "ingest" | "generate" | "refine",
+      payload: any,
+    ): Promise<{ job_id: string; reused?: boolean }> {
       const token = await getAccessToken();
       const response = await fetch(`${BACKEND_URL}/api/jobs`, {
         method: "POST",
@@ -304,10 +468,82 @@ export const api = {
     }
   },
 
+  /**
+   * Flow execution: run the canvas as a dependency graph.
+   *
+   * `validate` is side-effect free and is what the canvas calls while you wire
+   * nodes together; `run` compiles the same graph and starts executing it.
+   */
+  flows: {
+    async validate(projectId: string, nodes: any[], edges: any[]): Promise<FlowPlan> {
+      const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/flow/validate`, {
+        method: "POST",
+        headers: await authorized(JSON_HEADERS),
+        body: JSON.stringify({ nodes, edges }),
+      });
+      if (!response.ok) throw await failure(response, "Could not validate the flow");
+      return response.json();
+    },
+
+    async run(projectId: string, nodes: any[], edges: any[]): Promise<FlowRun> {
+      const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/flow/run`, {
+        method: "POST",
+        headers: await authorized(JSON_HEADERS),
+        body: JSON.stringify({ nodes, edges }),
+      });
+      if (!response.ok) throw await failure(response, "Could not start the flow");
+      return response.json();
+    },
+
+    async get(projectId: string, flowRunId: string): Promise<FlowRun> {
+      const response = await fetch(
+        `${BACKEND_URL}/api/projects/${projectId}/flow/runs/${flowRunId}`,
+        { headers: await authorized() },
+      );
+      if (!response.ok) throw await failure(response, "Could not load the flow run");
+      return response.json();
+    },
+
+    async list(projectId: string): Promise<FlowRun[]> {
+      const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/flow/runs`, {
+        headers: await authorized(),
+      });
+      if (!response.ok) throw await failure(response, "Could not list flow runs");
+      return response.json();
+    },
+  },
+
+  /** The assistant panel: ask a question, or ask for the artifact to change. */
+  chat: {
+    async send(projectId: string, message: string, artifactId?: string): Promise<ChatReply> {
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+        method: "POST",
+        headers: await authorized(JSON_HEADERS),
+        body: JSON.stringify({ project_id: projectId, message, artifact_id: artifactId }),
+      });
+      if (!response.ok) throw await failure(response, "The assistant did not respond");
+      return response.json();
+    },
+
+    async history(projectId: string): Promise<ChatMessage[]> {
+      const response = await fetch(`${BACKEND_URL}/api/chat/${projectId}/history`, {
+        headers: await authorized(),
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+  },
+
+  async capabilities(): Promise<Capabilities> {
+    const response = await fetch(`${BACKEND_URL}/api/capabilities`);
+    if (!response.ok) throw await failure(response, "Could not read backend capabilities");
+    return response.json();
+  },
+
   points: {
+    /** Gamification placeholder. Not yet backed by the API. */
     async getBalance(): Promise<number> {
-      // Mock implementation for demo mode
-      return 100; // Return mock points balance
-    }
-  }
+      return 100;
+    },
+  },
 };
