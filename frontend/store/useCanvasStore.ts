@@ -13,10 +13,9 @@ import {
   MarkerType,
   Viewport
 } from "@xyflow/react";
-import { getAccessToken } from "@/lib/auth";
 import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
-import { api, Artifact, ArtifactEdge } from "@/lib/api";
+import { api, Artifact, ArtifactEdge, FlowNodeState, FlowPlan } from "@/lib/api";
 
 // Maps artifact types to node display info
 const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
@@ -26,11 +25,19 @@ const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon:
   flat_text: { label: "Refined Text", color: "#10B981", icon: "FileText" },
   knowledge_core: { label: "Project Core", color: "#F59E0B", icon: "Hexagon" },
 
+  pdf: { label: "PDF", color: "#DC2626", icon: "FileText" },
+  pptx: { label: "Slides File", color: "#F97316", icon: "Presentation" },
+  md: { label: "Markdown", color: "#6B7280", icon: "FileText" },
+  youtube: { label: "YouTube", color: "#EF4444", icon: "Video" },
+
   quiz: { label: "Quiz", color: "#3B82F6", icon: "HelpCircle" },
   flashcards: { label: "Flashcards", color: "#8B5CF6", icon: "Layers" },
   notes: { label: "Notes", color: "#10B981", icon: "BookOpen" },
   slides: { label: "Slides", color: "#F97316", icon: "Presentation" },
   exam: { label: "Exam", color: "#EF4444", icon: "ClipboardCheck" },
+  study_guide: { label: "Study Guide", color: "#0EA5E9", icon: "GraduationCap" },
+  cheatsheet: { label: "Cheat Sheet", color: "#14B8A6", icon: "Zap" },
+  mindmap: { label: "Mind Map", color: "#A855F7", icon: "Network" },
 };
 
 // Convert an artifact to a React Flow node
@@ -81,6 +88,9 @@ interface CanvasState {
   isSaving: boolean;
   isUploading: boolean;
   isDragging: boolean;
+  isRunning: boolean;
+  activeFlowRunId: string | null;
+  flowPlan: FlowPlan | null;
   isLocked: boolean;
   showMiniMap: boolean;
   isHeaderCollapsed: boolean;
@@ -110,7 +120,12 @@ interface CanvasState {
 
   save: () => Promise<void>;
   autoSave: () => void;
+
+  // Flow execution
   runFlow: () => Promise<void>;
+  validateFlow: () => Promise<FlowPlan | null>;
+  applyFlowState: (nodeStates: Record<string, FlowNodeState>) => void;
+  setNodeStatus: (nodeId: string, patch: Record<string, unknown>) => void;
 
   loadProject: (id: string) => Promise<void>;
   createNewProject: () => Promise<void>;
@@ -129,6 +144,9 @@ export const useCanvasStore = create<CanvasState>()(
       isSaving: false,
       isUploading: false,
       isDragging: false,
+      isRunning: false,
+      activeFlowRunId: null,
+      flowPlan: null,
       isLocked: false,
       showMiniMap: true,
       isHeaderCollapsed: false,
@@ -143,8 +161,20 @@ export const useCanvasStore = create<CanvasState>()(
           currentProjectId: null,
           nodes: [],
           edges: [],
-          projectName: generateProjectName()
+          projectName: generateProjectName(),
+          activeFlowRunId: null,
+          flowPlan: null,
+          isRunning: false,
         });
+      },
+
+      /** Patch a single node's data. Used by the realtime event handlers. */
+      setNodeStatus: (nodeId, patch) => {
+        set((state) => ({
+          nodes: state.nodes.map((node) =>
+            node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node
+          ),
+        }));
       },
 
       takeSnapshot: () => {
@@ -293,39 +323,92 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
 
+      /**
+       * Compile the canvas and check whether it can run.
+       *
+       * Called as nodes are wired together so problems - a cycle, a generator
+       * with nothing feeding it - surface on the canvas immediately instead of
+       * as a failed job minutes later.
+       */
+      validateFlow: async () => {
+        const { nodes, edges, currentProjectId } = get();
+        if (!currentProjectId || nodes.length === 0) {
+          set({ flowPlan: null });
+          return null;
+        }
+        try {
+          const plan = await api.flows.validate(currentProjectId, nodes, edges);
+          set({ flowPlan: plan });
+          return plan;
+        } catch (error) {
+          console.warn("[canvas] flow validation failed", error);
+          set({ flowPlan: null });
+          return null;
+        }
+      },
+
+      /**
+       * Run the canvas as a pipeline.
+       *
+       * The nodes and edges on screen are sent with the request rather than
+       * relying on the saved copy: autosave is debounced, so the canvas is
+       * routinely ahead of what is persisted and running the stale version
+       * would ignore whatever the user just connected.
+       */
       runFlow: async () => {
         const { nodes, edges, currentProjectId } = get();
         if (!currentProjectId) {
-          toast.error("Save your project first");
+          toast.error("Create a project before running a flow");
+          return;
+        }
+        if (get().isRunning) {
+          toast.info("This flow is already running");
           return;
         }
 
-        toast.promise(async () => {
-          const token = await getAccessToken();
-          const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/run`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              project_id: currentProjectId,
-              nodes,
-              edges
-            })
-          });
+        set({ isRunning: true });
+        try {
+          const run = await api.flows.run(currentProjectId, nodes, edges);
+          set({ activeFlowRunId: run.id });
+          get().applyFlowState(run.node_states);
 
-          if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || "Pipeline execution failed");
-          }
+          const queued = Object.values(run.node_states).filter((s) => s.status === "running").length;
+          toast.success(
+            queued > 1 ? `Running ${queued} steps in parallel` : "Flow started",
+            { description: "Nodes update live as each step finishes." },
+          );
+        } catch (error: any) {
+          set({ isRunning: false });
+          // 422 means the graph itself is the problem, and the message names
+          // the offending node - worth surfacing verbatim.
+          toast.error("This flow cannot run", { description: error.message });
+        }
+      },
 
-          return await response.json();
-        }, {
-          loading: 'Activating knowledge pipeline...',
-          success: 'Pipeline activated. Check node status for progress.',
-          error: (err) => err.message
-        });
+      /** Paint flow-run node states onto the canvas nodes. */
+      applyFlowState: (nodeStates) => {
+        set((state) => ({
+          nodes: state.nodes.map((node) => {
+            const flowState = nodeStates[node.id];
+            if (!flowState) return node;
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: flowState.status === "ready" ? "completed" : flowState.status,
+                error: flowState.error ?? null,
+                jobId: flowState.job_id,
+                progress:
+                  flowState.status === "completed" ? 100 :
+                  flowState.status === "running" ? 40 : 0,
+              },
+            };
+          }),
+        }));
+
+        const terminal = ["completed", "failed", "skipped", "ready"];
+        const done = Object.values(nodeStates).every((s) => terminal.includes(s.status));
+        if (done) set({ isRunning: false });
       },
 
       loadProject: async (id: string) => {
