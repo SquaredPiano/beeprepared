@@ -27,8 +27,10 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useCanvasStore } from "@/store/useCanvasStore";
+import { useProjectSocket } from "@/hooks/useProjectSocket";
+import type { ProjectEvent } from "@/lib/realtime";
+import { AssistantPanel } from "@/components/assistant/AssistantPanel";
 import { api } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
 import { AssetNode } from "./nodes/AssetNode";
 import { ProcessNode } from "./nodes/ProcessNode";
 import { ResultNode } from "./nodes/ResultNode";
@@ -54,6 +56,8 @@ const nodeTypes = {
   artifactNode: ArtifactNode,
   generator: GeneratorNode,
 };
+
+const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 function BeeCanvasInner() {
   const {
@@ -107,120 +111,91 @@ function BeeCanvasInner() {
     }
   }, [projectId, loadProject, currentProjectId]);
 
-  // Realtime Jobs & Artifacts
+  // ---------------------------------------------------------------------------
+  // Realtime
+  //
+  // This used to be a `GET /api/jobs` every five seconds plus a Supabase
+  // Realtime channel, with node status inferred by matching a job's
+  // `target_type` against a node's `subType` - which broke the moment a canvas
+  // had two generators of the same type. Now the backend pushes events over a
+  // WebSocket and each event names the node it belongs to.
+  // ---------------------------------------------------------------------------
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
-  const previousActiveJobIds = useRef<Set<string>>(new Set());
 
-  // Fallback polling for job completion (in case Realtime doesn't fire)
-  useEffect(() => {
-    if (!currentProjectId) return;
+  const handleEvent = useCallback((event: ProjectEvent) => {
+    const { applyFlowState, setNodeStatus } = useCanvasStore.getState();
 
-    const pollJobs = async () => {
-      try {
-        const jobs = await api.jobs.list(currentProjectId);
-        if (!jobs) return;
-
-        const activeNow = jobs.filter((j: any) => ['pending', 'running'].includes(j.status));
-        setActiveJobs(activeNow);
-
-        // SYNC STATUS TO NODES
-        // This ensures nodes show "Generating..." if a background job exists
-        setNodes(currentNodes =>
-          currentNodes.map(node => {
-            if (node.type === 'generator') {
-              // Find matching job for this generator type
-              const matchingJob = activeNow.find((j: any) =>
-                j.payload?.target_type === node.data.subType
-              );
-
-              if (matchingJob) {
-                // If node is already generating, don't clobber local progress logic if we had it
-                // But generally force it to pending/running
-                if (node.data.status !== 'running' && node.data.status !== 'pending') {
-                  return {
-                    ...node,
-                    data: { ...node.data, status: 'running', progress: 50 } // Mock progress for now
-                  };
-                }
-              } else {
-                // If it WAS running but no longer is (and not handled by completion logic yet), 
-                // it might have finished or failed. 
-                // Completion logic below handles 'completed', but we might need to reset 'stuck' nodes?
-                // For now, let's only set running if found.
-              }
-            }
-            return node;
-          })
+    switch (event.type) {
+      case "snapshot": {
+        setActiveJobs(
+          (event.data.jobs ?? []).filter((job: any) => ["pending", "running"].includes(job.status)),
         );
-
-        // Check if any previously active jobs are now completed
-        const currentActiveIds = new Set(activeNow.map((j: any) => j.id));
-        const completedIds = [...previousActiveJobIds.current].filter(id => !currentActiveIds.has(id));
-
-        if (completedIds.length > 0) {
-          // Some jobs completed - check their status
-          const completedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'completed');
-          if (completedJobs.length > 0) {
-            console.log('[BeeCanvas] Detected completed jobs via polling:', completedJobs.map((j: any) => j.id));
-            await refreshArtifacts(); // This will update nodes to 'completed' with artifact data
-            playComplete();
-            toast.success("Processing Complete!");
-          }
-
-          // Check for failed jobs
-          const failedJobs = jobs.filter((j: any) => completedIds.includes(j.id) && j.status === 'failed');
-          if (failedJobs.length > 0) {
-            setNodes(currentNodes =>
-              currentNodes.map(node => {
-                const failedJob = failedJobs.find((j: any) => j.payload?.target_type === node.data.subType);
-                if (failedJob && node.type === 'generator') {
-                  return {
-                    ...node,
-                    data: { ...node.data, status: 'failed', error: failedJob.error_message }
-                  };
-                }
-                return node;
-              })
-            );
-            failedJobs.forEach((job: any) => {
-              toast.error("Processing Failed", { description: job.error_message });
-            });
-          }
-        }
-
-        previousActiveJobIds.current = currentActiveIds;
-      } catch (error) {
-        console.warn('[BeeCanvas] Job polling error:', error);
+        // Resynchronise the canvas with the most recent run, so a reconnect (or
+        // a reload mid-flow) shows real state instead of stale node badges.
+        const latest = event.data.flow_runs?.[0];
+        if (latest?.node_states) applyFlowState(latest.node_states);
+        break;
       }
-    };
 
-    // Initial fetch
-    pollJobs();
+      case "job.created":
+        setActiveJobs((jobs) => [...jobs, { id: event.data.job_id, status: "pending", ...event.data }]);
+        break;
 
-    // Poll every 5 seconds as fallback to Realtime
-    const pollInterval = setInterval(pollJobs, 5000);
-
-    // Realtime Subscription (may or may not be enabled in Supabase)
-    const channel = supabase.channel(`canvas-${currentProjectId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'jobs', filter: `project_id=eq.${currentProjectId}` },
-        (payload) => {
-          const newRecord = payload.new as { status?: string } | undefined;
-          console.log('[BeeCanvas] Realtime event:', payload.eventType, newRecord?.status);
-          // Trigger immediate poll when we get a realtime event
-          pollJobs();
+      case "job.progress": {
+        // Progress is reported per job; map it back to the node that owns it.
+        const node = nodes.find((n) => (n.data as any)?.jobId === event.data.job_id);
+        if (node) {
+          setNodeStatus(node.id, {
+            status: "running",
+            progress: event.data.percent,
+            stage: event.data.stage,
+          });
         }
-      )
-      .subscribe((status) => {
-        console.log('[BeeCanvas] Realtime subscription status:', status);
-      });
+        break;
+      }
 
-    return () => {
-      clearInterval(pollInterval);
-      supabase.removeChannel(channel);
-    };
-  }, [currentProjectId, refreshArtifacts, playComplete]);
+      case "job.completed":
+      case "job.failed":
+      case "job.cancelled": {
+        setActiveJobs((jobs) => jobs.filter((job) => job.id !== event.data.job_id));
+        if (event.type === "job.completed") {
+          void refreshArtifacts();
+          playComplete();
+        } else if (event.type === "job.failed") {
+          toast.error("A step failed", { description: event.data.error });
+        }
+        break;
+      }
+
+      case "flow.node":
+        setNodeStatus(event.data.node_id, {
+          status: event.data.status,
+          error: event.data.error ?? null,
+          jobId: event.data.job_id,
+          progress: event.data.status === "completed" ? 100 : event.data.status === "running" ? 30 : 0,
+        });
+        break;
+
+      case "flow.completed":
+        void refreshArtifacts();
+        toast.success("Flow complete", {
+          description: `${event.data.completed} step${event.data.completed === 1 ? "" : "s"} finished.`,
+        });
+        break;
+
+      case "flow.failed":
+        toast.error("Flow finished with errors", {
+          description: `${event.data.completed} succeeded, ${event.data.failed} failed, ${event.data.skipped} skipped.`,
+        });
+        break;
+
+      case "artifact.created":
+        void refreshArtifacts();
+        break;
+    }
+  }, [nodes, refreshArtifacts, playComplete]);
+
+  const { connection } = useProjectSocket(currentProjectId, handleEvent);
 
   // Constraints & Auto-connect logic
   const findNearestCompatibleNode = (
@@ -584,6 +559,12 @@ function BeeCanvasInner() {
         )}
       </ReactFlow>
 
+      {connection !== "open" && (
+        <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-full border border-border/40 bg-background/90 px-4 py-1.5 text-[11px] shadow-lg backdrop-blur">
+          {connection === "connecting" ? "Reconnecting to live updates…" : "Live updates offline"}
+        </div>
+      )}
+
 
       {/* Delete Confirmation */}
       <DeleteConfirmationDialog
@@ -611,6 +592,14 @@ function BeeCanvasInner() {
         onClose={() => setPreviewArtifact(null)}
         artifact={previewArtifact}
         onUpdate={handleArtifactUpdate}
+      />
+
+      {/* Assistant - refines whichever artifact is currently open */}
+      <AssistantPanel
+        projectId={currentProjectId}
+        artifactId={previewArtifact?.id ?? null}
+        artifactType={previewArtifact?.type ?? null}
+        onJobQueued={(jobId) => setActiveJobs((jobs) => [...jobs, { id: jobId, status: "pending" }])}
       />
 
       {/* Upload Modal Relay */}
