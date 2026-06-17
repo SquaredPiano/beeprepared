@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ChevronUp, 
@@ -10,7 +10,9 @@ import {
   Hexagon,
   Share2,
   MoreVertical,
-  Play
+  Play,
+  Loader2,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "@/store/useCanvasStore";
@@ -25,12 +27,33 @@ export function CanvasHeader() {
     setProjectName, 
     save, 
     runFlow,
+    validateFlow,
+    flowPlan,
+    isRunning,
+    nodes,
+    edges,
     isSaving, 
     isHeaderCollapsed, 
     setIsHeaderCollapsed 
   } = useCanvasStore();
   
   const [isEditing, setIsEditing] = useState(false);
+
+  // Re-validate shortly after the graph stops changing, so the Run button can
+  // say up front how many steps will run - or why the flow will not run at all -
+  // instead of failing only once the user commits to it.
+  useEffect(() => {
+    const timer = setTimeout(() => { void validateFlow(); }, 400);
+    return () => clearTimeout(timer);
+  }, [nodes.length, edges.length, validateFlow]);
+
+  const runnable = flowPlan?.valid ?? false;
+  const stepCount = flowPlan?.steps.length ?? 0;
+  const runLabel = isRunning
+    ? "Running…"
+    : stepCount > 0
+      ? `Run ${stepCount} step${stepCount === 1 ? "" : "s"}`
+      : "Run Flow";
 
   return (
     <motion.header
@@ -96,10 +119,23 @@ export function CanvasHeader() {
         
         <Button 
           onClick={runFlow}
-          className="h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg bg-honey hover:bg-honey-600 text-bee-black group"
+          disabled={isRunning || (flowPlan !== null && !runnable)}
+          title={flowPlan?.error ?? undefined}
+          className={cn(
+            "h-10 px-6 rounded-xl font-display text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-lg group",
+            flowPlan && !runnable
+              ? "bg-wax/60 text-bee-black/50"
+              : "bg-honey hover:bg-honey-600 text-bee-black"
+          )}
         >
-          <Play size={14} className="mr-2 fill-bee-black group-hover:scale-110 transition-transform" />
-          Process Project
+          {isRunning ? (
+            <Loader2 size={14} className="mr-2 animate-spin" />
+          ) : flowPlan && !runnable ? (
+            <AlertTriangle size={14} className="mr-2" />
+          ) : (
+            <Play size={14} className="mr-2 fill-bee-black group-hover:scale-110 transition-transform" />
+          )}
+          {runLabel}
         </Button>
 
 
