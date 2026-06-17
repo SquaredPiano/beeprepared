@@ -22,11 +22,19 @@ import {
   Music,
   Award,
   CheckCircle2,
-  XCircle
+  XCircle,
+  GraduationCap,
+  Zap,
+  Network
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Artifact, api } from "@/lib/api";
+import {
+  CheatSheetRenderer,
+  MindMapRenderer,
+  StudyGuideRenderer,
+} from "./renderers/StudyArtifacts";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import MDEditor from '@uiw/react-md-editor';
@@ -275,6 +283,20 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
       const examData = content.data || content.core?.exam || content.exam || content;
       if (examData?.questions) return examData;
       return null;
+
+    // These three keep their generated shape, so the wrapper is all that is
+    // stripped - no per-type reshaping needed.
+    case 'study_guide':
+    case 'cheatsheet':
+    case 'mindmap':
+      return content.data || content;
+
+    // These three keep their generated shape, so unwrapping is all that is
+    // needed - no per-type reshaping.
+    case 'study_guide':
+    case 'cheatsheet':
+    case 'mindmap':
+      return content.data || content;
 
     case 'knowledge_core':
       return content.core || content;
@@ -1221,6 +1243,9 @@ const TYPE_ICONS: Record<string, typeof FileText> = {
   notes: BookOpen,
   slides: Presentation,
   exam: ClipboardCheck,
+  study_guide: GraduationCap,
+  cheatsheet: Zap,
+  mindmap: Network,
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -1233,6 +1258,9 @@ const TYPE_LABELS: Record<string, string> = {
   flashcards: 'Flashcards',
   notes: 'Notes',
   slides: 'Slides',
+  study_guide: 'Study Guide',
+  cheatsheet: 'Cheat Sheet',
+  mindmap: 'Mind Map',
   exam: 'Exam',
 };
 
@@ -1273,6 +1301,9 @@ export function ArtifactPreviewModal({
       case 'flashcards': return <FlashcardRenderer data={data} />;
       case 'exam': return <ExamRenderer data={data} artifact={artifact} />;
       case 'knowledge_core': return <KnowledgeCoreRenderer data={data} />;
+      case 'study_guide': return <StudyGuideRenderer data={data} />;
+      case 'cheatsheet': return <CheatSheetRenderer data={data} />;
+      case 'mindmap': return <MindMapRenderer data={data} />;
       default:
         return (
           <div className="bg-white p-6 rounded-2xl border border-wax">
