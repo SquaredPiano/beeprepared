@@ -14,7 +14,10 @@ import {
   Presentation,
   Map,
   Share2,
-  Plus
+  Plus,
+  GraduationCap,
+  Zap,
+  Network
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCanvasStore } from "@/store/useCanvasStore";
@@ -62,6 +65,30 @@ const agents = [
     label: 'Notes',
     description: 'Generate study notes',
     color: 'green' as const,
+  },
+  {
+    type: 'generator',
+    subType: 'study_guide',
+    icon: GraduationCap,
+    label: 'Study Guide',
+    description: 'A plan for one study session',
+    color: 'blue' as const,
+  },
+  {
+    type: 'generator',
+    subType: 'cheatsheet',
+    icon: Zap,
+    label: 'Cheat Sheet',
+    description: 'Dense one-page reference',
+    color: 'purple' as const,
+  },
+  {
+    type: 'generator',
+    subType: 'mindmap',
+    icon: Network,
+    label: 'Mind Map',
+    description: 'How the concepts connect',
+    color: 'indigo' as const,
   },
 ];
 

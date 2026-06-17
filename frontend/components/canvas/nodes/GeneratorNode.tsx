@@ -7,6 +7,9 @@ import {
   Layers,
   Presentation,
   ClipboardCheck,
+  GraduationCap,
+  Zap,
+  Network,
   Play,
   RefreshCw,
   Loader2,
@@ -31,6 +34,9 @@ const GENERATOR_ICONS: Record<string, typeof BookOpen> = {
   flashcards: Layers,
   slides: Presentation,
   exam: ClipboardCheck,
+  study_guide: GraduationCap,
+  cheatsheet: Zap,
+  mindmap: Network,
 };
 
 // Color mapping for generator types
@@ -40,6 +46,9 @@ const GENERATOR_COLORS: Record<string, { bg: string; text: string; border: strin
   flashcards: { bg: "bg-violet-50", text: "text-violet-600", border: "border-violet-200", accent: "bg-violet-500" },
   slides: { bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-200", accent: "bg-orange-500" },
   exam: { bg: "bg-red-50", text: "text-red-600", border: "border-red-200", accent: "bg-red-500" },
+  study_guide: { bg: "bg-sky-50", text: "text-sky-600", border: "border-sky-200", accent: "bg-sky-500" },
+  cheatsheet: { bg: "bg-teal-50", text: "text-teal-600", border: "border-teal-200", accent: "bg-teal-500" },
+  mindmap: { bg: "bg-fuchsia-50", text: "text-fuchsia-600", border: "border-fuchsia-200", accent: "bg-fuchsia-500" },
 };
 
 const GENERATOR_LABELS: Record<string, string> = {
@@ -48,6 +57,9 @@ const GENERATOR_LABELS: Record<string, string> = {
   flashcards: "Flashcards",
   slides: "Presentation",
   exam: "Mock Exam",
+  study_guide: "Study Guide",
+  cheatsheet: "Cheat Sheet",
+  mindmap: "Mind Map",
 };
 
 export interface GeneratorNodeData {

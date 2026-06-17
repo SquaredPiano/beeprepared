@@ -7,7 +7,9 @@ import { toast } from 'sonner';
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-export type TargetType = 'quiz' | 'notes' | 'slides' | 'flashcards' | 'exam';
+import { GENERATED_TYPES, GeneratedType } from '@/lib/api';
+
+export type TargetType = GeneratedType;
 export type JobStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 
 export interface GenerationState {
@@ -33,21 +35,21 @@ const initialState: GenerationState = {
  * Handles job creation, polling, and artifact fetching.
  */
 export function useArtifactGenerator() {
-  const [states, setStates] = useState<Record<TargetType, GenerationState>>({
-    quiz: { ...initialState },
-    notes: { ...initialState },
-    slides: { ...initialState },
-    flashcards: { ...initialState },
-    exam: { ...initialState },
-  });
+  // Built from the shared type list rather than hand-listed, so adding an
+  // artifact type on the backend does not silently miss a branch here.
+  const [states, setStates] = useState<Record<TargetType, GenerationState>>(
+    () =>
+      Object.fromEntries(
+        GENERATED_TYPES.map((type) => [type, { ...initialState }]),
+      ) as Record<TargetType, GenerationState>,
+  );
 
-  const abortControllers = useRef<Record<TargetType, AbortController | null>>({
-    quiz: null,
-    notes: null,
-    slides: null,
-    flashcards: null,
-    exam: null,
-  });
+  const abortControllers = useRef<Record<TargetType, AbortController | null>>(
+    Object.fromEntries(GENERATED_TYPES.map((type) => [type, null])) as Record<
+      TargetType,
+      AbortController | null
+    >,
+  );
 
   const updateState = useCallback((target: TargetType, update: Partial<GenerationState>) => {
     setStates(prev => ({
