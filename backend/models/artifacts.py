@@ -1,141 +1,143 @@
-from typing import List, Optional, Literal, Dict
+"""The shape of every study artifact the generator can produce."""
+
+from __future__ import annotations
+
+from typing import Dict, List, Literal, Optional, Type
+
 from pydantic import BaseModel, Field
 
-# --- 0. Exam Specification (The Assessment Contract) ---
-class ExamSpec(BaseModel):
-    discipline: Literal["Writing", "Philosophy", "Math", "Physics", "CS", "General"] = Field(description="The academic discipline")
-    exam_style: str = Field(description="The style of the exam (e.g., 'Analytic', 'Problem-Solving', 'Creative').")
-    cognitive_targets: List[str] = Field(description="Specific learning outcomes to test (e.g., 'Synthesis', 'Application').")
-    grading_philosophy: str = Field(description="How partial credit should be awarded.")
-    instructions_tone: str = Field(description="Tone of the instructions (e.g., 'Formal', 'Encouraging').")
 
-# --- 1. Final Exam Model ---
+class ExamSpec(BaseModel):
+    """The assessment contract an exam is written against."""
+
+    discipline: Literal["Writing", "Philosophy", "Math", "Physics", "CS", "General"]
+    exam_style: str = Field(description="Analytic, problem-solving, creative, and so on")
+    cognitive_targets: List[str] = Field(description="Learning outcomes under test")
+    grading_philosophy: str = Field(description="How partial credit is awarded")
+    instructions_tone: str = Field(description="Formal, encouraging, and so on")
+
+
 class ExamQuestion(BaseModel):
-    id: str = Field(description="Unique identifier for the question (e.g., 'Q1')")
-    text: str = Field(description=r"The question text. Use LaTeX for math (e.g., $\int x dx$).")
-    type: Literal['MCQ', 'Short Answer', 'Problem Set'] = Field(description="Type of question")
-    options: Optional[List[str]] = Field(description="Options for MCQ, null for others")
-    points: int = Field(description="Point value for this question")
-    # New V2 Fields
-    model_answer: str = Field(description="The ideal correct answer.")
-    grading_notes: str = Field(description="Criteria for awarding full vs partial credit.")
+    id: str
+    text: str = Field(description="The question. LaTeX for mathematics")
+    type: Literal["MCQ", "Short Answer", "Problem Set"]
+    options: Optional[List[str]] = Field(description="Choices for MCQ, null otherwise")
+    points: int
+    model_answer: str = Field(description="The ideal complete response")
+    grading_notes: str = Field(description="Where the marks are")
+
 
 class FinalExamModel(BaseModel):
-    title: str = Field(description="Title of the Exam")
-    exam_spec: Optional[ExamSpec] = Field(None, description="The specification used to generate this exam.")
-    instructions: Optional[str] = Field(description="General instructions for the students")
-    questions: Optional[List[ExamQuestion]] = Field(description="List of exam questions")
-    rubric: Optional[str] = Field(description="Grading rubric and solution key overview")
+    title: str
+    exam_spec: Optional[ExamSpec] = None
+    instructions: Optional[str] = None
+    questions: List[ExamQuestion] = Field(default_factory=list)
+    rubric: Optional[str] = None
 
 
-
-# --- 2. Quiz Model ---
 class QuizQuestion(BaseModel):
-    id: str = Field(description="Unique ID")
-    text: str = Field(description="Question text")
-    type: Literal['True/False', 'MCQ'] = Field(description="Quiz question type")
-    options: List[str] = Field(description="List of options (e.g., ['True', 'False'] or ['A', 'B', 'C', 'D'])")
-    correct_answer_index: int = Field(description="Index of the correct option (0-based)")
-    explanation: str = Field(description="Why this answer is correct. Critical for learning.")
-    topic_focus: str = Field(description="The specific concept this question tests")
+    id: str
+    text: str
+    type: Literal["True/False", "MCQ"]
+    options: List[str]
+    correct_answer_index: int = Field(description="Zero-based index into options")
+    explanation: str = Field(description="Why that answer is right")
+    topic_focus: str = Field(description="The concept under test")
+
 
 class QuizModel(BaseModel):
-    title: str = Field(description="Title of the Quiz")
-    questions: List[QuizQuestion] = Field(description="List of quiz questions")
+    title: str
+    questions: List[QuizQuestion]
 
-# --- 3. Flashcards Model ---
+
 class Flashcard(BaseModel):
-    front: str = Field(description="Concept or Question. Use LaTeX for math.")
-    back: str = Field(description="Definition or Answer. Use LaTeX for math.")
-    hint: Optional[str] = Field(None, description="Optional hint for the user")
-    source_reference: Optional[str] = Field(None, description="Where in the material this comes from")
+    front: str = Field(description="Prompt or question")
+    back: str = Field(description="Answer or definition")
+    hint: Optional[str] = None
+    source_reference: Optional[str] = None
+
 
 class FlashcardModel(BaseModel):
-    cards: List[Flashcard] = Field(description="List of flashcards")
+    cards: List[Flashcard]
 
-# --- 4. Notes Model ---
-class NoteSection(BaseModel):
-    heading: str = Field(description="Section heading")
-    key_points: List[str] = Field(description="List of bullet points")
-    content_block: str = Field(description="Detailed content in Markdown")
-    key_terms: List[str] = Field(description="List of import terms in this section")
-    callouts: List[str] = Field(description="Important warnings, formulas, or tips")
 
 class NotesModel(BaseModel):
-    title: str = Field(description="Title of the notes document")
-    sections: List[NoteSection] = Field(description="List of note sections")
+    """Study notes held as Markdown."""
 
-# --- 4b. Markdown Notes Model (simpler, more reliable) ---
-class MarkdownNotesModel(BaseModel):
-    """Notes stored as pure markdown - simpler and more reliable than structured JSON."""
-    title: str = Field(description="Title of the notes document")
-    format: str = Field(default="markdown", description="Always 'markdown'")
-    body: str = Field(description="Full notes content in Markdown format")
+    title: str
+    format: str = "markdown"
+    body: str
 
-# --- 5. Slides Model ---
+
 class Slide(BaseModel):
-    heading: str = Field(description="Slide headline")
-    main_idea: str = Field(description="One sentence summary of the slide")
-    bullet_points: List[str] = Field(description="3-5 brief bullet points")
-    visual_cue: str = Field(description="Prompt for image generation or chart description")
-    speaker_notes: str = Field(description="What the speaker should say for this slide")
+    heading: str
+    main_idea: str = Field(description="One sentence summary")
+    bullet_points: List[str]
+    visual_cue: str = Field(description="What to draw on this slide")
+    speaker_notes: str
+
 
 class SlidesModel(BaseModel):
-    title: str = Field(description="Presentation Title")
-    audience_level: str = Field(description="Target audience (e.g., 'Beginner', 'Advanced')")
-    slides: List[Slide] = Field(description="List of slides")
+    title: str
+    audience_level: str
+    slides: List[Slide]
 
-# --- 6. Study Guide Model ---
+
 class StudyGuideModel(BaseModel):
-    """A time-boxed revision plan: what to learn, in what order, and how to self-check."""
-    title: str = Field(description="Title of the study guide")
-    estimated_minutes: int = Field(description="Rough time to work through the whole guide")
-    objectives: List[str] = Field(description="Learning objectives, most important first")
-    body: str = Field(description="The guide itself, in Markdown, ordered for a single study session")
-    checklist: List[str] = Field(description="Self-check questions the learner should be able to answer")
+    """A revision plan for a single study session."""
 
-# --- 7. Cheat Sheet Model ---
+    title: str
+    estimated_minutes: int
+    objectives: List[str] = Field(description="Most important first")
+    body: str = Field(description="Markdown, ordered by dependency")
+    checklist: List[str] = Field(description="Self-check questions")
+
+
 class CheatSheetSection(BaseModel):
-    heading: str = Field(description="Section heading")
-    entries: List[str] = Field(description="Terse one-line facts, formulas or definitions")
+    heading: str
+    entries: List[str] = Field(description="Terse one-line facts or formulas")
+
 
 class CheatSheetModel(BaseModel):
-    """Dense single-page reference. Optimised for scanning, not for reading."""
-    title: str = Field(description="Title of the cheat sheet")
-    sections: List[CheatSheetSection] = Field(description="Sections of the cheat sheet")
+    """A dense single-page reference, optimised for scanning."""
 
-# --- 8. Mind Map Model ---
-# The depth levels are separate types on purpose. A self-referencing node
-# (`children: List["MindMapNode"]`) is the obvious modelling, but it compiles to
-# a JSON Schema with a `$ref` back to itself and no depth bound - and models
-# handed that schema will happily recurse until they hit their output limit.
-# Three concrete levels express the same tree, cap the depth in the schema
-# itself, and cost nothing at the call site.
+    title: str
+    sections: List[CheatSheetSection]
+
 
 class MindMapLeaf(BaseModel):
-    label: str = Field(description="Short label, at most six words")
-    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
+    label: str = Field(description="At most six words")
+    detail: Optional[str] = Field(None, description="One sentence under 140 characters")
+
 
 class MindMapBranch(BaseModel):
-    label: str = Field(description="Short label, at most six words")
-    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
-    children: List[MindMapLeaf] = Field(default_factory=list, description="Leaf nodes")
+    label: str = Field(description="At most six words")
+    detail: Optional[str] = Field(None, description="One sentence under 140 characters")
+    children: List[MindMapLeaf] = Field(default_factory=list)
+
 
 class MindMapRoot(BaseModel):
     label: str = Field(description="The subject of the material")
-    detail: Optional[str] = Field(None, description="One short sentence, under 140 characters")
-    children: List[MindMapBranch] = Field(default_factory=list, description="Top-level branches")
+    detail: Optional[str] = None
+    children: List[MindMapBranch] = Field(default_factory=list)
+
 
 class MindMapModel(BaseModel):
-    """Hierarchical concept map, rendered as an expandable tree in the UI."""
-    title: str = Field(description="Title of the mind map")
-    root: MindMapRoot = Field(description="Root node of the map")
+    """
+    A concept map fixed at three levels.
 
-# Every artifact type the generator can produce, and the model it produces.
-GENERATED_ARTIFACT_MODELS = {
+    Depth is expressed with distinct types rather than a self-referencing node,
+    because a recursive schema gives the model no bound to stop at.
+    """
+
+    title: str
+    root: MindMapRoot
+
+
+ARTIFACT_MODELS: Dict[str, Type[BaseModel]] = {
     "quiz": QuizModel,
     "exam": FinalExamModel,
-    "notes": MarkdownNotesModel,
+    "notes": NotesModel,
     "slides": SlidesModel,
     "flashcards": FlashcardModel,
     "study_guide": StudyGuideModel,
@@ -143,4 +145,6 @@ GENERATED_ARTIFACT_MODELS = {
     "mindmap": MindMapModel,
 }
 
-GENERATED_ARTIFACT_TYPES = frozenset(GENERATED_ARTIFACT_MODELS)
+GENERATED_TYPES = frozenset(ARTIFACT_MODELS)
+
+SOURCE_TYPES = frozenset({"youtube", "audio", "video", "pdf", "pptx", "md"})

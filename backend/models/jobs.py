@@ -1,20 +1,21 @@
+"""Job queue vocabulary: what work exists and what state it can be in."""
+
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobType(str, Enum):
-    """Kinds of work the queue can execute."""
+    """The kinds of work the queue can execute."""
 
-    INGEST = "ingest"      # raw source -> knowledge core
-    GENERATE = "generate"  # knowledge core (or artifacts) -> new artifact
-    REFINE = "refine"      # existing artifact + instructions -> revised artifact
-    EXTRACT = "extract"    # reserved: standalone text extraction
-    CLEAN = "clean"        # reserved: standalone text cleaning
-    RENDER = "render"      # reserved: standalone binary rendering
+    INGEST = "ingest"
+    GENERATE = "generate"
+    REFINE = "refine"
 
 
 class JobStatus(str, Enum):
@@ -25,45 +26,44 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-TERMINAL_STATUSES = {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}
+TERMINAL_STATUSES = frozenset({
+    JobStatus.COMPLETED.value,
+    JobStatus.FAILED.value,
+    JobStatus.CANCELLED.value,
+})
 
-
-# --- Typed payloads -------------------------------------------------------
-# The job row stores an untyped dict; these document and validate what each
-# job type expects to find in it.
 
 class IngestPayload(BaseModel):
-    source_type: str = Field(..., description="youtube | audio | video | pdf | pptx | md")
-    source_ref: str = Field(..., description="URL, or a path to the uploaded file")
+    """Turn a raw source file into a knowledge core."""
+
+    source_type: str
+    source_ref: str
     original_name: str = "Untitled"
 
 
 class GeneratePayload(BaseModel):
-    target_type: str = Field(..., description="quiz | exam | notes | slides | flashcards | ...")
-    source_artifact_ids: Optional[list[str]] = Field(
-        None, description="All inputs wired into the generator node"
-    )
-    source_artifact_id: Optional[str] = Field(
-        None, description="Single-source form, kept for backwards compatibility"
-    )
-    instructions: Optional[str] = Field(None, description="Free-text steering for the model")
-    flow_run_id: Optional[str] = Field(None, description="Set when the job is part of a flow run")
+    """Turn one or more artifacts into a new artifact."""
+
+    target_type: str
+    source_artifact_ids: List[str] = Field(default_factory=list)
+    instructions: Optional[str] = None
+    flow_run_id: Optional[str] = None
+    flow_node_id: Optional[str] = None
 
 
 class RefinePayload(BaseModel):
-    source_artifact_id: str = Field(..., description="The artifact being revised")
-    instructions: str = Field(..., description="What the user wants changed")
-    target_type: Optional[str] = Field(None, description="Defaults to the source artifact's type")
+    """Rebuild an existing artifact against a plain-English request."""
 
+    source_artifact_id: str
+    instructions: str
+    target_type: Optional[str] = None
 
-class RenderPayload(BaseModel):
-    artifact_id: UUID
-    format: str
-
-
-# --- Job ------------------------------------------------------------------
 
 class JobModel(BaseModel):
+    """A row from the job queue."""
+
+    model_config = ConfigDict(use_enum_values=False)
+
     id: UUID
     project_id: UUID
     type: JobType
@@ -77,7 +77,8 @@ class JobModel(BaseModel):
 
     @property
     def flow_run_id(self) -> Optional[str]:
-        """The flow run this job belongs to, if it was dispatched by one."""
         return self.payload.get("flow_run_id")
 
-    model_config = ConfigDict(use_enum_values=False)
+    @property
+    def flow_node_id(self) -> Optional[str]:
+        return self.payload.get("flow_node_id")
