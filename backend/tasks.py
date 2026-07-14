@@ -1,90 +1,72 @@
-"""
-Celery tasks.
-
-Deliberately thin. Each task claims a job and delegates to ``JobExecutor``, the
-same class the in-process worker pool uses, so a job behaves identically whether
-it ran through Redis or not.
-
-Celery workers are synchronous processes while handlers are async, so each task
-runs its coroutine on a loop it owns for the duration of the call.
-"""
+"""Celery tasks. Each one delegates to the same executor the local pool uses."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any, Coroutine, Dict
 
 from backend.celery_app import celery_app
 from backend.core.config import get_settings
-from backend.services.db_interface import DBInterface
+from backend.services.database import get_database
 
 logger = logging.getLogger(__name__)
 
+DRAIN_INTERVAL_SECONDS = 120.0
+REAP_INTERVAL_SECONDS = 300.0
 
-def _run(coro):
-    """Run a coroutine to completion from Celery's synchronous context."""
+
+def _run(coroutine: Coroutine) -> Any:
+    """Run a coroutine to completion from Celery's synchronous worker."""
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
+        return loop.run_until_complete(coroutine)
     finally:
-        # Let cancelled tasks (HTTP clients, semaphores) unwind before closing.
-        try:
-            loop.run_until_complete(loop.shutdown_asyncgens())
-        finally:
-            asyncio.set_event_loop(None)
-            loop.close()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        asyncio.set_event_loop(None)
+        loop.close()
 
 
-@celery_app.task(name="beeprepared.run_job", bind=True)
-def run_job(self, job_id: str) -> dict:
+@celery_app.task(name="beeprepared.run_job")
+def run_job(job_id: str) -> Dict[str, Any]:
     """Execute one queued job."""
     from backend.services.job_runner import JobExecutor
 
-    logger.info("Celery picked up job %s (task=%s)", job_id, self.request.id)
-    executor = JobExecutor()
-    ok = _run(executor.run_job_id(job_id))
-    return {"job_id": job_id, "committed": ok}
+    logger.info("Running job %s", job_id)
+    return {"job_id": job_id, "committed": _run(JobExecutor().run_job(job_id))}
 
 
 @celery_app.task(name="beeprepared.drain_queue")
-def drain_queue() -> dict:
+def drain_queue() -> Dict[str, int]:
     """
-    Enqueue any job sitting in ``pending`` that has no Celery task behind it.
+    Enqueue pending jobs that no Celery task is carrying.
 
-    Jobs are rows first and messages second: the API writes the row, then
-    enqueues. If the enqueue fails - broker blip, API restart between the two -
-    the row would otherwise sit there forever. This is the safety net, and it is
-    also what picks up work created while the workers were down.
+    Jobs are rows first and messages second, so this recovers anything written
+    while the broker or the workers were down.
     """
-    pending = DBInterface().pending_job_ids()
+    pending = get_database().pending_job_ids()
     for job_id in pending:
         run_job.delay(job_id)
+
     if pending:
-        logger.info("Drained %d pending job(s) onto the queue", len(pending))
+        logger.info("Re-dispatched %d pending job(s)", len(pending))
     return {"requeued": len(pending)}
 
 
 @celery_app.task(name="beeprepared.reap_stale_jobs")
-def reap_stale_jobs() -> dict:
-    """Return jobs stranded in ``running`` by a dead worker back to the queue."""
-    settings = get_settings()
-    requeued = DBInterface().reap_stale_jobs(settings.stale_job_seconds)
-    for job_id in requeued:
+def reap_stale_jobs() -> Dict[str, int]:
+    """Return jobs stranded by a dead worker to the queue."""
+    reaped = get_database().reap_stale_jobs(get_settings().stale_job_seconds)
+    for job_id in reaped:
         run_job.delay(job_id)
-    if requeued:
-        logger.warning("Reaped %d stale job(s)", len(requeued))
-    return {"reaped": len(requeued)}
+
+    if reaped:
+        logger.warning("Reaped %d stale job(s)", len(reaped))
+    return {"reaped": len(reaped)}
 
 
-# Periodic maintenance. Both tasks are idempotent, so a missed beat is harmless.
 celery_app.conf.beat_schedule = {
-    "drain-pending-jobs": {
-        "task": "beeprepared.drain_queue",
-        "schedule": 120.0,
-    },
-    "reap-stale-jobs": {
-        "task": "beeprepared.reap_stale_jobs",
-        "schedule": 300.0,
-    },
+    "drain-pending-jobs": {"task": "beeprepared.drain_queue", "schedule": DRAIN_INTERVAL_SECONDS},
+    "reap-stale-jobs": {"task": "beeprepared.reap_stale_jobs", "schedule": REAP_INTERVAL_SECONDS},
 }
