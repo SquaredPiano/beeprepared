@@ -1,20 +1,4 @@
-"""
-Project event bus - the transport behind the WebSocket API.
-
-Job progress is produced by whichever process happens to run the job (a Celery
-worker, or the in-process fallback pool) and consumed by WebSocket connections
-living in the API process. Those are not the same process, so an in-memory
-pub/sub is not enough on its own.
-
-Two drivers:
-
-- ``RedisEventBus``   - Redis pub/sub. Works across processes and machines.
-- ``MemoryEventBus``  - asyncio queues. Single process, zero dependencies.
-
-The bus is chosen at startup based on whether Redis is reachable. Publishers
-are sync-friendly (workers are not always async) while subscribers are async
-iterators, which is what a WebSocket handler wants.
-"""
+"""Carries job and flow progress from whichever process runs the work."""
 
 from __future__ import annotations
 
@@ -30,60 +14,57 @@ from backend.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Event names are part of the frontend contract. Keep them stable.
-EVENT_JOB_CREATED = "job.created"
-EVENT_JOB_STARTED = "job.started"
-EVENT_JOB_PROGRESS = "job.progress"
-EVENT_JOB_COMPLETED = "job.completed"
-EVENT_JOB_FAILED = "job.failed"
-EVENT_JOB_CANCELLED = "job.cancelled"
-EVENT_ARTIFACT_CREATED = "artifact.created"
-EVENT_FLOW_STARTED = "flow.started"
-EVENT_FLOW_NODE_UPDATE = "flow.node"
-EVENT_FLOW_COMPLETED = "flow.completed"
-EVENT_FLOW_FAILED = "flow.failed"
-EVENT_CHAT_MESSAGE = "chat.message"
+QUEUE_SIZE = 256
+
+JOB_CREATED = "job.created"
+JOB_STARTED = "job.started"
+JOB_PROGRESS = "job.progress"
+JOB_COMPLETED = "job.completed"
+JOB_FAILED = "job.failed"
+JOB_CANCELLED = "job.cancelled"
+ARTIFACT_CREATED = "artifact.created"
+FLOW_STARTED = "flow.started"
+FLOW_NODE = "flow.node"
+FLOW_COMPLETED = "flow.completed"
+FLOW_FAILED = "flow.failed"
+CHAT_MESSAGE = "chat.message"
 
 
-def channel_for(project_id: str) -> str:
-    return f"beeprepared:project:{project_id}"
-
-
-def make_event(event_type: str, project_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def make_event(event_type: str, project_id: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Wrap a payload in the envelope every client expects."""
     return {
         "type": event_type,
         "project_id": str(project_id),
         "ts": datetime.now(timezone.utc).isoformat(),
-        "data": payload or {},
+        "data": data or {},
     }
 
 
 class EventBus(ABC):
+    """
+    Fans project events out to whoever is listening.
+
+    Publishing is callable from any thread because workers are not async;
+    subscribing is an async iterator because WebSocket handlers are.
+    """
+
     driver: str = "unknown"
 
     @abstractmethod
     def publish(self, project_id: str, event: Dict[str, Any]) -> None:
-        """Fan an event out to every subscriber of ``project_id``."""
+        """Deliver an event to every subscriber of this project."""
 
     @abstractmethod
-    async def subscribe(self, project_id: str) -> AsyncIterator[Dict[str, Any]]:
-        """Async-iterate events for ``project_id`` until the consumer stops."""
-
-    async def aclose(self) -> None:  # pragma: no cover - driver specific
-        return None
+    def subscribe(self, project_id: str) -> AsyncIterator[Dict[str, Any]]:
+        """Yield events for this project until the consumer stops."""
 
 
-# ---------------------------------------------------------------------------
-# In-process
-# ---------------------------------------------------------------------------
-
-class MemoryEventBus(EventBus):
+class InProcessEventBus(EventBus):
     """
-    Single-process bus backed by asyncio queues.
+    Delivers events through asyncio queues within one process.
 
-    ``publish`` is callable from any thread: it hops onto the loop that owns the
-    subscriber queues via ``call_soon_threadsafe`` rather than touching the
-    queue directly, because ``asyncio.Queue`` is not thread-safe.
+    Publishers may be worker threads, so delivery hops onto the loop that owns
+    the queues rather than touching them directly.
     """
 
     driver = "memory"
@@ -94,37 +75,32 @@ class MemoryEventBus(EventBus):
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Record the loop that owns the subscriber queues."""
         self._loop = loop
-
-    def _deliver(self, project_id: str, event: Dict[str, Any]) -> None:
-        with self._lock:
-            queues = list(self._subscribers.get(str(project_id), ()))
-        for queue in queues:
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                logger.warning("Dropping event for project %s: subscriber queue full", project_id)
 
     def publish(self, project_id: str, event: Dict[str, Any]) -> None:
         loop = self._loop
         if loop is None or not loop.is_running():
-            self._deliver(project_id, event)
+            self._deliver(str(project_id), event)
             return
+
         try:
             running = asyncio.get_running_loop()
         except RuntimeError:
             running = None
 
         if running is loop:
-            self._deliver(project_id, event)
+            self._deliver(str(project_id), event)
         else:
             loop.call_soon_threadsafe(self._deliver, str(project_id), event)
 
     async def subscribe(self, project_id: str) -> AsyncIterator[Dict[str, Any]]:
-        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+        queue: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         key = str(project_id)
+
         with self._lock:
             self._subscribers.setdefault(key, set()).add(queue)
+
         try:
             while True:
                 yield await queue.get()
@@ -136,42 +112,43 @@ class MemoryEventBus(EventBus):
                     if not subscribers:
                         self._subscribers.pop(key, None)
 
+    def _deliver(self, project_id: str, event: Dict[str, Any]) -> None:
+        with self._lock:
+            queues = list(self._subscribers.get(project_id, ()))
 
-# ---------------------------------------------------------------------------
-# Redis
-# ---------------------------------------------------------------------------
+        for queue in queues:
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                logger.warning("Dropping an event for project %s: subscriber is behind", project_id)
+
 
 class RedisEventBus(EventBus):
-    """
-    Cross-process bus over Redis pub/sub.
-
-    Publishing uses a sync client so Celery workers (which are not async) can
-    emit progress without spinning up an event loop; subscribing uses the async
-    client so a WebSocket handler can await messages.
-    """
+    """Delivers events across processes over Redis pub/sub."""
 
     driver = "redis"
 
-    def __init__(self, url: str):
+    def __init__(self, url: str) -> None:
         import redis
 
-        self.url = url
-        self._sync = redis.Redis.from_url(url, decode_responses=True, socket_timeout=5)
-        self._sync.ping()
-        self._async_client = None
+        self._url = url
+        self._client = redis.Redis.from_url(url, decode_responses=True, socket_timeout=5)
+        self._client.ping()
 
     def publish(self, project_id: str, event: Dict[str, Any]) -> None:
         try:
-            self._sync.publish(channel_for(str(project_id)), json.dumps(event))
-        except Exception as exc:
-            logger.warning("Redis publish failed for project %s: %s", project_id, exc)
+            self._client.publish(self._channel(project_id), json.dumps(event))
+        except Exception as error:
+            logger.warning("Redis publish failed for project %s: %s", project_id, error)
 
     async def subscribe(self, project_id: str) -> AsyncIterator[Dict[str, Any]]:
-        import redis.asyncio as aioredis
+        import redis.asyncio as redis
 
-        client = aioredis.from_url(self.url, decode_responses=True)
+        client = redis.from_url(self._url, decode_responses=True)
+        channel = self._channel(project_id)
         pubsub = client.pubsub()
-        await pubsub.subscribe(channel_for(str(project_id)))
+        await pubsub.subscribe(channel)
+
         try:
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
@@ -180,51 +157,50 @@ class RedisEventBus(EventBus):
                 try:
                     yield json.loads(message["data"])
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning("Discarding malformed event on %s", message.get("channel"))
+                    logger.warning("Discarding a malformed event on %s", channel)
         finally:
-            await pubsub.unsubscribe(channel_for(str(project_id)))
+            await pubsub.unsubscribe(channel)
             await pubsub.aclose()
             await client.aclose()
 
-
-# ---------------------------------------------------------------------------
-# Selection
-# ---------------------------------------------------------------------------
-
-_BUS: Optional[EventBus] = None
-_BUS_LOCK = threading.Lock()
+    @staticmethod
+    def _channel(project_id: str) -> str:
+        return f"beeprepared:project:{project_id}"
 
 
-def _build_bus() -> EventBus:
+_bus: Optional[EventBus] = None
+_lock = threading.Lock()
+
+
+def build_bus() -> EventBus:
+    """Use Redis when it is reachable, otherwise stay in process."""
     settings = get_settings()
     if settings.has_redis:
         try:
-            bus = RedisEventBus(settings.redis_url)
-            logger.info("Event bus: redis (%s)", settings.redis_url)
-            return bus
-        except Exception as exc:
-            logger.warning("Redis unavailable for events (%s). Using in-process event bus.", exc)
-    logger.info("Event bus: in-process")
-    return MemoryEventBus()
+            return RedisEventBus(settings.redis_url)
+        except Exception as error:
+            logger.warning("Redis unavailable for events (%s). Staying in process.", error)
+    return InProcessEventBus()
 
 
 def get_event_bus() -> EventBus:
-    global _BUS
-    if _BUS is None:
-        with _BUS_LOCK:
-            if _BUS is None:
-                _BUS = _build_bus()
-    return _BUS
+    """The shared event bus, created on first use."""
+    global _bus
+    if _bus is None:
+        with _lock:
+            if _bus is None:
+                _bus = build_bus()
+                logger.info("Event bus: %s", _bus.driver)
+    return _bus
 
 
 def reset_event_bus() -> None:
-    global _BUS
-    with _BUS_LOCK:
-        _BUS = None
+    """Discard the cached bus so the next call rebuilds it."""
+    global _bus
+    with _lock:
+        _bus = None
 
 
-def publish(project_id: str, event_type: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Convenience wrapper: build the envelope and publish it."""
-    event = make_event(event_type, str(project_id), payload)
-    get_event_bus().publish(str(project_id), event)
-    return event
+def publish(project_id: str, event_type: str, data: Optional[Dict[str, Any]] = None) -> None:
+    """Build an event envelope and publish it."""
+    get_event_bus().publish(str(project_id), make_event(event_type, str(project_id), data))
