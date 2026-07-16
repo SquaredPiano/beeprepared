@@ -1,20 +1,4 @@
-"""
-BeePrepared API.
-
-Application assembly only - routing lives in ``backend/api/routes``. This file
-wires middleware, lifespan and error handling, and nothing else. It used to be a
-thousand lines containing a hand-rolled Supabase client, the auth logic, and
-every endpoint in the product; splitting it means a route can be found by its
-filename and tested without importing the world.
-
-Startup does three things:
-
-1. Resolve configuration once - database backend, storage backend, LLM provider,
-   dispatch mode - and log the result, so the first line of a support question
-   ("what was it actually connected to?") is answered by the logs.
-2. Bind the event bus to the running loop, so worker threads can publish onto it.
-3. Start the in-process worker pool, but only when Celery is not handling jobs.
-"""
+"""FastAPI application assembly."""
 
 from __future__ import annotations
 
@@ -26,7 +10,6 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-# Allow `python backend/main.py` as well as `uvicorn backend.main:app`.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, Request
@@ -34,69 +17,58 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.env import load_environment
+from backend.api.routes import artifacts, chat, files, flows, jobs, projects, ws
+from backend.core.config import get_settings
+from backend.llm.factory import get_provider
+from backend.models.artifacts import GENERATED_TYPES, SOURCE_TYPES
+from backend.services import events
+from backend.services.database import get_database
+from backend.services.dispatcher import LOCAL, dispatch_mode
+from backend.services.files import get_file_store
 
-load_environment()
-
-from backend.api.routes import artifacts, chat, files, flows, jobs, projects, ws  # noqa: E402
-from backend.core.config import get_settings  # noqa: E402
-from backend.core.services.llm_factory import LLMFactory  # noqa: E402
-from backend.services import events as event_module  # noqa: E402
-from backend.services.db_interface import active_backend, backend_reason  # noqa: E402
-from backend.services.dispatcher import dispatch_mode, set_local_pool  # noqa: E402
-from backend.services.storage import storage_backend_name  # noqa: E402
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-)
-for noisy in ("httpx", "httpcore", "botocore", "boto3", "urllib3", "s3transfer"):
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+for noisy in ("httpx", "httpcore", "urllib3", "asyncio"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+SLOW_REQUEST_MS = 1000
+REQUEST_ID_HEADER = "X-Request-ID"
+
+settings = get_settings()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-
-    # An in-process event bus fans out on the loop that owns its queues, and
-    # publishers can be worker threads, so it needs a handle on that loop.
-    bus = event_module.get_event_bus()
-    if isinstance(bus, event_module.MemoryEventBus):
+    """Resolve every dependency once, then start workers if nothing else will."""
+    bus = events.get_event_bus()
+    if isinstance(bus, events.InProcessEventBus):
         bus.bind_loop(asyncio.get_running_loop())
 
-    try:
-        provider = type(LLMFactory.get_provider()).__name__
-    except Exception as exc:
-        provider = f"unavailable ({exc})"
-
+    database = get_database()
+    store = get_file_store()
+    provider = get_provider()
     mode = dispatch_mode()
+
     logger.info(
-        "BeePrepared API starting\n"
-        "  database : %s (%s)\n"
-        "  storage  : %s\n"
-        "  events   : %s\n"
-        "  jobs     : %s\n"
-        "  llm      : %s",
-        active_backend(), backend_reason(), storage_backend_name(), bus.driver, mode, provider,
+        "BeePrepared starting\n  database : %s\n  files    : %s\n  events   : %s\n"
+        "  jobs     : %s\n  model    : %s",
+        database.path, store.root, bus.driver, mode, provider.name,
     )
 
     pool = None
-    if mode == "local":
-        # No Celery worker is listening, so this process does the work itself.
+    if mode == LOCAL:
         from backend.services.job_runner import WorkerPool
 
-        pool = WorkerPool(settings.worker_concurrency)
+        pool = WorkerPool()
         await pool.start()
-        set_local_pool(pool)
 
     try:
         yield
     finally:
-        if pool is not None:
+        if pool:
             await pool.stop()
-        logger.info("BeePrepared API stopped")
+        logger.info("BeePrepared stopped")
 
 
 app = FastAPI(
@@ -106,65 +78,58 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-settings = get_settings()
-
-# `allow_credentials=True` with `allow_origins=["*"]` is rejected by browsers -
-# the previous config was effectively no CORS at all. Origins are explicit.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_origin_regex=r"https?://localhost(:\d+)?|https?://127\.0\.0\.1(:\d+)?",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
 
 
 @app.middleware("http")
-async def request_context(request: Request, call_next):
-    """
-    Tag every request with an id and log how long it took.
-
-    The id goes back in a header, so a user reporting "generation failed" can be
-    traced to the exact request without guessing from timestamps.
-    """
-    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+async def trace_request(request: Request, call_next):
+    """Tag each request with an id and log the slow ones."""
+    request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex[:12]
     started = time.perf_counter()
 
     try:
         response = await call_next(request)
     except Exception:
-        elapsed = (time.perf_counter() - started) * 1000
-        logger.exception("[%s] %s %s failed after %.0fms",
-                         request_id, request.method, request.url.path, elapsed)
+        logger.exception("[%s] %s %s failed", request_id, request.method, request.url.path)
         raise
 
-    elapsed = (time.perf_counter() - started) * 1000
-    response.headers["X-Request-ID"] = request_id
-    if elapsed > 1000 or response.status_code >= 500:
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    response.headers[REQUEST_ID_HEADER] = request_id
+
+    if elapsed_ms > SLOW_REQUEST_MS or response.status_code >= 500:
         logger.warning("[%s] %s %s -> %d (%.0fms)", request_id, request.method,
-                       request.url.path, response.status_code, elapsed)
+                       request.url.path, response.status_code, elapsed_ms)
+
     return response
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_error(request: Request, exc: RequestValidationError):
-    """Return validation failures the frontend can actually display."""
-    problems = [
-        {"field": ".".join(str(p) for p in error["loc"][1:]), "message": error["msg"]}
-        for error in exc.errors()
-    ]
+async def on_validation_error(request: Request, error: RequestValidationError):
+    """Return field-level problems the frontend can display."""
     return JSONResponse(
         status_code=422,
-        content={"detail": "Request validation failed", "problems": problems},
+        content={
+            "detail": "Request validation failed",
+            "problems": [
+                {"field": ".".join(str(part) for part in item["loc"][1:]), "message": item["msg"]}
+                for item in error.errors()
+            ],
+        },
     )
 
 
 @app.exception_handler(Exception)
-async def unhandled_error(request: Request, exc: Exception):
-    """Never leak a stack trace to a client; always leave one in the logs."""
-    request_id = request.headers.get("X-Request-ID", "-")
+async def on_unhandled_error(request: Request, error: Exception):
+    """Keep stack traces in the logs, not in responses."""
+    request_id = request.headers.get(REQUEST_ID_HEADER, "-")
     logger.exception("[%s] Unhandled error on %s", request_id, request.url.path)
     return JSONResponse(
         status_code=500,
@@ -172,49 +137,38 @@ async def unhandled_error(request: Request, exc: Exception):
     )
 
 
-app.include_router(projects.router)
-app.include_router(jobs.router)
-app.include_router(artifacts.router)
-app.include_router(flows.router)
-app.include_router(files.router)
-app.include_router(chat.router)
-app.include_router(ws.router)
+for router in (projects, jobs, artifacts, flows, files, chat, ws):
+    app.include_router(router.router)
 
 
 @app.get("/health", tags=["meta"])
 def health():
-    """
-    Liveness plus a description of what this instance is wired to.
-
-    Deliberately more than ``{"status": "ok"}``: most of the confusing failures
-    in this system come from being connected to something other than what you
-    assumed, and this makes that visible in one request.
-    """
+    """Liveness, plus what this instance resolved its dependencies to."""
     return {
         "status": "healthy",
-        "service": "BeePrepared API",
         "version": app.version,
-        "database": active_backend(),
-        "storage": storage_backend_name(),
-        "events": event_module.get_event_bus().driver,
+        "database": str(get_database().path),
+        "files": str(get_file_store().root),
+        "events": events.get_event_bus().driver,
         "jobs": dispatch_mode(),
+        "model": get_provider().name,
     }
 
 
 @app.get("/api/capabilities", tags=["meta"])
 def capabilities():
-    """What this deployment can produce. The UI builds its palette from this."""
-    from backend.models.artifacts import GENERATED_ARTIFACT_TYPES
-
+    """What this deployment can produce. The canvas builds its palette from this."""
+    provider = get_provider()
     return {
-        "artifact_types": sorted(GENERATED_ARTIFACT_TYPES),
-        "source_types": ["youtube", "audio", "video", "pdf", "pptx", "md"],
+        "artifact_types": sorted(GENERATED_TYPES),
+        "source_types": sorted(SOURCE_TYPES),
         "features": {
             "flows": True,
             "refine": True,
             "assistant": True,
             "realtime": True,
-            "offline_llm": LLMFactory.is_offline(),
+            "transcription": provider.supports_audio,
+            "offline_model": provider.name == "offline",
         },
     }
 
