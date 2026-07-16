@@ -1,4 +1,4 @@
-"""Job routes: create, inspect, list and cancel work."""
+"""Jobs: queue work, watch it, and cancel it."""
 
 from __future__ import annotations
 
@@ -6,120 +6,77 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from backend.api.deps import get_current_user, get_db, require_project
 from backend.api.schemas import (
-    GeneratePayload,
-    IngestPayload,
+    GenerateRequest,
+    IngestRequest,
+    JobAccepted,
     JobRequest,
-    JobResponse,
-    JobStatusResponse,
-    RefinePayload,
+    JobStatus,
+    RefineRequest,
 )
-from backend.services.db_interface import DBInterface
+from backend.services.database import Database
 from backend.services.dispatcher import enqueue
-from backend.services.events import EVENT_JOB_CANCELLED, EVENT_JOB_CREATED, publish
+from backend.services.events import JOB_CANCELLED, JOB_CREATED, publish
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-PAYLOAD_MODELS = {
-    "ingest": IngestPayload,
-    "generate": GeneratePayload,
-    "refine": RefinePayload,
+REQUEST_MODELS: Dict[str, type[BaseModel]] = {
+    "ingest": IngestRequest,
+    "generate": GenerateRequest,
+    "refine": RefineRequest,
 }
 
-ACTIVE_STATUSES = ("pending", "running")
+IN_FLIGHT = ("pending", "running")
+DEDUPLICATION_WINDOW = 50
 
 
-def _find_reusable_job(
-    db: DBInterface, project_id: str, payload: GeneratePayload
-) -> Optional[Dict[str, Any]]:
-    """
-    Find an existing job that already does exactly this work.
-
-    Only in-flight jobs are reused. The original implementation also returned
-    *completed* jobs, which meant clicking "regenerate" silently handed back the
-    old artifact and looked like the button was broken. Deduplicating concurrent
-    duplicates is worth doing; refusing to ever regenerate is not.
-
-    A steered generation is never deduplicated - different instructions are
-    different work by definition.
-    """
-    if payload.instructions:
-        return None
-
-    wanted = sorted(payload.resolved_sources())
-    if not wanted:
-        return None
-
-    candidates = db.select(
-        "jobs",
-        [("project_id", f"eq.{project_id}"), ("type", "eq.generate"),
-         ("status", f"in.({','.join(ACTIVE_STATUSES)})")],
-        order="created_at.desc",
-        limit=50,
-    )
-
-    for job in candidates:
-        job_payload = job.get("payload") or {}
-        if job_payload.get("target_type") != payload.target_type:
-            continue
-        if job_payload.get("instructions"):
-            continue
-        sources = job_payload.get("source_artifact_ids") or (
-            [job_payload["source_artifact_id"]] if job_payload.get("source_artifact_id") else []
-        )
-        if sorted(str(s) for s in sources) == wanted:
-            return job
-    return None
-
-
-@router.post("", response_model=JobResponse, status_code=202)
+@router.post("", response_model=JobAccepted, status_code=202)
 def create_job(
     request: JobRequest,
     user_id: str = Depends(get_current_user),
-    db: DBInterface = Depends(get_db),
-) -> JobResponse:
+    database: Database = Depends(get_db),
+) -> JobAccepted:
     """
     Queue a job.
 
-    The row is written first and dispatched second, so a broker hiccup delays
-    the work instead of losing it - the periodic drain task picks up anything
-    that was never enqueued.
+    The row is written before dispatch, so a broker outage delays the work
+    rather than losing it.
     """
-    require_project(request.project_id, user_id, db)
+    require_project(request.project_id, user_id, database)
 
-    model = PAYLOAD_MODELS[request.type]
     try:
-        payload = model(**request.payload)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid {request.type} payload: {exc}") from exc
+        payload = REQUEST_MODELS[request.type](**request.payload)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Invalid {request.type} payload: {error}") from error
 
-    if request.type == "generate":
-        existing = _find_reusable_job(db, request.project_id, payload)
-        if existing:
-            logger.info("Reusing in-flight job %s for an identical request", existing["id"])
-            return JobResponse(
-                job_id=existing["id"], status=existing["status"], dispatch="reused", reused=True
+    if isinstance(payload, GenerateRequest):
+        duplicate = _find_in_flight_duplicate(database, request.project_id, payload)
+        if duplicate:
+            logger.info("Reusing in-flight job %s", duplicate["id"])
+            return JobAccepted(
+                job_id=duplicate["id"], status=duplicate["status"], dispatch="reused", reused=True
             )
 
-    rows = db.insert("jobs", {
+    stored = _normalise(payload)
+    rows = database.insert("jobs", {
         "project_id": request.project_id,
         "type": request.type,
         "status": "pending",
-        "payload": payload.model_dump(exclude_none=True),
+        "payload": stored,
     })
     if not rows:
-        raise HTTPException(status_code=500, detail="Failed to create the job")
+        raise HTTPException(status_code=500, detail="Could not create the job")
 
     job_id = rows[0]["id"]
-    logger.info("Created %s job %s for project %s", request.type, job_id, request.project_id)
+    logger.info("Queued %s job %s", request.type, job_id)
+    publish(request.project_id, JOB_CREATED, {"job_id": job_id, "type": request.type})
 
-    publish(request.project_id, EVENT_JOB_CREATED, {"job_id": job_id, "type": request.type})
-    dispatch = enqueue(job_id)
-
-    return JobResponse(job_id=job_id, status="pending", dispatch=dispatch)
+    return JobAccepted(job_id=job_id, dispatch=enqueue(job_id))
 
 
 @router.get("")
@@ -127,68 +84,99 @@ def list_jobs(
     project_id: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     user_id: str = Depends(get_current_user),
-    db: DBInterface = Depends(get_db),
+    database: Database = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Recent jobs for one project, or across every project the caller owns."""
     if project_id:
-        require_project(project_id, user_id, db)
-        return db.select(
+        require_project(project_id, user_id, database)
+        return database.select(
             "jobs", [("project_id", f"eq.{project_id}")], order="created_at.desc", limit=limit
         )
 
-    projects = db.select("projects", [("user_id", f"eq.{user_id}")], columns="id")
-    project_ids = [p["id"] for p in projects]
-    if not project_ids:
+    projects = database.select("projects", [("user_id", f"eq.{user_id}")], columns="id")
+    if not projects:
         return []
 
-    return db.select(
-        "jobs",
-        [("project_id", f"in.({','.join(project_ids)})")],
-        order="created_at.desc",
-        limit=limit,
-    )
+    ids = ",".join(project["id"] for project in projects)
+    return database.select("jobs", [("project_id", f"in.({ids})")], order="created_at.desc", limit=limit)
 
 
-@router.get("/{job_id}", response_model=JobStatusResponse)
+@router.get("/{job_id}", response_model=JobStatus)
 def get_job(
     job_id: str,
     user_id: str = Depends(get_current_user),
-    db: DBInterface = Depends(get_db),
-) -> JobStatusResponse:
-    job = db.get_job(job_id)
+    database: Database = Depends(get_db),
+) -> JobStatus:
+    """One job's current state and result."""
+    job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-    require_project(job["project_id"], user_id, db)
 
-    return JobStatusResponse(**{
-        field: job.get(field) for field in JobStatusResponse.model_fields
-    })
+    require_project(job["project_id"], user_id, database)
+    return JobStatus(**{field: job.get(field) for field in JobStatus.model_fields})
 
 
 @router.post("/{job_id}/cancel")
 def cancel_job(
     job_id: str,
     user_id: str = Depends(get_current_user),
-    db: DBInterface = Depends(get_db),
-) -> Dict[str, Any]:
-    """
-    Cancel a queued or running job.
-
-    A running job is marked cancelled immediately; the worker notices when it
-    next commits and discards the result rather than writing an artifact the
-    user has already abandoned.
-    """
-    job = db.get_job(job_id)
+    database: Database = Depends(get_db),
+) -> Dict[str, str]:
+    """Cancel a job that has not finished."""
+    job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-    require_project(job["project_id"], user_id, db)
 
-    cancelled = db.cancel_job(job_id)
-    if not cancelled:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job is already {job['status']} and cannot be cancelled",
-        )
+    require_project(job["project_id"], user_id, database)
 
-    publish(job["project_id"], EVENT_JOB_CANCELLED, {"job_id": job_id})
+    if not database.cancel_job(job_id):
+        raise HTTPException(status_code=409, detail=f"Job is already {job['status']}")
+
+    publish(job["project_id"], JOB_CANCELLED, {"job_id": job_id})
     return {"status": "cancelled", "id": job_id}
+
+
+def _normalise(payload: BaseModel) -> Dict[str, Any]:
+    """Store generate payloads in their multi-source form, whichever was sent."""
+    if isinstance(payload, GenerateRequest):
+        stored = payload.model_dump(exclude_none=True, exclude={"source_artifact_id"})
+        stored["source_artifact_ids"] = payload.sources()
+        return stored
+    return payload.model_dump(exclude_none=True)
+
+
+def _find_in_flight_duplicate(
+    database: Database,
+    project_id: str,
+    payload: GenerateRequest,
+) -> Optional[Dict[str, Any]]:
+    """
+    Find a running job that already does exactly this work.
+
+    Only in-flight jobs count. Returning a completed one would make regenerate
+    hand back the old artifact, and a steered request is never a duplicate
+    because different instructions are different work.
+    """
+    if payload.instructions:
+        return None
+
+    wanted = sorted(payload.sources())
+    if not wanted:
+        return None
+
+    candidates = database.select(
+        "jobs",
+        [("project_id", f"eq.{project_id}"), ("type", "eq.generate"),
+         ("status", f"in.({','.join(IN_FLIGHT)})")],
+        order="created_at.desc",
+        limit=DEDUPLICATION_WINDOW,
+    )
+
+    for job in candidates:
+        stored = job.get("payload") or {}
+        if stored.get("target_type") != payload.target_type or stored.get("instructions"):
+            continue
+        if sorted(str(value) for value in stored.get("source_artifact_ids") or []) == wanted:
+            return job
+
+    return None

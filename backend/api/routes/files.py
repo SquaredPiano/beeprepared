@@ -1,62 +1,48 @@
-"""
-File serving for the local storage backend.
-
-When artifacts live on local disk there is no CDN to presign against, so the
-backend serves them itself. Access is controlled by the same HMAC signature the
-store hands out with the URL: the path and expiry are signed together, so a link
-cannot be extended or pointed at a different object by editing the query string.
-
-Requests are not authenticated with a session on purpose - these URLs are handed
-to ``<img>``, ``<iframe>`` and download managers that will not send a bearer
-token. The signature *is* the credential, and it expires.
-"""
+"""Serves stored files to holders of a valid signed link."""
 
 from __future__ import annotations
 
-import logging
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from backend.services.storage import LocalObjectStore, StorageError, get_object_store
+from backend.services.files import FileStore, StorageError, get_file_store
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/files", tags=["files"])
+
+CACHE_SECONDS = 300
 
 
 @router.get("/{key:path}")
 def serve_file(
     key: str,
-    expires: int = Query(..., description="Unix timestamp after which the link is dead"),
-    signature: str = Query(..., description="HMAC over the key and expiry"),
+    expires: int = Query(description="Unix timestamp after which the link is dead"),
+    signature: str = Query(description="HMAC over the key and expiry"),
     disposition: str = Query("attachment", pattern="^(attachment|inline)$"),
     filename: str = Query("download"),
+    store: FileStore = Depends(get_file_store),
 ) -> FileResponse:
-    """Serve a locally stored object, if the signature checks out."""
-    store = get_object_store()
-    if not isinstance(store, LocalObjectStore):
-        raise HTTPException(
-            status_code=404,
-            detail="This deployment serves files from object storage, not from the API",
-        )
+    """
+    Serve a stored object.
 
+    The signature is the credential: these links go to image tags, iframes and
+    download managers that cannot send a bearer token, and they expire.
+    """
     if not store.verify(key, expires, signature):
-        # One message for both cases: a tampered signature and an expired link
-        # should be indistinguishable to a caller probing for valid keys.
         raise HTTPException(status_code=403, detail="This link is invalid or has expired")
 
     try:
         path = store.open_path(key)
-    except StorageError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StorageError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
-    safe_name = quote(filename)
     return FileResponse(
         path,
         filename=filename,
+        media_type=store.content_type(key),
         headers={
-            "Content-Disposition": f"{disposition}; filename*=UTF-8''{safe_name}",
-            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": f"private, max-age={CACHE_SECONDS}",
         },
     )
