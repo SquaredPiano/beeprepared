@@ -1,6 +1,3 @@
-# The backend image is built with ./backend as its context, so this is the
-# ignore file Docker actually reads for it.
-
 .env
 .env.*
 !.env.example
@@ -11,9 +8,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
-htmlcov/
 
-# Local runtime state - never bake a developer's database into an image.
 .storage/
 *.db
 *.db-wal
