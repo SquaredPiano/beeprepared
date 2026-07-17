@@ -1,11 +1,4 @@
-"""
-End-to-end pipeline tests.
-
-These run the real handlers against a real (temporary) database with the offline
-LLM provider, so they cover the parts that unit tests of individual services miss:
-transaction boundaries, provenance edges, chaining between artifact types, and
-the retry classification that decides whether a failed job comes back.
-"""
+"""End-to-end pipeline behaviour, run against a real database and the offline model."""
 
 from __future__ import annotations
 
@@ -14,47 +7,52 @@ import uuid
 
 import pytest
 
-from backend.handlers.generate_handler import GenerateHandler, SourceResolutionError
-from backend.handlers.refine_handler import RefineHandler
+from backend.handlers.generate_handler import GenerateHandler
+from backend.handlers.sources import SourceResolver
+from backend.models.graph import JobBundle
 from backend.models.jobs import JobModel
 from backend.services.job_runner import JobExecutor, is_transient
 
 
-def make_job(project_id: str, job_type: str, payload: dict, db) -> JobModel:
+def queue(database, project_id: str, job_type: str, payload: dict) -> JobModel:
     """Insert a job and claim it, the way a worker would."""
-    row = db.insert("jobs", {
+    row = database.insert("jobs", {
         "project_id": project_id, "type": job_type, "status": "pending", "payload": payload,
     })[0]
-    return db.claim_job(row["id"])
+    return database.claim_job(row["id"])
 
 
-# --- generation ------------------------------------------------------------
+def run(database, project_id: str, job_type: str, payload: dict) -> tuple[bool, JobModel]:
+    """Queue a job and execute it, returning whether it committed."""
+    job = queue(database, project_id, job_type, payload)
+    return asyncio.run(JobExecutor(database).execute(job)), job
+
 
 class TestGeneration:
     @pytest.mark.parametrize(
         "target",
         ["quiz", "flashcards", "notes", "slides", "study_guide", "cheatsheet", "mindmap"],
     )
-    def test_every_artifact_type_generates_and_commits(self, db, project, knowledge_core, target):
-        job = make_job(project["id"], "generate", {
+    def test_every_artifact_type_generates_and_commits(self, database, project, knowledge_core, target):
+        committed, job = run(database, project["id"], "generate", {
             "target_type": target, "source_artifact_ids": [knowledge_core["id"]],
-        }, db)
+        })
+        assert committed, f"{target} did not commit"
 
-        committed = asyncio.run(JobExecutor(db).execute(job))
-        assert committed, f"{target} generation did not commit"
-
-        artifacts = db.select("artifacts", [("project_id", f"eq.{project['id']}"), ("type", f"eq.{target}")])
+        artifacts = database.select(
+            "artifacts", [("project_id", f"eq.{project['id']}"), ("type", f"eq.{target}")]
+        )
         assert len(artifacts) == 1
-        assert artifacts[0]["content"]["data"], "artifact has no payload"
+        assert artifacts[0]["content"]["data"]
 
-        finished = db.get_job(job.id)
+        finished = database.get_job(job.id)
         assert finished["status"] == "completed"
         assert finished["result"]["artifact_type"] == target
 
-    def test_multi_input_records_one_edge_per_source(self, db, project, knowledge_core):
-        """Provenance must survive fan-in: three sources, three edges."""
+    def test_multi_input_records_one_edge_per_source(self, database, project, knowledge_core):
+        """Provenance survives fan-in: three sources produce three edges."""
         extra = [
-            db.insert("artifacts", {
+            database.insert("artifacts", {
                 "project_id": project["id"],
                 "type": "knowledge_core",
                 "content": {"kind": "core", "core": {
@@ -63,101 +61,105 @@ class TestGeneration:
             })[0]
             for index in range(2)
         ]
-        source_ids = [knowledge_core["id"]] + [a["id"] for a in extra]
+        sources = [knowledge_core["id"]] + [artifact["id"] for artifact in extra]
 
-        job = make_job(project["id"], "generate", {
-            "target_type": "notes", "source_artifact_ids": source_ids,
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(job))
-
-        notes = db.select("artifacts", [("project_id", f"eq.{project['id']}"), ("type", "eq.notes")])[0]
-        edges = db.get_all_parent_edges(notes["id"])
-        assert sorted(e["parent_artifact_id"] for e in edges) == sorted(source_ids)
-
-    def test_duplicate_sources_collapse_to_one_edge(self, db, project, knowledge_core):
-        handler = GenerateHandler(db=db)
-        ids = handler._source_ids({
-            "source_artifact_ids": [knowledge_core["id"], knowledge_core["id"]],
+        committed, _ = run(database, project["id"], "generate", {
+            "target_type": "notes", "source_artifact_ids": sources,
         })
-        assert ids == [knowledge_core["id"]]
+        assert committed
 
-    def test_chaining_uses_the_chained_artifact_not_its_ancestor(self, db, project, knowledge_core):
-        """notes -> quiz must read the notes, not silently regenerate from the core."""
-        notes_job = make_job(project["id"], "generate", {
+        notes = database.select(
+            "artifacts", [("project_id", f"eq.{project['id']}"), ("type", "eq.notes")]
+        )[0]
+        edges = database.get_parent_edges(notes["id"])
+        assert sorted(edge["parent_artifact_id"] for edge in edges) == sorted(sources)
+
+    def test_duplicate_sources_collapse_to_one_edge(self, knowledge_core):
+        handler = GenerateHandler()
+        assert handler._unique([knowledge_core["id"], knowledge_core["id"]]) == [knowledge_core["id"]]
+
+    def test_chaining_reads_the_chained_artifact_not_its_ancestor(self, database, project, knowledge_core):
+        """notes into quiz must read the notes, not regenerate from the core."""
+        committed, _ = run(database, project["id"], "generate", {
             "target_type": "notes", "source_artifact_ids": [knowledge_core["id"]],
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(notes_job))
-        notes = db.select("artifacts", [("type", "eq.notes"), ("project_id", f"eq.{project['id']}")])[0]
+        })
+        assert committed
 
-        handler = GenerateHandler(db=db)
-        cores = handler.resolve_sources([notes["id"]], "quiz")
+        notes = database.select(
+            "artifacts", [("type", "eq.notes"), ("project_id", f"eq.{project['id']}")]
+        )[0]
+
+        cores = SourceResolver(database).resolve([notes["id"]], "quiz")
         assert len(cores) == 1
         assert notes["content"]["data"]["body"][:80] in cores[0].summary
 
-    def test_unknown_target_type_is_rejected(self, db, project, knowledge_core):
-        job = make_job(project["id"], "generate", {
+    def test_unknown_target_type_fails_the_job(self, database, project, knowledge_core):
+        committed, job = run(database, project["id"], "generate", {
             "target_type": "horoscope", "source_artifact_ids": [knowledge_core["id"]],
-        }, db)
+        })
+        assert not committed
+        assert database.get_job(job.id)["status"] == "failed"
 
-        assert not asyncio.run(JobExecutor(db).execute(job))
-        assert db.get_job(job.id)["status"] == "failed"
-
-    def test_missing_source_fails_the_job_cleanly(self, db, project):
-        job = make_job(project["id"], "generate", {
+    def test_missing_source_fails_with_a_clear_message(self, database, project):
+        committed, job = run(database, project["id"], "generate", {
             "target_type": "quiz", "source_artifact_ids": [str(uuid.uuid4())],
-        }, db)
+        })
+        assert not committed
 
-        assert not asyncio.run(JobExecutor(db).execute(job))
-        failed = db.get_job(job.id)
+        failed = database.get_job(job.id)
         assert failed["status"] == "failed"
         assert "not found" in failed["error_message"].lower()
 
-    def test_generation_is_steerable(self, db, project, knowledge_core):
-        job = make_job(project["id"], "generate", {
+    def test_generation_is_steerable(self, database, project, knowledge_core):
+        committed, _ = run(database, project["id"], "generate", {
             "target_type": "quiz",
             "source_artifact_ids": [knowledge_core["id"]],
             "instructions": "focus only on quorums",
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(job))
+        })
+        assert committed
 
-        quiz = db.select("artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")])[0]
+        quiz = database.select(
+            "artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")]
+        )[0]
         assert quiz["content"]["instructions"] == "focus only on quorums"
 
 
-# --- refinement ------------------------------------------------------------
-
 class TestRefinement:
-    def test_refine_creates_a_new_artifact_linked_to_the_old_one(self, db, project, knowledge_core):
-        generate = make_job(project["id"], "generate", {
+    def test_refine_appends_a_version_linked_to_the_original(self, database, project, knowledge_core):
+        run(database, project["id"], "generate", {
             "target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]],
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(generate))
-        original = db.select("artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")])[0]
+        })
+        original = database.select(
+            "artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")]
+        )[0]
 
-        refine = make_job(project["id"], "refine", {
+        committed, _ = run(database, project["id"], "refine", {
             "source_artifact_id": original["id"], "instructions": "make the questions harder",
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(refine))
+        })
+        assert committed
 
-        quizzes = db.select("artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")])
-        assert len(quizzes) == 2, "refinement should append a version, not overwrite one"
+        quizzes = database.select(
+            "artifacts", [("type", "eq.quiz"), ("project_id", f"eq.{project['id']}")]
+        )
+        assert len(quizzes) == 2, "refinement should append, not overwrite"
 
-        revised = next(q for q in quizzes if q["id"] != original["id"])
+        revised = next(quiz for quiz in quizzes if quiz["id"] != original["id"])
         assert revised["content"]["refined_from"] == original["id"]
-        assert db.get_all_parent_edges(revised["id"])[0]["parent_artifact_id"] == original["id"]
+        assert database.get_parent_edges(revised["id"])[0]["parent_artifact_id"] == original["id"]
 
-    def test_refine_without_instructions_is_rejected(self, db, project, knowledge_core):
-        artifact = db.insert("artifacts", {
-            "project_id": project["id"], "type": "quiz",
+    def test_refine_without_instructions_is_rejected(self, database, project):
+        artifact = database.insert("artifacts", {
+            "project_id": project["id"],
+            "type": "quiz",
             "content": {"kind": "generated", "data": {"title": "Q", "questions": []}},
         })[0]
 
-        job = make_job(project["id"], "refine", {"source_artifact_id": artifact["id"], "instructions": ""}, db)
-        assert not asyncio.run(JobExecutor(db).execute(job))
-        assert "instructions is required" in db.get_job(job.id)["error_message"]
+        committed, job = run(database, project["id"], "refine", {
+            "source_artifact_id": artifact["id"], "instructions": "   ",
+        })
+        assert not committed
+        assert "instructions is required" in database.get_job(job.id)["error_message"]
 
-
-# --- retry classification --------------------------------------------------
 
 class TestRetryPolicy:
     @pytest.mark.parametrize("message", [
@@ -166,75 +168,77 @@ class TestRetryPolicy:
         "503 Service Unavailable",
         "upstream is overloaded",
     ])
-    def test_transient_failures_are_retried(self, message):
+    def test_transient_failures_retry(self, message):
         assert is_transient(RuntimeError(message))
 
     @pytest.mark.parametrize("message", [
         "target_type is required",
         "Source artifacts not found: abc",
-        "quiz: expected at least 5 questions, got 2",
+        "Expected at least 5 questions, got 2",
     ])
-    def test_permanent_failures_are_not_retried(self, message):
+    def test_permanent_failures_do_not_retry(self, message):
         assert not is_transient(ValueError(message))
 
-    def test_transient_failure_requeues_until_attempts_run_out(self, db, project, monkeypatch):
-        """A rate-limited job goes back on the queue instead of dying."""
+    @pytest.mark.parametrize("identifier", [
+        "429e4567-e89b-12d3-a456-426614174000",
+        "Source artifacts not found: 502",
+        "artifact 504 has no content",
+    ])
+    def test_status_digits_inside_identifiers_do_not_trigger_a_retry(self, identifier):
+        """A bare three-digit match would retry anything containing those digits."""
+        assert not is_transient(ValueError(f"Source artifacts not found: {identifier}"))
+
+    def test_a_transient_failure_requeues_until_attempts_run_out(self, database, project, monkeypatch):
         monkeypatch.setenv("JOB_MAX_ATTEMPTS", "2")
         from backend.core.config import get_settings
 
         get_settings.cache_clear()
 
-        job = make_job(project["id"], "generate", {"target_type": "quiz"}, db)
-        assert db.fail_job(job.id, "HTTP 429: rate limit", retryable=True) == "pending"
-        assert db.get_job(job.id)["status"] == "pending"
+        job = queue(database, project["id"], "generate", {"target_type": "quiz"})
+        assert database.fail_job(job.id, "HTTP 429: rate limit", retryable=True) == "pending"
+        assert database.get_job(job.id)["status"] == "pending"
 
-        db.claim_job(job.id)  # attempt 2
-        assert db.fail_job(job.id, "HTTP 429: rate limit", retryable=True) == "failed"
+        database.claim_job(job.id)
+        assert database.fail_job(job.id, "HTTP 429: rate limit", retryable=True) == "failed"
 
-
-# --- job queue semantics ---------------------------------------------------
 
 class TestQueue:
-    def test_a_job_is_claimed_exactly_once(self, db, project):
-        """The claim has to be atomic or two workers duplicate the work."""
-        row = db.insert("jobs", {
+    def test_a_job_is_claimed_exactly_once(self, database, project):
+        """Without an atomic claim, two workers run the same job."""
+        row = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "pending", "payload": {},
         })[0]
 
-        first = db.claim_job()
-        second = db.claim_job()
+        first, second = database.claim_job(), database.claim_job()
 
         assert first is not None and str(first.id) == row["id"]
         assert second is None
 
-    def test_stale_running_jobs_are_returned_to_the_queue(self, db, project):
+    def test_stale_running_jobs_return_to_the_queue(self, database, project):
         """Without the reaper, a crashed worker strands its job forever."""
-        row = db.insert("jobs", {
+        row = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "pending", "payload": {},
         })[0]
-        db.claim_job(row["id"])
-        assert db.get_job(row["id"])["status"] == "running"
+        database.claim_job(row["id"])
+        assert database.get_job(row["id"])["status"] == "running"
 
-        assert db.reap_stale_jobs(older_than_seconds=-1) == [row["id"]]
-        assert db.get_job(row["id"])["status"] == "pending"
+        assert database.reap_stale_jobs(older_than_seconds=-1) == [row["id"]]
+        assert database.get_job(row["id"])["status"] == "pending"
 
-    def test_a_committed_job_cannot_be_committed_twice(self, db, project, knowledge_core):
-        """Job history is append-only; a replayed commit must be refused."""
-        from backend.models.protocol import JobBundle
-
-        job = make_job(project["id"], "generate", {
+    def test_a_committed_job_cannot_commit_twice(self, database, project, knowledge_core):
+        committed, job = run(database, project["id"], "generate", {
             "target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]],
-        }, db)
-        assert asyncio.run(JobExecutor(db).execute(job))
+        })
+        assert committed
 
         with pytest.raises(ValueError, match="already completed"):
-            db.commit_bundle(JobBundle(job_id=job.id, project_id=project["id"], result={}))
+            database.commit_bundle(JobBundle(job_id=job.id, project_id=project["id"]))
 
-    def test_cancelling_a_pending_job_takes_it_off_the_queue(self, db, project):
-        row = db.insert("jobs", {
+    def test_cancelling_takes_a_job_off_the_queue(self, database, project):
+        row = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "pending", "payload": {},
         })[0]
 
-        assert db.cancel_job(row["id"]) is True
-        assert db.claim_job() is None
-        assert db.cancel_job(row["id"]) is False, "a cancelled job cannot be cancelled again"
+        assert database.cancel_job(row["id"]) is True
+        assert database.claim_job() is None
+        assert database.cancel_job(row["id"]) is False

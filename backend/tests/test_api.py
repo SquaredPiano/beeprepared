@@ -1,9 +1,4 @@
-"""
-HTTP and WebSocket surface tests.
-
-Covers the contract the frontend depends on, the authorisation rules, and the
-realtime channel that replaced polling.
-"""
+"""HTTP and WebSocket surface: the contract, ownership rules and the event stream."""
 
 from __future__ import annotations
 
@@ -18,14 +13,11 @@ def create_project(client, name="API Project") -> dict:
     return response.json()
 
 
-# --- meta ------------------------------------------------------------------
-
 class TestMeta:
     def test_health_reports_what_it_is_wired_to(self, client):
         body = client.get("/health").json()
         assert body["status"] == "healthy"
-        assert body["database"] == "local"
-        assert body["storage"] == "local"
+        assert body["model"] == "offline"
         assert body["jobs"] in {"local", "celery"}
 
     def test_capabilities_lists_every_artifact_type(self, client):
@@ -34,8 +26,6 @@ class TestMeta:
         assert "cheatsheet" in body["artifact_types"]
         assert body["features"]["flows"] is True
 
-
-# --- projects --------------------------------------------------------------
 
 class TestProjects:
     def test_create_read_update_delete(self, client):
@@ -57,17 +47,15 @@ class TestProjects:
         project = create_project(client)
         assert client.patch(f"/api/projects/{project['id']}", json={}).status_code == 400
 
-    def test_another_users_project_is_not_visible(self, client, db):
+    def test_another_users_project_is_not_visible(self, client, database):
         """Ownership is enforced on read, not only on write."""
-        foreign = db.insert("projects", {"name": "Not yours", "user_id": "someone-else"})[0]
+        foreign = database.insert("projects", {"name": "Not yours", "user_id": "someone-else"})[0]
         assert client.get(f"/api/projects/{foreign['id']}").status_code == 403
         assert foreign["id"] not in [p["id"] for p in client.get("/api/projects").json()]
 
     def test_missing_project_is_a_404_not_a_500(self, client):
         assert client.get("/api/projects/00000000-0000-0000-0000-000000000000").status_code == 404
 
-
-# --- uploads ---------------------------------------------------------------
 
 class TestUploads:
     def test_upload_queues_an_ingest_job(self, client):
@@ -113,10 +101,8 @@ class TestUploads:
         assert response.status_code == 413
 
 
-# --- jobs ------------------------------------------------------------------
-
 class TestJobs:
-    def test_create_and_read_a_generate_job(self, client, db, knowledge_core, project):
+    def test_create_and_read_a_generate_job(self, client, database, knowledge_core, project):
         response = client.post("/api/jobs", json={
             "project_id": project["id"],
             "type": "generate",
@@ -163,21 +149,19 @@ class TestJobs:
         assert first["job_id"] != second["job_id"]
         assert second["reused"] is False
 
-    def test_a_job_in_another_users_project_is_hidden(self, client, db):
-        foreign = db.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
-        job = db.insert("jobs", {
+    def test_a_job_in_another_users_project_is_hidden(self, client, database):
+        foreign = database.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
+        job = database.insert("jobs", {
             "project_id": foreign["id"], "type": "generate", "status": "pending", "payload": {},
         })[0]
         assert client.get(f"/api/jobs/{job['id']}").status_code == 403
 
-    def test_cancelling_a_finished_job_conflicts(self, client, db, project):
-        job = db.insert("jobs", {
+    def test_cancelling_a_finished_job_conflicts(self, client, database, project):
+        job = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "completed", "payload": {},
         })[0]
         assert client.post(f"/api/jobs/{job['id']}/cancel").status_code == 409
 
-
-# --- flows -----------------------------------------------------------------
 
 class TestFlows:
     @staticmethod
@@ -196,7 +180,7 @@ class TestFlows:
             ],
         }
 
-    def test_validate_returns_the_plan_without_running_anything(self, client, project, knowledge_core, db):
+    def test_validate_returns_the_plan_without_running_anything(self, client, project, knowledge_core, database):
         response = client.post(
             f"/api/projects/{project['id']}/flow/validate", json=self.graph(knowledge_core["id"])
         )
@@ -204,17 +188,17 @@ class TestFlows:
         assert body["valid"] is True
         assert len(body["steps"]) == 3
         assert body["waves"] == 2
-        assert db.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
 
     def test_validate_explains_why_a_bad_graph_will_not_run(self, client, project, knowledge_core):
         graph = self.graph(knowledge_core["id"])
-        graph["edges"].append({"id": "e4", "source": "g3", "target": "g2"})  # cycle
+        graph["edges"].append({"id": "e4", "source": "g3", "target": "g2"})
 
         body = client.post(f"/api/projects/{project['id']}/flow/validate", json=graph).json()
         assert body["valid"] is False
         assert "cycle" in body["error"]
 
-    def test_run_dispatches_the_first_wave_only(self, client, project, knowledge_core, db):
+    def test_run_dispatches_the_first_wave_only(self, client, project, knowledge_core, database):
         response = client.post(
             f"/api/projects/{project['id']}/flow/run", json=self.graph(knowledge_core["id"])
         )
@@ -229,9 +213,9 @@ class TestFlows:
         response = client.post(f"/api/projects/{project['id']}/flow/run", json={"nodes": [], "edges": []})
         assert response.status_code == 422
 
-    def test_run_falls_back_to_the_saved_canvas(self, client, project, knowledge_core, db):
+    def test_run_falls_back_to_the_saved_canvas(self, client, project, knowledge_core, database):
         """Running with no body uses the persisted canvas_state."""
-        db.update("projects", [("id", f"eq.{project['id']}")], {
+        database.update("projects", [("id", f"eq.{project['id']}")], {
             "canvas_state": {"viewport": {}, **self.graph(knowledge_core["id"])},
         })
         response = client.post(f"/api/projects/{project['id']}/flow/run", json={})
@@ -239,11 +223,9 @@ class TestFlows:
         assert len(response.json()["node_states"]) == 4
 
 
-# --- realtime --------------------------------------------------------------
-
 class TestWebSocket:
-    def test_snapshot_is_sent_on_connect(self, client, project, db):
-        db.insert("jobs", {
+    def test_snapshot_is_sent_on_connect(self, client, project, database):
+        database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "running", "payload": {},
         })
         with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
@@ -255,7 +237,7 @@ class TestWebSocket:
         from backend.services.events import publish
 
         with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
-            socket.receive_json()  # snapshot
+            socket.receive_json()
             publish(project["id"], "job.progress", {"job_id": "j1", "stage": "generating", "percent": 40})
 
             frame = socket.receive_json()
@@ -268,42 +250,40 @@ class TestWebSocket:
             socket.send_json({"type": "resync"})
             assert socket.receive_json()["type"] == "snapshot"
 
-    def test_a_foreign_project_socket_is_refused(self, client, db):
+    def test_a_foreign_project_socket_is_refused(self, client, database):
         from starlette.websockets import WebSocketDisconnect
 
-        foreign = db.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
+        foreign = database.insert("projects", {"name": "Theirs", "user_id": "someone-else"})[0]
         with pytest.raises(WebSocketDisconnect) as caught:
             with client.websocket_connect(f"/ws/projects/{foreign['id']}?token=mock-token") as socket:
                 socket.receive_json()
         assert caught.value.code == 4403
 
 
-# --- storage ---------------------------------------------------------------
-
 class TestFileServing:
     def test_a_signed_link_serves_the_file(self, client, project):
-        from backend.services.storage import get_object_store
+        from backend.services.files import get_file_store
 
-        store = get_object_store()
-        store.put_bytes(b"hello world", f"{project['id']}/artifacts/test.md", "text/markdown")
-        url = store.signed_url(f"{project['id']}/artifacts/test.md", filename="test.md")
+        store = get_file_store()
+        store.put_bytes(b"hello world", f"{project['id']}/exports/test.md")
+        url = store.signed_url(f"{project['id']}/exports/test.md", filename="test.md")
 
         response = client.get(url)
         assert response.status_code == 200
         assert response.content == b"hello world"
 
     def test_a_tampered_signature_is_refused(self, client, project):
-        from backend.services.storage import get_object_store
+        from backend.services.files import get_file_store
 
-        store = get_object_store()
-        key = f"{project['id']}/artifacts/secret.md"
-        store.put_bytes(b"secret", key, "text/markdown")
+        store = get_file_store()
+        key = f"{project['id']}/exports/secret.md"
+        store.put_bytes(b"secret", key)
         url = store.signed_url(key, filename="secret.md").replace("signature=", "signature=x")
 
         assert client.get(url).status_code == 403
 
     def test_path_traversal_is_refused(self, client):
-        from backend.services.storage import StorageError, get_object_store
+        from backend.services.files import StorageError, get_file_store
 
         with pytest.raises(StorageError):
-            get_object_store().put_bytes(b"pwn", "../../etc/passwd", "text/plain")
+            get_file_store().put_bytes(b"pwn", "../../etc/passwd")
