@@ -1,103 +1,29 @@
 "use client";
 
-import { supabase } from "./supabase";
-import { getMockAccessToken, mockUser } from "./mockAuth";
-
-const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
-
 /**
- * AuthError represents authentication-related errors.
- * Components can catch this to handle session expiry gracefully.
+ * Session token for backend calls.
+ *
+ * The backend signs its own tokens and serves a single local workspace, so
+ * there is no identity provider to talk to.
  */
-export class AuthError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "AuthError";
-    }
-}
 
-/**
- * Get the current access token, refreshing if necessary.
- * 
- * This function:
- * 1. Retrieves the current session
- * 2. Checks if the token is about to expire (30s buffer)
- * 3. Refreshes the token if needed
- * 4. Returns a valid access token or throws AuthError
- * 
- * @throws AuthError if no valid session exists or refresh fails
- */
+const STORAGE_KEY = "beeprepared.token";
+const LOCAL_USER = "local-user";
+
 export async function getAccessToken(): Promise<string> {
-    if (DEV_MODE) {
-        return getMockAccessToken();
-    }
+  if (typeof window === "undefined") return LOCAL_USER;
 
-    const { data: { session }, error } = await supabase.auth.getSession();
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (stored) return stored;
 
-    if (error) {
-        console.error("[Auth] Session error:", error.message);
-        throw new AuthError("Session error: " + error.message);
-    }
-
-    if (!session) {
-        throw new AuthError("Not authenticated");
-    }
-
-    // Check if token is expiring soon (within 30 seconds)
-    const expiresAt = session.expires_at;
-    const expiresIn = expiresAt ? (expiresAt * 1000) - Date.now() : Infinity;
-
-    if (expiresIn < 30000) {
-        console.log("[Auth] Token expiring soon, refreshing...");
-        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-
-        if (refreshError) {
-            console.error("[Auth] Refresh failed:", refreshError.message);
-            throw new AuthError("Session expired, please log in again");
-        }
-
-        if (!refreshed.session) {
-            throw new AuthError("Session expired");
-        }
-
-        console.log("[Auth] Token refreshed successfully");
-        return refreshed.session.access_token;
-    }
-
-    return session.access_token;
+  window.localStorage.setItem(STORAGE_KEY, LOCAL_USER);
+  return LOCAL_USER;
 }
 
-/**
- * Check if user is currently authenticated.
- * Non-throwing version of getAccessToken for conditional checks.
- */
-export async function isAuthenticated(): Promise<boolean> {
-    if (DEV_MODE) {
-        return true;
-    }
-
-    try {
-        await getAccessToken();
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Get user ID from current session.
- * @throws AuthError if not authenticated
- */
 export async function getUserId(): Promise<string> {
-    if (DEV_MODE) {
-        return mockUser.id;
-    }
+  return LOCAL_USER;
+}
 
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user?.id) {
-        throw new AuthError("Not authenticated");
-    }
-
-    return session.user.id;
+export async function isAuthenticated(): Promise<boolean> {
+  return true;
 }

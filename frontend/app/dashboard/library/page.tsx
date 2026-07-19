@@ -19,7 +19,6 @@ import {
   Plus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -30,7 +29,7 @@ const tabs = [
   { id: "recent", label: "Recently Visited", icon: History },
 ];
 
-const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+const LIBRARY_REFRESH_MS = 15_000;
 
 export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState("projects");
@@ -62,33 +61,8 @@ export default function LibraryPage() {
 
     fetchData();
 
-    if (DEV_MODE) {
-      return;
-    }
-
-    // Realtime Subscription (Push-based updates)
-    const channel = supabase.channel('active-jobs')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'jobs' },
-        (payload) => {
-          console.log('Realtime update:', payload);
-          // Refresh jobs list on any change
-          api.jobs.list().then((updatedJobs) => {
-            setJobs(updatedJobs || []);
-            // Check if a job just completed to refresh artifacts
-            if (payload.eventType === 'UPDATE' && payload.new.status === 'completed') {
-              api.vault.list("/").then(vaultData => setArtifacts(vaultData.files || []));
-              toast.success("Job completed!");
-            }
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const refresh = setInterval(fetchData, LIBRARY_REFRESH_MS);
+    return () => clearInterval(refresh);
   }, []);
 
   const activeJobs = jobs.filter(j => ['pending', 'running', 'failed'].includes(j.status));
@@ -103,7 +77,6 @@ export default function LibraryPage() {
           exit={{ opacity: 0, y: -20 }}
           className="space-y-8"
         >
-          {/* Active Jobs Section */}
           {activeJobs.length > 0 && (
             <div className="space-y-4 mb-8">
               <h3 className="text-sm font-bold uppercase tracking-widest opacity-60">Active Processes</h3>
@@ -153,7 +126,6 @@ export default function LibraryPage() {
               </div>
             </button>
 
-
             {isLoading ? (
               Array(2).fill(0).map((_, i) => (
                 <div key={i} className="h-80 glass rounded-[3rem] animate-pulse" />
@@ -188,12 +160,10 @@ export default function LibraryPage() {
                   </div>
                 </div>
 
-                {/* Dynamic activity indicator */}
                 <div className="flex items-center gap-2 pt-4">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                   <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Project Saved</span>
                 </div>
-
 
               </motion.div>
             ))}
@@ -205,7 +175,6 @@ export default function LibraryPage() {
     const filteredArtifacts = artifacts.filter(a => a.type === activeTab || (activeTab === "history" && ["pdf", "audio", "video", "pptx"].includes(a.type)));
 
     if (filteredArtifacts.length > 0 || (activeTab !== "pipelines" && activeTab !== "history" && ["flashcards", "quizzes", "exams", "pptx"].includes(activeTab))) {
-      // If it's one of the main sections, link to the dedicated page
       const sectionRoutes: Record<string, string> = {
         flashcards: "/dashboard/flashcards",
         quizzes: "/dashboard/quizzes",

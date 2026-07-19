@@ -22,7 +22,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -38,10 +37,8 @@ import {
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  // Settings state with defaults
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
   const [showMascot, setShowMascot] = useState(true);
   const [animations, setAnimations] = useState(true);
@@ -50,7 +47,6 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState("");
   const [bio, setBio] = useState("");
 
-  // Load settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('beeprepared_settings');
     if (savedSettings) {
@@ -69,29 +65,9 @@ export default function SettingsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    async function fetchProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setProfile(user);
-        // Set name from user metadata if not already set
-        if (!fullName && user.user_metadata?.full_name) {
-          setFullName(user.user_metadata.full_name);
-        }
-      }
-    }
-    fetchProfile();
-  }, []);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  };
-
   const handleSave = async () => {
     setIsLoading(true);
 
-    // Save to localStorage
     const settings = {
       theme,
       showMascot,
@@ -103,19 +79,6 @@ export default function SettingsPage() {
     };
     localStorage.setItem('beeprepared_settings', JSON.stringify(settings));
 
-    // Sync to Supabase Auth Metadata (Cloud Persistence)
-    try {
-      const { error } = await supabase.auth.updateUser({
-        data: {
-          full_name: fullName,
-          bio: bio
-        }
-      });
-      if (error) throw error;
-    } catch (e) {
-      console.error("Cloud sync failed:", e);
-      toast.error("Cloud sync failed (Local saved)");
-    }
 
     await new Promise(resolve => setTimeout(resolve, 300));
     setIsLoading(false);
@@ -128,14 +91,9 @@ export default function SettingsPage() {
       return;
     }
 
-    try {
-      // In production, this would call a server action to delete the user
-      toast.success("Account scheduled for deletion");
-      await supabase.auth.signOut();
-      window.location.href = "/";
-    } catch (error) {
-      toast.error("Failed to delete account");
-    }
+    localStorage.removeItem("beeprepared_settings");
+    toast.success("Local settings cleared");
+    window.location.href = "/";
   };
 
   const sections = [
@@ -182,7 +140,7 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-bee-black font-serif">Your Profile</h3>
-                      <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest mt-1">ID: {profile?.id?.slice(0, 8) || "---"}</p>
+                      <p className="text-xs text-bee-black/40 font-medium uppercase tracking-widest mt-1">Local workspace</p>
                     </div>
                   </div>
 
@@ -198,7 +156,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-bee-black/70 ml-1">Email</Label>
-                      <Input defaultValue={profile?.email || ""} disabled className="bg-bee-black/5 border-wax rounded-xl h-12 opacity-50" />
+                      <Input defaultValue="local" disabled className="bg-bee-black/5 border-wax rounded-xl h-12 opacity-50" />
                     </div>
                   </div>
 
@@ -296,7 +254,7 @@ export default function SettingsPage() {
                         <div className="p-3 bg-green-500/10 rounded-2xl"><Shield className="text-green-500" /></div>
                         <div className="space-y-1">
                           <p className="text-sm font-bold text-bee-black">Email Verified</p>
-                          <p className="text-xs text-bee-black/40 font-medium tracking-wide">{profile?.email || "No email"}</p>
+                          <p className="text-xs text-bee-black/40 font-medium tracking-wide">Local workspace</p>
                         </div>
                       </div>
                     </div>
@@ -367,7 +325,7 @@ export default function SettingsPage() {
               </Button>
               <Button
                 variant="ghost"
-                onClick={handleLogout}
+                onClick={() => { window.location.href = "/"; }}
                 className="w-full h-14 hover:bg-red-50 hover:text-red-600 rounded-2xl gap-3 uppercase text-[10px] font-bold tracking-[0.2em] text-bee-black/40"
               >
                 <LogOut size={16} /> Log Out

@@ -43,13 +43,9 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { supabase } from "@/lib/supabase";
+import { getAccessToken } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function stripMarkdown(text: string | null | undefined): string {
   if (!text) return '';
@@ -131,7 +127,6 @@ function MathText({ children }: { children: string | null | undefined }) {
 
   let content = children;
 
-  // Heuristic: If text contains common LaTeX commands but NO (or distinct) delimiters, wrap it.
   const latexPatterns = [
     /\\frac/, /\\int/, /\\sum/, /\\prod/, /\\partial/, /\\sqrt/, /\\cdot/, /\\infty/,
     /\\alpha/, /\\beta/, /\\theta/, /\\sigma/, /\\omega/, /\\pi/,
@@ -175,8 +170,6 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
   if (!artifact?.content) return null;
   const content = artifact.content;
 
-  // Helper to ensure we don't strip the root key
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _wrap = (key: string, data: Record<string, unknown>) => {
     if (!data) return null;
     if (data[key]) return data;
@@ -185,30 +178,23 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
 
   switch (type) {
     case 'quiz':
-      // QuizRenderer expects { questions: [...] }
-      // Content might be { quiz: { questions: ... } } or { questions: ... } or { data: { questions: ... } }
       const quizData = content.data || content.core?.quiz || content.quiz || content;
       if (quizData?.questions) return quizData;
       return null;
 
     case 'notes': {
-      // NotesRenderer expects { markdown: string } or string
       let notesData = content.data || content.core?.notes || content.notes || content;
 
-      // 1. Try to parse stringified JSON (common from some LLM outputs)
       if (typeof notesData === 'string' && /^\s*[\{\[]/.test(notesData)) {
         try {
           notesData = JSON.parse(notesData);
         } catch (e) {
-          // Keep as string if parsing fails
         }
       }
 
       let parentTitle = "";
 
-      // 2. Smart unwrapping of structured notes
       if (notesData && typeof notesData === 'object' && !Array.isArray(notesData)) {
-        // Capture parent title if present
         if (notesData.title || notesData.heading) {
           parentTitle = `# ${notesData.title || notesData.heading}\n\n`;
         }
@@ -217,18 +203,15 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
         else if (Array.isArray(notesData.sections)) notesData = notesData.sections;
       }
 
-      // 3. If we have a structured array (list of sections/notes), convert to Markdown
       if (Array.isArray(notesData)) {
         const processNode = (node: any, depth: number = 1): string => {
           if (typeof node === 'string') return node + "\n\n";
 
           let md = "";
           const heading = node.heading || node.title;
-          // Use provided level or autocalculate, max 6
           const level = Math.min(node.level || depth, 6);
 
           if (heading) {
-            // Remove existing leading hashes to avoid double ##
             const cleanHeading = heading.replace(/^#+\s*/, '');
             md += `${"#".repeat(level)} ${cleanHeading}\n\n`;
           }
@@ -238,7 +221,6 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
             md += text + "\n\n";
           }
 
-          // Recursively handle children
           const children = node.sub_sections || node.subsections || node.sections || [];
           if (Array.isArray(children)) {
             md += children.map((c: any) => processNode(c, level + 1)).join("");
@@ -255,7 +237,6 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
         }
       }
 
-      // Standard formats
       if (typeof notesData === 'string') return { markdown: notesData };
       if (notesData?.markdown) return notesData;
       if (notesData?.content && typeof notesData.content === 'string') return { markdown: notesData.content };
@@ -265,34 +246,26 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
     }
 
     case 'slides':
-      // SlidesRenderer expects { slides: [...] }
       const slidesData = content.data || content.core?.slides || content.slides || content;
       if (slidesData?.slides) return slidesData;
       return null;
 
     case 'flashcards':
-      // FlashcardRenderer expects { flashcards: [...] }
       const fcData = content.data || content.core?.flashcards || content.flashcards || content;
-      // Handle "cards" vs "flashcards" key
       if (fcData?.flashcards) return fcData;
       if (fcData?.cards) return { flashcards: fcData.cards };
       return null;
 
     case 'exam':
-      // ExamRenderer expects { questions: [...] }
       const examData = content.data || content.core?.exam || content.exam || content;
       if (examData?.questions) return examData;
       return null;
 
-    // These three keep their generated shape, so the wrapper is all that is
-    // stripped - no per-type reshaping needed.
     case 'study_guide':
     case 'cheatsheet':
     case 'mindmap':
       return content.data || content;
 
-    // These three keep their generated shape, so unwrapping is all that is
-    // needed - no per-type reshaping.
     case 'study_guide':
     case 'cheatsheet':
     case 'mindmap':
@@ -308,11 +281,8 @@ function normalizeArtifact(type: string, artifact: Artifact | null): any {
 
 async function downloadBinary(artifactId: string, fallbackFilename: string): Promise<void> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const headers: HeadersInit = {};
-    if (session) {
-      headers["Authorization"] = `Bearer ${session.access_token}`;
-    }
+    const token = await getAccessToken();
+    const headers: HeadersInit = { Authorization: `Bearer ${token}` };
 
     const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}/download`, { headers });
     if (!res.ok) {
@@ -343,10 +313,6 @@ function getBinaryInfo(artifact: Artifact | null): { format: string; available: 
     available: !!binary.storage_path,
   };
 }
-
-// ============================================================================
-// Renderers
-// ============================================================================
 
 function QuizRenderer({ data }: { data: any }) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -410,10 +376,8 @@ function QuizRenderer({ data }: { data: any }) {
   const selectedIdx = answers[currentIndex];
   const correctIdx = currentQuestion.correct_answer_index;
 
-  // Quiz UI - Apple/Clean Style
   return (
     <div className="h-full bg-[#FAFAFA] text-bee-black flex flex-col">
-      {/* Header */}
       <div className="p-8 pb-4 shrink-0 flex items-center justify-between border-b border-black/5 bg-white/50 backdrop-blur-md sticky top-0 z-10">
         <div className="text-xs font-bold uppercase tracking-[0.2em] text-black/40">
           Question {currentIndex + 1} of {total}
@@ -433,7 +397,6 @@ function QuizRenderer({ data }: { data: any }) {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="max-w-3xl mx-auto p-8 md:p-12 pb-24">
           <h3 className="text-3xl md:text-4xl font-serif font-bold leading-tight mb-12 text-black tracking-tight">
@@ -463,7 +426,6 @@ function QuizRenderer({ data }: { data: any }) {
                   markerClass = "bg-red-100 text-red-700 border-red-200";
                 }
               } else if (idx === selectedIdx) {
-                // Selection state before confirming (if we had a confirm step, but we select immediately)
               }
 
               return (
@@ -499,15 +461,12 @@ function QuizRenderer({ data }: { data: any }) {
   );
 }
 
-// Helper to clean markdown that might be wrapped in code blocks
 function cleanMarkdownForDisplay(content: string): string {
   if (!content) return "";
   let clean = content.trim();
-  // Remove wrapping ```markdown ... ``` or ``` ... ```
   if (clean.startsWith('```') && clean.endsWith('```')) {
     const lines = clean.split('\n');
     if (lines.length >= 2) {
-      // Remove first and last lines
       clean = lines.slice(1, -1).join('\n');
     }
   }
@@ -519,7 +478,6 @@ function NotesRenderer({ data, artifactId, onUpdate }: { data: any, artifactId: 
   const [content, setContent] = useState(data.markdown || data.content || data.body || "");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Parse and clean markdown
   const rawContent = typeof content === 'string' ? content : "No content available.";
   const markdownContent = useMemo(() => cleanMarkdownForDisplay(rawContent), [rawContent]);
 
@@ -542,7 +500,6 @@ function NotesRenderer({ data, artifactId, onUpdate }: { data: any, artifactId: 
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header */}
       <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-serif font-bold text-gray-900">{data.title || 'Study Notes'}</h2>
@@ -580,7 +537,6 @@ function NotesRenderer({ data, artifactId, onUpdate }: { data: any, artifactId: 
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden">
         {isEditing ? (
           <div className="h-full p-6" data-color-mode="light">
@@ -636,11 +592,8 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
 
     setPptxLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: HeadersInit = {};
-      if (session) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
-      }
+      const token = await getAccessToken();
+      const headers: HeadersInit = { Authorization: `Bearer ${token}` };
       const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, { headers });
       if (res.ok) {
         const resData = await res.json();
@@ -665,7 +618,6 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header */}
       <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white">
         <div className="flex items-center justify-between">
           <div>
@@ -675,7 +627,6 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {/* Toggle Slider */}
             <div className="relative flex bg-gray-100 rounded-full p-1">
               <div
                 className={cn(
@@ -703,7 +654,6 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
               </button>
             </div>
 
-            {/* Download Button */}
             {binaryInfo?.available ? (
               <Button
                 onClick={handleDownloadPPTX}
@@ -721,9 +671,7 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* PPTX Preview Mode */}
         {viewMode === 'pptx' && (
           <div className="h-full w-full bg-gray-50 flex flex-col p-4 md:p-8">
             {pptxLoading ? (
@@ -748,7 +696,6 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
           </div>
         )}
 
-        {/* Slides Grid Mode */}
         {viewMode === 'slides' && (
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -757,13 +704,11 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact: Artifact | nu
                   key={i}
                   className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-md transition-all"
                 >
-                  {/* Slide Header */}
                   <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                     <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
                       Slide {i + 1}
                     </span>
                   </div>
-                  {/* Slide Content - 16:9 aspect ratio */}
                   <div className="aspect-video p-5 flex flex-col">
                     <h3 className="font-semibold text-gray-900 text-sm mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
                       {stripMarkdown(slide.heading)}
@@ -832,7 +777,6 @@ function FlashcardRenderer({ data }: { data: any }) {
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-gray-100">
-      {/* Header */}
       <div className="shrink-0 px-8 py-5 bg-white border-b border-gray-100">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
           <div>
@@ -847,7 +791,6 @@ function FlashcardRenderer({ data }: { data: any }) {
         </div>
       </div>
 
-      {/* Card Area */}
       <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
         <div className="w-full max-w-2xl max-h-full aspect-[4/3] relative perspective-[1000px] shrink-1">
           <div
@@ -858,7 +801,6 @@ function FlashcardRenderer({ data }: { data: any }) {
             onClick={() => setIsFlipped(!isFlipped)}
             style={{ transformStyle: 'preserve-3d' }}
           >
-            {/* Front */}
             <div
               className="absolute inset-0 bg-white rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center border border-gray-200 shadow-xl"
               style={{ backfaceVisibility: 'hidden' }}
@@ -879,7 +821,6 @@ function FlashcardRenderer({ data }: { data: any }) {
               <p className="text-gray-400 text-xs font-medium mt-4 shrink-0">Tap to reveal answer</p>
             </div>
 
-            {/* Back */}
             <div
               className="absolute inset-0 bg-gray-900 rounded-3xl p-6 md:p-10 flex flex-col items-center justify-center shadow-xl force-white-text [transform:rotateY(180deg)]"
               style={{ backfaceVisibility: 'hidden' }}
@@ -898,7 +839,6 @@ function FlashcardRenderer({ data }: { data: any }) {
         </div>
       </div>
 
-      {/* Controls */}
       <div className="shrink-0 py-4 bg-white border-t border-gray-100">
         <div className="flex items-center justify-center gap-4 max-w-xl mx-auto px-4">
           <Button
@@ -910,7 +850,6 @@ function FlashcardRenderer({ data }: { data: any }) {
             <ChevronLeft size={18} className="text-gray-600" />
           </Button>
 
-          {/* Progress dots - with overflow handling */}
           <div className="flex items-center gap-1 overflow-hidden">
             {Array.from({ length: Math.min(total, 7) }).map((_, i) => (
               <div
@@ -962,11 +901,8 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
 
     setPdfLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: HeadersInit = {};
-      if (session) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
-      }
+      const token = await getAccessToken();
+      const headers: HeadersInit = { Authorization: `Bearer ${token}` };
       const res = await fetch(`${API_BASE}/api/artifacts/${artifact.id}/download?inline=true`, { headers });
       if (res.ok) {
         const resData = await res.json();
@@ -985,7 +921,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header Bar */}
       <div className="shrink-0 px-8 py-5 border-b border-gray-100 bg-white">
         <div className="flex items-center justify-between">
           <div>
@@ -995,7 +930,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {/* Polished Toggle Slider */}
             <div className="relative flex bg-gray-100 rounded-full p-1">
               <div
                 className={cn(
@@ -1023,7 +957,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
               </button>
             </div>
 
-            {/* Show/Hide Answers Toggle */}
             <button
               onClick={() => setShowAnswers(!showAnswers)}
               className={cn(
@@ -1036,7 +969,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
               {showAnswers ? '✓ Answers Visible' : 'Show Answers'}
             </button>
 
-            {/* Download Button */}
             {binaryInfo?.available ? (
               <Button
                 onClick={handleDownloadPDF}
@@ -1054,9 +986,7 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="flex-1 overflow-y-auto">
-        {/* PDF Preview Mode */}
         {viewMode === 'pdf' && (
           <div className="h-full w-full bg-gray-50 flex flex-col p-4 md:p-8">
             {pdfLoading ? (
@@ -1079,10 +1009,8 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
           </div>
         )}
 
-        {/* Questions Mode */}
         {viewMode === 'questions' && (
           <div className="max-w-3xl mx-auto px-8 py-8">
-            {/* Instructions */}
             {data.instructions && (
               <div className="mb-8 p-5 bg-amber-50 border border-amber-100 rounded-xl">
                 <div className="flex items-start gap-3">
@@ -1097,14 +1025,12 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
               </div>
             )}
 
-            {/* Questions List */}
             <div className="space-y-6">
               {data.questions.map((q: any, idx: number) => (
                 <div
                   key={q.id || idx}
                   className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-colors"
                 >
-                  {/* Question Header */}
                   <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-900 text-white font-bold text-sm">
@@ -1119,13 +1045,11 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
                     </span>
                   </div>
 
-                  {/* Question Body */}
                   <div className="px-6 py-5">
                     <div className="text-base text-gray-800 leading-relaxed mb-5">
                       <MathText>{q.text}</MathText>
                     </div>
 
-                    {/* MCQ Options */}
                     {q.options && q.options.length > 0 && (
                       <div className="space-y-2 ml-2">
                         {q.options.map((opt: string, i: number) => (
@@ -1144,7 +1068,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
                       </div>
                     )}
 
-                    {/* Answer Section (when visible) */}
                     {showAnswers && (
                       <div className="mt-5 pt-5 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5">
@@ -1153,10 +1076,8 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: Artifact | null
                             <span className="font-semibold text-emerald-800 text-sm">Model Answer</span>
                           </div>
                           <div className="text-emerald-900 leading-relaxed">
-                            {/* Exam questions use model_answer field */}
                             {q.model_answer || (q.options && q.options[q.correct_answer_index]) || 'No answer provided'}
                           </div>
-                          {/* Grading notes for exam questions */}
                           {q.grading_notes && (
                             <div className="mt-4 pt-4 border-t border-emerald-200/50">
                               <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2">Grading Notes</div>
@@ -1228,10 +1149,6 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-// ============================================================================
-// Icon Mapping
-// ============================================================================
-
 const TYPE_ICONS: Record<string, typeof FileText> = {
   video: Video,
   audio: Music,
@@ -1263,10 +1180,6 @@ const TYPE_LABELS: Record<string, string> = {
   mindmap: 'Mind Map',
   exam: 'Exam',
 };
-
-// ============================================================================
-// Main Component
-// ============================================================================
 
 interface ArtifactPreviewModalProps {
   isOpen: boolean;
@@ -1329,7 +1242,6 @@ export function ArtifactPreviewModal({
           {artifact?.content?.title || artifact?.content?.original_name || artifact?.type || 'Artifact Preview'}
         </DialogTitle>
 
-        {/* Header - Fixed Height, shrinking */}
         <div className="shrink-0 z-10 bg-cream/95 backdrop-blur-xl border-b border-wax p-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-bee-black/5 rounded-2xl border border-wax">
@@ -1365,12 +1277,10 @@ export function ArtifactPreviewModal({
           </div>
         </div>
 
-        {/* Content - Flexible, full width/height */}
         <div className="flex-1 overflow-hidden relative bg-white flex flex-col">
           {renderContent()}
         </div>
 
-        {/* Footer - Fixed Height, shrinking */}
         <div className="shrink-0 bg-cream/95 backdrop-blur-xl border-t border-wax p-4 flex justify-between items-center">
           <div className="flex gap-4">
             <button className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 hover:text-bee-black transition-colors flex items-center gap-2">

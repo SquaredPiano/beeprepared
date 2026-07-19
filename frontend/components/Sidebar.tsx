@@ -18,7 +18,6 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
 import { Logo } from "./Logo";
-import { createClient } from "@/lib/supabase/client";
 import { SupportModal } from "./SupportModal";
 
 import { useSidebarStore } from "@/store/useSidebarStore";
@@ -27,13 +26,10 @@ export function Sidebar() {
   const { isCollapsed, toggle, collapse, expand } = useSidebarStore();
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
   const [isSupportOpen, setIsSupportOpen] = useState(false);
 
-  // Track previous pathname to detect canvas exit
   const prevPathRef = useRef<string | null>(null);
 
-  // Auto-collapse on canvas view, auto-expand when leaving
   useEffect(() => {
     const wasOnCanvas = prevPathRef.current === "/dashboard/canvas";
     const isOnCanvas = pathname === "/dashboard/canvas";
@@ -41,7 +37,6 @@ export function Sidebar() {
     if (isOnCanvas) {
       collapse();
     } else if (wasOnCanvas && !isOnCanvas) {
-      // Only expand when LEAVING canvas, not on initial mount
       expand();
     }
 
@@ -56,10 +51,8 @@ export function Sidebar() {
     { icon: Settings, label: "Settings", href: "/dashboard/settings" },
   ];
 
-
   return (
     <>
-      {/* Expand Trigger - Floating button when sidebar is fully collapsed */}
       <AnimatePresence>
         {isCollapsed && (
           <motion.button
@@ -84,7 +77,6 @@ export function Sidebar() {
         transition={{ type: "spring", damping: 25, stiffness: 200 }}
         className="fixed left-0 top-0 h-screen bg-[#0F0F0F] text-white border-r border-white/5 z-50 flex flex-col overflow-hidden shadow-[20px_0_60px_-15px_rgba(0,0,0,0.5)]"
       >
-        {/* Logo Section */}
         <div className="flex items-center justify-between p-8 border-b border-white/5 h-24 shrink-0">
           <Link
             href="/"
@@ -112,7 +104,6 @@ export function Sidebar() {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="p-6 space-y-2 flex-1">
           <div className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-30 px-4 mb-6">Navigation</div>
           {navItems.map((item) => {
@@ -152,7 +143,6 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Footer Actions */}
         <div className="p-6 border-t border-white/5 space-y-4 shrink-0">
           <button
             onClick={() => {
@@ -169,7 +159,6 @@ export function Sidebar() {
             onMouseEnter={() => playSound("hover")}
             onClick={async () => {
               playSound("pickup");
-              await supabase.auth.signOut();
               router.replace("/");
             }}
             className="w-full px-4 py-3 text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-all flex items-center gap-4 group cursor-pointer"
@@ -180,7 +169,6 @@ export function Sidebar() {
         </div>
       </motion.aside>
 
-      {/* Support Modal */}
       <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
     </>
   );

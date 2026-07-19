@@ -16,7 +16,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sounds";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api";
 import Link from "next/link";
 
 interface Flashcard {
@@ -42,22 +42,22 @@ export default function FlashcardsPage() {
     async function loadCards() {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("artifacts")
-          .select("*")
-          .eq("type", "flashcard")
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
+        const { files } = await api.vault.list();
+        const data = files
+          .filter((artifact) => artifact.type === "flashcards")
+          .map((artifact) => ({
+            id: artifact.id,
+            content: (artifact.content?.data ?? artifact.content ?? {}) as { cards?: any[] },
+            subject: "General",
+          }));
 
         if (data && data.length > 0) {
-          // Transform artifact data to Flashcard interface
           const transformed: Flashcard[] = data.flatMap(a =>
             (a.content.cards || []).map((c: any, i: number) => ({
               id: `${a.id}-${i}`,
               front: c.question || c.front,
               back: c.answer || c.back,
-              category: a.metadata?.subject || "General"
+              category: a.subject
             }))
           );
           if (transformed.length > 0) setCards(transformed);
@@ -125,7 +125,6 @@ export default function FlashcardsPage() {
       </header>
 
       <div className="grid grid-cols-12 gap-12">
-        {/* Main Training Area */}
         <div className="col-span-8 space-y-12">
           <div className="relative perspective-1000 h-[500px] w-full">
             <motion.div
@@ -134,7 +133,6 @@ export default function FlashcardsPage() {
               className="w-full h-full relative preserve-3d cursor-pointer"
               onClick={flipCard}
             >
-              {/* Front */}
               <div className={cn(
                 "absolute inset-0 backface-hidden glass rounded-[4rem] border-2 border-border/20 p-20 flex flex-col items-center justify-center text-center space-y-8 bg-white",
                 isFlipped && "pointer-events-none"
@@ -151,7 +149,6 @@ export default function FlashcardsPage() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-20">Click to reveal architecture</p>
               </div>
 
-              {/* Back */}
               <div className={cn(
                 "absolute inset-0 backface-hidden glass rounded-[4rem] border-2 border-honey-500/40 p-20 flex flex-col items-center justify-center text-center space-y-8 bg-honey-50/5 rotate-y-180",
                 !isFlipped && "pointer-events-none"
@@ -205,7 +202,6 @@ export default function FlashcardsPage() {
           </div>
         </div>
 
-        {/* Sidebar Deck Info */}
         <div className="col-span-4 space-y-8">
           <div className="glass rounded-[3rem] border border-border/40 p-10 space-y-8">
             <h3 className="text-xs font-bold uppercase tracking-[0.3em] opacity-40">Active Deck</h3>
