@@ -2,7 +2,6 @@
 
 import { Howl } from "howler";
 
-// Sound effect mapping
 const sounds: Record<string, Howl> = {
   pickup: new Howl({ src: ["/sounds/pickup.mp3"], volume: 0.1 }),
   drop: new Howl({ src: ["/sounds/drop.mp3"], volume: 0.15 }),

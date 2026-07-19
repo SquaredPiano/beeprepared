@@ -11,7 +11,7 @@ interface LogoProps {
 export function Logo({ className, size = 40, showText = true }: LogoProps) {
   return (
     <div className={cn("flex items-center gap-3 cursor-pointer", className)}>
-      <div 
+      <div
         className="relative flex items-center justify-center transition-transform duration-500 hover:rotate-12"
         style={{ width: size, height: size }}
       >

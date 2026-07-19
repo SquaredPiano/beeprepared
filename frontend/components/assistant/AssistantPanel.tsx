@@ -39,8 +39,6 @@ interface Turn {
   action?: string;
 }
 
-// Shown when there is no history yet - concrete examples teach the interaction
-// far better than a "How can I help?" placeholder.
 const SUGGESTIONS = [
   "Make the questions harder",
   "Focus on the second half of the lecture",
@@ -61,8 +59,6 @@ export function AssistantPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load history the first time the panel is opened, not on mount - most
-  // sessions never open it, and this is a request per project.
   useEffect(() => {
     if (!open || !projectId || turns.length > 0) return;
 
@@ -139,7 +135,6 @@ export function AssistantPanel({
   );
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends, Shift+Enter is a newline - the convention every chat UI uses.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void send(draft);

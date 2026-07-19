@@ -23,7 +23,6 @@ export function FeatureCard({ icon, title, description, featured = false }: Feat
       )}
     >
       <div className="flex items-start gap-6">
-        {/* Icon */}
         <div
           className={cn(
             "flex items-center justify-center w-14 h-14 rounded-full shrink-0",
@@ -33,7 +32,6 @@ export function FeatureCard({ icon, title, description, featured = false }: Feat
           <div className="text-2xl">{icon}</div>
         </div>
 
-        {/* Content */}
         <div className="flex-1">
           <h3 className="text-xl font-display uppercase tracking-tight text-bee-black">
             {title}

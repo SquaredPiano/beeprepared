@@ -31,7 +31,6 @@ interface UploadingFile {
   error?: string;
 }
 
-// Loading fallback for Suspense
 function UploadPageLoading() {
   return (
     <div className="min-h-screen bg-cream flex items-center justify-center">
@@ -57,7 +56,6 @@ function UploadPageContent() {
   const [uploadQueue, setUploadQueue] = useState<UploadingFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Read projectId from URL search params and auto-select it
   useEffect(() => {
     const projectIdFromUrl = searchParams.get("projectId");
     if (projectIdFromUrl && !selectedProjectId) {
@@ -105,7 +103,6 @@ function UploadPageContent() {
 
     setIsProcessing(true);
 
-    // Process files one by one (or in parallel)
     const filesToProcess = uploadQueue.filter(f => f.status === "pending");
 
     for (const item of filesToProcess) {
@@ -140,7 +137,6 @@ function UploadPageContent() {
 
   return (
     <div className="min-h-screen bg-cream font-sans overflow-x-hidden">
-      {/* Dynamic Background */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-honey/10 rounded-full blur-[120px] animate-pulse" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-honey/5 rounded-full blur-[100px]" />
@@ -186,7 +182,6 @@ function UploadPageContent() {
               </p>
             </div>
 
-
             <div className="space-y-12">
               <ProjectSelector
                 selectedId={selectedProjectId}
@@ -216,7 +211,6 @@ function UploadPageContent() {
                     <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-30">PDF, Media, Transcripts</p>
                   </div>
 
-                  {/* Corner accents */}
                   <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-wax group-hover:border-honey transition-colors" />
                   <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-wax group-hover:border-honey transition-colors" />
                 </div>
@@ -247,7 +241,6 @@ function UploadPageContent() {
                   {uploadQueue.length} Files
                 </div>
               </div>
-
 
               <div className="flex-1 space-y-4 overflow-y-auto pr-2 scrollbar-none">
                 <AnimatePresence mode="popLayout">

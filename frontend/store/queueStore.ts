@@ -22,14 +22,14 @@ export const useQueueStore = create<QueueStore>()(
   persist(
     (set) => ({
       tasks: [],
-      addTask: (task) => set((state) => ({ 
-        tasks: [task, ...state.tasks] 
+      addTask: (task) => set((state) => ({
+        tasks: [task, ...state.tasks]
       })),
       updateTask: (id, updates) => set((state) => ({
         tasks: state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t)
       })),
-      removeTask: (id) => set((state) => ({ 
-        tasks: state.tasks.filter(t => t.id !== id) 
+      removeTask: (id) => set((state) => ({
+        tasks: state.tasks.filter(t => t.id !== id)
       })),
     }),
     { name: 'bee-queue' }

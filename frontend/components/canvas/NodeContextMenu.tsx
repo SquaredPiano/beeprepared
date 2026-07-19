@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { 
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -11,12 +11,12 @@ import {
   ContextMenuSubTrigger,
   ContextMenuSubContent
 } from "@/components/ui/context-menu";
-import { 
-  Eye, 
-  Trash2, 
-  Unlink, 
-  RefreshCw, 
-  Download, 
+import {
+  Eye,
+  Trash2,
+  Unlink,
+  RefreshCw,
+  Download,
   PlayCircle,
   Activity
 } from "lucide-react";
@@ -53,7 +53,7 @@ export function NodeContextMenu({
           Node Operations
         </div>
         <ContextMenuSeparator className="bg-wax/50 mx-1" />
-        
+
         {onPreview && (
           <ContextMenuItem className="gap-3 rounded-xl py-3 px-4 cursor-pointer focus:bg-honey/10" onClick={onPreview}>
             <div className="p-1.5 bg-honey/10 rounded-lg"><Eye size={14} className="text-honey" /></div>
@@ -98,7 +98,7 @@ export function NodeContextMenu({
         )}
 
         <ContextMenuSeparator className="bg-wax/50 mx-1" />
-        
+
         {onDisconnect && (
           <ContextMenuItem className="gap-3 rounded-xl py-3 px-4 cursor-pointer focus:bg-honey/10" onClick={onDisconnect}>
             <div className="p-1.5 bg-bee-black/5 rounded-lg"><Unlink size={14} className="text-bee-black/60" /></div>
@@ -110,8 +110,8 @@ export function NodeContextMenu({
         )}
 
         {onDelete && (
-          <ContextMenuItem 
-            className="gap-3 rounded-xl py-3 px-4 text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer" 
+          <ContextMenuItem
+            className="gap-3 rounded-xl py-3 px-4 text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
             onClick={onDelete}
           >
             <div className="p-1.5 bg-red-100 rounded-lg"><Trash2 size={14} /></div>

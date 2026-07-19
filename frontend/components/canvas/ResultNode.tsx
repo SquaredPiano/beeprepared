@@ -2,8 +2,8 @@
 
 import React from "react";
 import { Handle, Position } from "@xyflow/react";
-import { 
-  FileCheck, 
+import {
+  FileCheck,
   ExternalLink,
   MoreVertical,
   Download,
@@ -24,19 +24,16 @@ export function ResultNode({ data }: { data: any }) {
       )}
     >
       <div className="absolute inset-0 rounded-[2.5rem] overflow-hidden pointer-events-none">
-        {/* Background Pattern */}
         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
           <FileCheck size={120} className="rotate-12" />
         </div>
-        {/* Gloss Effect */}
         <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
       </div>
 
-      {/* Connector Handles */}
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        className="!w-4 !h-4 !bg-honey-500 !border-4 !border-white !shadow-lg hover:!scale-125 transition-transform" 
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-4 !h-4 !bg-honey-500 !border-4 !border-white !shadow-lg hover:!scale-125 transition-transform"
       />
 
       <div className="flex flex-col gap-6 relative z-10">
@@ -53,21 +50,21 @@ export function ResultNode({ data }: { data: any }) {
             </button>
           </div>
         </div>
-        
+
         <div className="space-y-1 text-left">
           <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-honey-600">Artifact Ready</p>
           <h3 className="text-xl font-display font-bold uppercase tracking-tight leading-tight">{data.label}</h3>
         </div>
 
         <div className="flex flex-col gap-3">
-          <Link 
+          <Link
             href={`/artifacts/${data.artifactId || 'preview'}`}
             className="w-full flex items-center justify-center gap-3 bg-bee-black text-white px-6 py-4 rounded-2xl hover:bg-honey-600 transition-all text-xs font-bold uppercase tracking-widest shadow-xl group/btn"
           >
             <span>View Full Result</span>
             <ExternalLink size={14} className="group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />
           </Link>
-          
+
           <button className="w-full flex items-center justify-center gap-3 border border-border/40 px-6 py-4 rounded-2xl hover:bg-honey-50 transition-all text-[10px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100">
             <Download size={14} />
             Download Source
@@ -86,7 +83,6 @@ export function ResultNode({ data }: { data: any }) {
         </div>
       </div>
 
-      {/* Gloss Effect */}
       <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none" />
     </motion.div>
   );

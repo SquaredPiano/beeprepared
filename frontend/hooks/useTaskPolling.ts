@@ -20,7 +20,6 @@ export function useTaskPolling(taskId: string | null) {
     },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      // Stop polling if complete or failed
       if (status === 'complete' || status === 'failed') {
         return false;
       }

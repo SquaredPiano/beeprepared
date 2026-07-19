@@ -7,8 +7,7 @@ interface MascotState {
   mood: MascotMood;
   position: MascotPosition;
   message: string | null;
-  
-  // Actions
+
   setMood: (mood: MascotMood) => void;
   say: (message: string, duration?: number) => void;
   flyTo: (position: MascotPosition) => void;
@@ -22,7 +21,7 @@ export const useMascotStore = create<MascotState>((set, get) => ({
   message: null,
 
   setMood: (mood) => set({ mood }),
-  
+
   flyTo: (position) => set({ position }),
 
   say: (message, duration = 4000) => {
@@ -37,7 +36,7 @@ export const useMascotStore = create<MascotState>((set, get) => ({
   celebrate: (message) => {
     const prevPosition = get().position;
     set({ position: 'center', mood: 'celebrating', message });
-    
+
     setTimeout(() => {
       set({ position: prevPosition, mood: 'idle', message: null });
     }, 3500);

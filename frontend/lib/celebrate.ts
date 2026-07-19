@@ -12,7 +12,7 @@ export function celebrateLevelUp() {
     scalar: 1.2,
     shapes: ['circle', 'square'],
   });
-  
+
   toast.success("Level Up! You're now a Worker Bee!", {
     description: "You've earned more honey drops for your hive.",
     icon: '🐝',

@@ -29,9 +29,6 @@ const TARGETS: { type: TargetType; label: string; icon: string }[] = [
     { type: 'exam', label: 'Exam', icon: '📋' },
 ];
 
-// ============================================================================
-// Text Sanitization - Strip markdown for plain text display (slides, exam preview)
-// ============================================================================
 function stripMarkdown(text: string | null | undefined): string {
     if (!text) return '';
     return text
@@ -47,10 +44,6 @@ function stripMarkdown(text: string | null | undefined): string {
         .trim();
 }
 
-// ============================================================================
-// Math-aware Markdown Renderer
-// Uses remark-math + rehype-katex for LaTeX rendering ($...$ and $$...$$)
-// ============================================================================
 function MathText({ children }: { children: string | null | undefined }) {
     if (!children) return null;
     return (
@@ -63,7 +56,6 @@ function MathText({ children }: { children: string | null | undefined }) {
     );
 }
 
-// Inline version for single-line content (strips block elements)
 function MathTextInline({ children }: { children: string | null | undefined }) {
     if (!children) return <>{children}</>;
     return (
@@ -78,63 +70,45 @@ function MathTextInline({ children }: { children: string | null | undefined }) {
     );
 }
 
-// ============================================================================
-// Normalize artifact data for renderers
-// Artifacts store data in content.data (generate) or content.core (knowledge_core)
-// ============================================================================
 function normalizeArtifact(type: TargetType, artifact: any): any {
     if (!artifact?.content) return null;
     const content = artifact.content;
 
-    // Generate artifacts use content.data directly (e.g., { title, questions })
-    // Knowledge cores use content.core
-    // Try both paths for robustness
-
     switch (type) {
         case 'quiz':
-            // content.data = { title, questions } for quiz
             return content.data || content.core?.quiz || content.quiz || null;
         case 'notes':
-            // content.data = { title, sections } for notes
             return content.data || content.core?.notes || content.notes || null;
         case 'slides':
-            // content.data = { title, slides, audience_level } for slides
             return content.data || content.core?.slides || content.slides || null;
         case 'flashcards':
-            // content.data = { cards } for flashcards
             return content.data || content.core?.flashcards || content.flashcards || null;
         case 'exam':
-            // content.data = FinalExamModel { title, questions, instructions, rubric }
             return content.data || content.core?.exam || content.exam || null;
         default:
             return null;
     }
 }
 
-// ============================================================================
-// Binary Download Helper
-// ============================================================================
 const API_BASE = 'http://localhost:8000';
 
 async function downloadBinary(artifactId: string, fallbackFilename: string): Promise<void> {
     try {
         console.log(`[Binary] Fetching download URL for artifact: ${artifactId}`);
         const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}/download`);
-        
+
         if (!res.ok) {
             const error = await res.json().catch(() => ({ detail: 'Unknown error' }));
             throw new Error(error.detail || `HTTP ${res.status}`);
         }
-        
+
         const data = await res.json();
         console.log(`[Binary] Got presigned URL with headers:`, {
             filename: data.filename,
             mime_type: data.mime_type,
             format: data.format,
         });
-        
-        // Force browser download using anchor with download attribute
-        // This tells Chrome: "Download this file, don't inline it"
+
         const a = document.createElement('a');
         a.href = data.download_url;
         a.download = data.filename || fallbackFilename; // Forces download behavior
@@ -142,7 +116,7 @@ async function downloadBinary(artifactId: string, fallbackFilename: string): Pro
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
+
         console.log(`[Binary] Download triggered: ${data.filename}`);
     } catch (error) {
         console.error('[Binary] Download failed:', error);
@@ -159,9 +133,6 @@ function getBinaryInfo(artifact: any): { format: string; available: boolean } | 
     };
 }
 
-// ============================================================================
-// Status Cards
-// ============================================================================
 function StatusCard({ target, status, error, onClick, isActive }: {
     target: { type: TargetType; label: string; icon: string };
     status: string;
@@ -193,9 +164,6 @@ function StatusCard({ target, status, error, onClick, isActive }: {
     );
 }
 
-// ============================================================================
-// Simple Renderers (will be enhanced)
-// ============================================================================
 function QuizRenderer({ data }: { data: any }) {
     const [answers, setAnswers] = useState<Record<string, number>>({});
 
@@ -239,7 +207,6 @@ function QuizRenderer({ data }: { data: any }) {
 }
 
 function NotesRenderer({ data }: { data: any }) {
-    // NEW FORMAT: Pure markdown with { title, format, body }
     if (data?.format === 'markdown' && data?.body) {
         return (
             <div className="notes-renderer markdown-notes">
@@ -250,8 +217,7 @@ function NotesRenderer({ data }: { data: any }) {
             </div>
         );
     }
-    
-    // LEGACY FORMAT: Structured sections
+
     if (!data?.sections) return <div className="renderer-empty">No notes data</div>;
 
     return (
@@ -260,8 +226,7 @@ function NotesRenderer({ data }: { data: any }) {
             {data.sections.map((sec: any, i: number) => (
                 <div key={i} className="notes-section">
                     <h2>{sec.heading}</h2>
-                    
-                    {/* Key Points (structured list with math support) */}
+
                     {sec.key_points && sec.key_points.length > 0 && (
                         <ul className="key-points">
                             {sec.key_points.map((kp: string, k: number) => (
@@ -269,15 +234,13 @@ function NotesRenderer({ data }: { data: any }) {
                             ))}
                         </ul>
                     )}
-                    
-                    {/* Content Block (markdown with math) */}
+
                     {sec.content_block && (
                         <div className="content-block markdown-content">
                             <MathText>{sec.content_block}</MathText>
                         </div>
                     )}
-                    
-                    {/* Key Terms */}
+
                     {sec.key_terms && sec.key_terms.length > 0 && (
                         <div className="key-terms">
                             <strong>Key Terms:</strong>{' '}
@@ -286,8 +249,7 @@ function NotesRenderer({ data }: { data: any }) {
                             ))}
                         </div>
                     )}
-                    
-                    {/* Callouts (with math support) */}
+
                     {sec.callouts && sec.callouts.length > 0 && (
                         <div className="callouts">
                             {sec.callouts.map((callout: string, c: number) => (
@@ -315,7 +277,6 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact?: any }) {
         a.click();
     };
 
-    // Server-side PPTX download ONLY - no client-side fallback
     const handleDownloadPPTX = () => {
         if (!binaryInfo?.available) {
             alert('PPTX not yet generated. Please wait for processing to complete.');
@@ -331,8 +292,8 @@ function SlidesRenderer({ data, artifact }: { data: any; artifact?: any }) {
             <div className="slides-header">
                 <h2>{data.title || 'Slides'}</h2>
                 <div className="slides-actions">
-                    <button 
-                        onClick={handleDownloadPPTX} 
+                    <button
+                        onClick={handleDownloadPPTX}
                         className={`download-btn primary ${!binaryInfo?.available ? 'disabled' : ''}`}
                         disabled={!binaryInfo?.available}
                     >
@@ -474,9 +435,6 @@ function ExamRenderer({ data, artifact }: { data: any; artifact: any }) {
     );
 }
 
-// ============================================================================
-// Main Workspace Page
-// ============================================================================
 export default function WorkspacePage() {
     const [sourceType, setSourceType] = useState<SourceType>('youtube');
     const [sourceValue, setSourceValue] = useState('');
@@ -496,13 +454,11 @@ export default function WorkspacePage() {
 
     return (
         <div className="workspace">
-            {/* Header */}
             <header className="workspace-header">
                 <h1>🐝 BeePrepared Workspace</h1>
                 <p>Upload any source → Generate all study materials</p>
             </header>
 
-            {/* Input Section */}
             <section className="input-section">
                 <div className="source-types">
                     {SOURCE_TYPES.map(s => (
@@ -537,7 +493,6 @@ export default function WorkspacePage() {
                     )}
                 </div>
 
-                {/* Ingest Status */}
                 {state.ingest.status !== 'idle' && (
                     <div className={`ingest-status ${state.ingest.status}`}>
                         {state.ingest.status === 'pending' && '🟡 Queued for ingestion...'}
@@ -548,7 +503,6 @@ export default function WorkspacePage() {
                 )}
             </section>
 
-            {/* Status Grid */}
             <section className="status-grid">
                 {TARGETS.map(t => (
                     <StatusCard
@@ -562,7 +516,6 @@ export default function WorkspacePage() {
                 ))}
             </section>
 
-            {/* Artifact Viewer */}
             <section className="artifact-viewer">
                 <div className="viewer-tabs">
                     {TARGETS.map(t => (

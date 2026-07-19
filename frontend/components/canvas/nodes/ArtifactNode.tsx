@@ -17,7 +17,6 @@ import { motion } from "framer-motion";
 import { NodeContextMenu } from "../NodeContextMenu";
 import { useCanvasStore } from "@/store/useCanvasStore";
 
-// Icon mapping for artifact types
 const ARTIFACT_ICONS: Record<string, typeof FileText> = {
   video: Video,
   audio: Music,
@@ -31,7 +30,6 @@ const ARTIFACT_ICONS: Record<string, typeof FileText> = {
   exam: ClipboardCheck,
 };
 
-// Color mapping for artifact types
 const ARTIFACT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   video: { bg: "bg-purple-50", text: "text-purple-500", border: "border-purple-200" },
   audio: { bg: "bg-pink-50", text: "text-pink-500", border: "border-pink-200" },
@@ -85,7 +83,7 @@ export function ArtifactNode({ id, data }: NodeProps & { id: string; data: Artif
         `}
       >
         <div className={`
-          p-2.5 rounded-lg shrink-0 
+          p-2.5 rounded-lg shrink-0
           ${isKnowledgeCore ? "bg-amber-100 text-amber-600" : "bg-gray-50 text-gray-600"}
         `}>
           <Icon className="w-4 h-4" />
@@ -110,12 +108,10 @@ export function ArtifactNode({ id, data }: NodeProps & { id: string; data: Artif
           )}
         </div>
 
-        {/* Status indicator (Failed) */}
         {data.status === "failed" && (
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
         )}
 
-        {/* Input handle - only for non-source artifacts */}
         {!isSource && (
           <Handle
             type="target"
@@ -124,7 +120,6 @@ export function ArtifactNode({ id, data }: NodeProps & { id: string; data: Artif
           />
         )}
 
-        {/* Output handle */}
         <Handle
           type="source"
           position={Position.Right}

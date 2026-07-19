@@ -27,7 +27,6 @@ export default function ProcessingPage() {
   const containerRef = useRef(null);
 
   useGSAP(() => {
-    // Set initial state to avoid flicker now that CSS is visible by default
     gsap.set(".reveal", { opacity: 0, y: 30 });
 
     gsap.to(".reveal", {
@@ -70,7 +69,6 @@ export default function ProcessingPage() {
   return (
     <div ref={containerRef} className="container mx-auto px-6 py-20 min-h-screen">
       <div className="max-w-6xl mx-auto space-y-20">
-        {/* Header */}
         <div className="space-y-6 max-w-2xl">
           <div className="reveal flex items-center gap-3">
             <div className="h-px w-8 bg-border/60" />
@@ -87,7 +85,6 @@ export default function ProcessingPage() {
           </p>
         </div>
 
-        {/* Canvas & Progress */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
           <div className="lg:col-span-8 reveal">
             <div className="h-[500px]">

@@ -27,7 +27,6 @@ import { Artifact } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-// Icon mapping for generator types
 const GENERATOR_ICONS: Record<string, typeof BookOpen> = {
   notes: BookOpen,
   quiz: HelpCircle,
@@ -39,7 +38,6 @@ const GENERATOR_ICONS: Record<string, typeof BookOpen> = {
   mindmap: Network,
 };
 
-// Color mapping for generator types
 const GENERATOR_COLORS: Record<string, { bg: string; text: string; border: string; accent: string }> = {
   notes: { bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-200", accent: "bg-emerald-500" },
   quiz: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200", accent: "bg-blue-500" },
@@ -90,13 +88,11 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
   const colors = GENERATOR_COLORS[generatorType] || GENERATOR_COLORS.notes;
   const label = data.label || GENERATOR_LABELS[generatorType] || generatorType;
 
-  // Get current state from hook
   const generatorState = states[generatorType];
   const status = data.status || generatorState?.status || "idle";
   const progress = data.progress || generatorState?.progress || 0;
   const error = data.error || generatorState?.error;
 
-  // Update node data helper
   const updateNodeData = useCallback((updates: Partial<GeneratorNodeData>) => {
     setNodes(nodes =>
       nodes.map(n =>
@@ -107,7 +103,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     );
   }, [id, setNodes]);
 
-  // Sync artifact from generator state
   useEffect(() => {
     if (generatorState?.artifact) {
       setLocalArtifact(generatorState.artifact);
@@ -115,9 +110,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     }
   }, [generatorState?.artifact, updateNodeData]);
 
-  // Find connected sources (Knowledge Core, Asset, or Chained Generators)
   const findSourceArtifacts = useCallback(async (): Promise<string[]> => {
-    // 1. Check incoming edges
     const edges = getEdges();
     const nodes = getNodes();
 
@@ -125,7 +118,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     console.log(`[Generator ${id}] Finding sources. Incoming edges:`, incomingEdges.length);
 
     if (incomingEdges.length === 0) {
-      // Fallback: Find any valid source in the project (Single Input logic fallback)
       if (currentProjectId) {
         const core = await findKnowledgeCore(currentProjectId);
         if (core) {
@@ -144,7 +136,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
       console.log(`[Generator ${id}] Checking source node:`, sourceNode.type, sourceNode.id);
 
-      // Case A: Connected to ANY Artifact Node (Core, Notes, Quiz, etc.)
       if (sourceNode.type === 'artifactNode') {
         const artifactData = sourceNode.data as any;
         if (artifactData?.artifact?.id) {
@@ -152,17 +143,14 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
           foundIds.push(artifactData.artifact.id);
         }
       }
-      // Case B: Connected to Generator (Chaining)
       else if (sourceNode.type === 'generator') {
         const parentData = sourceNode.data as unknown as GeneratorNodeData;
         if (parentData.artifact && (parentData.artifact as { id: string }).id) {
           foundIds.push((parentData.artifact as { id: string }).id);
         } else {
-          // If parent incomplete, we skip it but log warning
           console.warn(`[Generator ${id}] Skipping incomplete parent generator ${sourceNode.id}`);
         }
       }
-      // Case C: Asset -> Project Knowledge Core
       else if (sourceNode.type === 'asset') {
         if (currentProjectId) {
           const core = await findKnowledgeCore(currentProjectId);
@@ -173,11 +161,9 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
       }
     }
 
-    // Deduplicate
     return Array.from(new Set(foundIds));
   }, [getEdges, getNodes, id, currentProjectId]);
 
-  // Handle generation
   const handleGenerate = useCallback(async () => {
     if (!currentProjectId) {
       toast.error("No project selected", { description: "Save your project first" });
@@ -195,7 +181,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
 
     updateNodeData({ status: "pending", progress: 0, error: null });
 
-    // Pass IDs list to generate
     const result = await generate(currentProjectId, sourceArtifactIds, generatorType);
 
     if (result) {
@@ -206,7 +191,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
         progress: 100
       });
 
-      // Refresh canvas artifacts to sync
       await refreshArtifacts();
     } else if (generatorState?.error) {
       updateNodeData({
@@ -217,19 +201,16 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
     }
   }, [currentProjectId, findSourceArtifacts, generate, generatorType, updateNodeData, refreshArtifacts, generatorState?.error]);
 
-  // Handle cancel
   const handleCancel = useCallback(() => {
     cancel(generatorType);
     updateNodeData({ status: "idle", progress: 0 });
   }, [cancel, generatorType, updateNodeData]);
 
-  // Handle delete
   const handleDelete = useCallback(() => {
     takeSnapshot();
     setNodes(getNodes().filter(n => n.id !== id));
   }, [takeSnapshot, setNodes, getNodes, id]);
 
-  // Status-based rendering
   const isGenerating = status === "pending" || status === "running";
   const isCompleted = status === "completed" && localArtifact;
   const isFailed = status === "failed";
@@ -250,9 +231,7 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
             transition-all duration-300
           `}
         >
-          {/* Content Wrapper - Handles clipping for corners */}
           <div className="w-full h-full rounded-[14px] overflow-hidden relative bg-inherit"> {/* radius slightly less than parent 2xl (16px) - 2px border */}
-            {/* Progress bar */}
             {isGenerating && (
               <motion.div
                 className={`absolute top-0 left-0 h-1 ${colors.accent}`}
@@ -287,14 +266,12 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
                 </div>
               </div>
 
-              {/* Error message */}
               {isFailed && error && (
                 <p className="text-xs text-red-500 mt-2 truncate" title={error}>
                   {error}
                 </p>
               )}
 
-              {/* Action buttons */}
               <div className="mt-3 pt-3 border-t border-wax flex gap-2">
                 {isGenerating ? (
                   <Button
@@ -337,14 +314,12 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
             </div>
           </div>
 
-          {/* Input handle - Outside wrapper to avoid clipping */}
           <Handle
             type="target"
             position={Position.Left}
             className={`w-3 h-3 border-2 border-white !-left-1.5 ${isCompleted ? colors.accent : "bg-wax"}`}
           />
 
-          {/* Output handle - Outside wrapper */}
           <Handle
             type="source"
             position={Position.Right}
@@ -353,7 +328,6 @@ export function GeneratorNode({ id, data }: GeneratorNodeProps) {
         </motion.div>
       </NodeContextMenu>
 
-      {/* Preview Modal */}
       <ArtifactPreviewModal
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}

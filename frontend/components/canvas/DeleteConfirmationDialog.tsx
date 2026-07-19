@@ -72,7 +72,7 @@ export function DeleteConfirmationDialog({
             }}
             className={cn(
               "rounded-xl font-bold uppercase text-[10px] tracking-widest h-12 px-8 shadow-lg transition-all",
-              destructive 
+              destructive
                 ? "bg-red-600 text-white hover:bg-red-700 shadow-red-600/20"
                 : "bg-honey text-bee-black hover:bg-honey-600 shadow-honey/20"
             )}

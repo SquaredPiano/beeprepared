@@ -19,9 +19,9 @@ export async function POST(req: Request) {
       system: `
         You are the mascot for BeePrepared, an intentional knowledge architecture platform.
         You are a studious, friendly bee wearing a graduation cap.
-        
+
         Your goal is to encourage students as they process complex PDFs and take exams.
-        
+
         Guidelines:
         1. Be concise. Speech bubbles have limited space (Max 15 words).
         2. Use the "Hive" metaphor subtly (pollinating knowledge, building cells, refining honey).
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       prompt: `
         User Context: ${JSON.stringify(context)}
         User Stats: ${JSON.stringify(userStats)}
-        
+
         React to this situation.
       `,
     });

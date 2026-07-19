@@ -31,7 +31,6 @@ export default function DashboardLayout({
     checkAuth();
   }, [router]);
 
-  // Show loading while checking auth
   if (!authChecked) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center">
@@ -48,7 +47,6 @@ export default function DashboardLayout({
     );
   }
 
-  // Don't render content if not authenticated (redirect is in progress)
   if (!isAuthed) {
     return null;
   }
@@ -56,7 +54,6 @@ export default function DashboardLayout({
   return (
     <div className="relative w-full">
       {children}
-      {/* Hide mascot on canvas to reduce distraction */}
       {!isCanvasPage && <BeeMascot />}
     </div>
   );

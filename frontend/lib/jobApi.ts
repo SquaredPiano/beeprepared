@@ -1,17 +1,13 @@
 /**
  * Job API Client
- * 
+ *
  * Transport layer for communicating with the BeePrepared backend.
  * This is the ONLY way the frontend should interact with job processing.
- * 
+ *
  * API Contract: See /API_CONTRACT.md
  */
 
 const API_BASE = 'http://localhost:8000';
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface JobResponse {
     job_id: string;
@@ -64,10 +60,6 @@ export interface GeneratePayload {
     target_type: 'quiz' | 'exam' | 'notes' | 'slides' | 'flashcards';
 }
 
-// ============================================================================
-// API Functions
-// ============================================================================
-
 /**
  * Create a new job (ingest or generate)
  */
@@ -111,7 +103,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
 /**
  * Poll job until completion (or failure)
- * 
+ *
  * @param jobId - Job ID to poll
  * @param intervalMs - Polling interval in milliseconds (default: 2000)
  * @param timeoutMs - Maximum time to wait (default: 300000 = 5 min)
@@ -134,7 +126,6 @@ export async function pollJobUntilComplete(
             throw new Error(`Job failed: ${status.error_message}`);
         }
 
-        // Wait before next poll
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
 
@@ -154,10 +145,6 @@ export async function fetchProjectArtifacts(projectId: string): Promise<ProjectA
 
     return response.json();
 }
-
-// ============================================================================
-// Convenience Wrappers
-// ============================================================================
 
 /**
  * Ingest a source and wait for completion

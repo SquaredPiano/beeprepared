@@ -11,7 +11,7 @@ interface ScrollRevealProps {
 export function ScrollReveal({ children, width = "100%" }: ScrollRevealProps) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
-  
+
   return (
     <div ref={ref} style={{ position: "relative", width, overflow: "hidden" }}>
       <motion.div

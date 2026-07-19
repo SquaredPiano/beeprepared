@@ -34,7 +34,6 @@ export function CanvasControls() {
 
   return (
     <div className="absolute bottom-8 left-8 flex flex-col gap-4 z-50">
-      {/* Zoom & Lock Controls */}
       <div className="flex flex-col p-1.5 bg-white/90 backdrop-blur-xl rounded-[20px] border border-wax shadow-2xl ring-1 ring-black/5">
         <Button
           variant="ghost"
@@ -79,7 +78,6 @@ export function CanvasControls() {
         </Button>
       </div>
 
-      {/* History Controls */}
       <div className="flex p-1.5 bg-white/90 backdrop-blur-xl rounded-[20px] border border-wax shadow-2xl ring-1 ring-black/5">
         <Button
           variant="ghost"

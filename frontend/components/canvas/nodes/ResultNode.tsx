@@ -20,7 +20,6 @@ export function ResultNode({ id, data }: NodeProps & { id: string }) {
       nodeType="result"
       onDelete={handleDelete}
       onPractice={() => {
-        // Practice logic
       }}
     >
       <motion.div

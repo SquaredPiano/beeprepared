@@ -6,13 +6,13 @@ export function generateProjectName() {
   const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
   const noun = nouns[Math.floor(Math.random() * nouns.length)];
   const verb = verbs[Math.floor(Math.random() * verbs.length)];
-  
+
   const patterns = [
     `${adj} ${noun}`,
     `${verb} ${noun}`,
     `${adj} ${verb} ${noun}`,
     `The ${adj} ${noun}`
   ];
-  
+
   return patterns[Math.floor(Math.random() * patterns.length)];
 }

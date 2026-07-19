@@ -47,8 +47,6 @@ type StateHandler = (state: ConnectionState) => void;
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
-// Authentication failures are permanent: reconnecting with the same bad token
-// just produces the same close code in a loop.
 const FATAL_CLOSE_CODES = new Set([4401, 4403]);
 
 const BASE_RETRY_MS = 1_000;
@@ -117,7 +115,6 @@ export class ProjectSocket {
     };
 
     socket.onerror = () => {
-      // `onclose` always follows, and it carries the code we actually need.
     };
 
     socket.onclose = (event) => {
@@ -158,8 +155,6 @@ export class ProjectSocket {
   private scheduleReconnect(): void {
     if (this.retryTimer) return;
 
-    // Exponential backoff with jitter, so many open tabs do not all retry on
-    // the same tick and knock the backend over as it comes back up.
     const delay = Math.min(BASE_RETRY_MS * 2 ** this.retryAttempt, MAX_RETRY_MS);
     const jittered = delay * (0.5 + Math.random() * 0.5);
     this.retryAttempt += 1;

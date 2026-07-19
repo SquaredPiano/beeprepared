@@ -39,8 +39,6 @@ export function useProjectSocket(
     const unsubscribeState = socket.onStateChange(setConnection);
     void socket.connect();
 
-    // A backgrounded tab can keep a socket that looks open but delivers
-    // nothing. Ask for a fresh snapshot whenever the tab becomes visible.
     const onVisible = () => {
       if (document.visibilityState === "visible") socket.resync();
     };

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export const TaskNode = memo(({ data }: NodeProps) => {
   const status = data.status as string;
-  
+
   const StatusIcon = {
     complete: CheckCircle2,
     processing: CircleDashed,
@@ -27,7 +27,7 @@ export const TaskNode = memo(({ data }: NodeProps) => {
           position={Position.Left}
           className="!bg-border !w-2 !h-2 !border-0"
         />
-        
+
         <div className="flex items-center gap-4">
           <div className={cn(
             "p-3 rounded-xl transition-colors",
@@ -36,7 +36,7 @@ export const TaskNode = memo(({ data }: NodeProps) => {
           )}>
             <FileText className="w-5 h-5" />
           </div>
-          
+
           <div className="flex-1 min-w-0">
             <h4 className="text-xs font-bold uppercase tracking-widest truncate">{data.label as string}</h4>
             <div className="flex items-center gap-1.5 mt-1">
@@ -58,8 +58,7 @@ export const TaskNode = memo(({ data }: NodeProps) => {
           className="!bg-border !w-2 !h-2 !border-0"
         />
       </div>
-      
-      {/* Decorative Glow */}
+
       <div className={cn(
         "absolute -inset-2 rounded-3xl -z-10 opacity-0 group-hover:opacity-10 transition-opacity blur-xl",
         status === "complete" ? "bg-green-500" : "bg-honey-500"

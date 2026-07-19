@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ChevronUp, 
-  ChevronDown, 
-  ArrowLeft, 
-  Save, 
+import {
+  ChevronUp,
+  ChevronDown,
+  ArrowLeft,
+  Save,
   Hexagon,
   Share2,
   MoreVertical,
@@ -22,26 +22,23 @@ import { Input } from "@/components/ui/input";
 
 export function CanvasHeader() {
   const router = useRouter();
-  const { 
-    projectName, 
-    setProjectName, 
-    save, 
+  const {
+    projectName,
+    setProjectName,
+    save,
     runFlow,
     validateFlow,
     flowPlan,
     isRunning,
     nodes,
     edges,
-    isSaving, 
-    isHeaderCollapsed, 
-    setIsHeaderCollapsed 
+    isSaving,
+    isHeaderCollapsed,
+    setIsHeaderCollapsed
   } = useCanvasStore();
-  
+
   const [isEditing, setIsEditing] = useState(false);
 
-  // Re-validate shortly after the graph stops changing, so the Run button can
-  // say up front how many steps will run - or why the flow will not run at all -
-  // instead of failing only once the user commits to it.
   useEffect(() => {
     const timer = setTimeout(() => { void validateFlow(); }, 400);
     return () => clearTimeout(timer);
@@ -62,7 +59,7 @@ export function CanvasHeader() {
       className="absolute top-0 left-0 right-0 z-[60] bg-white/80 backdrop-blur-xl border-b border-wax flex items-center px-8 shadow-sm transition-all"
     >
       <div className="flex-1 flex items-center gap-8">
-        <button 
+        <button
           onClick={() => router.back()}
           className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-bee-black/40 hover:text-bee-black transition-colors cursor-pointer"
         >
@@ -74,7 +71,7 @@ export function CanvasHeader() {
           <div className="w-10 h-10 rounded-xl bg-honey/10 flex items-center justify-center border border-honey/20">
             <Hexagon size={20} className="text-honey-600 fill-honey-600/20" />
           </div>
-          
+
           <div className="flex flex-col min-w-0">
             {isEditing ? (
               <Input
@@ -86,7 +83,7 @@ export function CanvasHeader() {
                 className="h-8 font-display text-xl uppercase tracking-tighter bg-transparent border-none p-0 focus-visible:ring-0"
               />
             ) : (
-              <h1 
+              <h1
                 onClick={() => setIsEditing(true)}
                 className="font-display text-xl uppercase tracking-tighter text-bee-black cursor-pointer hover:text-honey-600 transition-colors truncate"
               >
@@ -106,9 +103,9 @@ export function CanvasHeader() {
       <div className="flex items-center gap-3">
         {!isHeaderCollapsed && (
           <>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="h-10 px-4 rounded-xl text-bee-black/60 hover:bg-honey/10 cursor-pointer"
             >
               <Share2 size={16} className="mr-2" /> Share
@@ -116,8 +113,8 @@ export function CanvasHeader() {
             <div className="w-px h-6 bg-wax" />
           </>
         )}
-        
-        <Button 
+
+        <Button
           onClick={runFlow}
           disabled={isRunning || (flowPlan !== null && !runnable)}
           title={flowPlan?.error ?? undefined}
@@ -138,9 +135,8 @@ export function CanvasHeader() {
           {runLabel}
         </Button>
 
-
         <div className="flex flex-col items-end gap-1">
-          <Button 
+          <Button
             onClick={save}
             disabled={isSaving}
             className={cn(
@@ -154,7 +150,7 @@ export function CanvasHeader() {
           {!isHeaderCollapsed && (
             <AnimatePresence>
               {isSaving ? (
-                <motion.span 
+                <motion.span
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
@@ -164,7 +160,7 @@ export function CanvasHeader() {
                 </motion.span>
               ) : (
 
-                <motion.span 
+                <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 0.3 }}
                   className="text-[8px] font-bold text-bee-black uppercase tracking-widest mr-2"
@@ -175,7 +171,6 @@ export function CanvasHeader() {
             </AnimatePresence>
           )}
         </div>
-
 
         <button
           onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)}

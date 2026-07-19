@@ -1,6 +1,5 @@
 import { getAccessToken } from "./auth";
 
-// Backend API base URL
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export interface Project {
@@ -179,7 +178,6 @@ export const api = {
       return response.json();
     },
 
-
     async create(name: string, description?: string): Promise<Project> {
       const token = await getAccessToken();
       const response = await fetch(`${BACKEND_URL}/api/projects`, {
@@ -193,7 +191,6 @@ export const api = {
       if (!response.ok) throw new Error("Creation failed");
       return response.json();
     },
-
 
     async update(id: string, updates: Partial<Pick<Project, "name" | "description" | "canvas_state">>): Promise<Project> {
       const token = await getAccessToken();
@@ -221,15 +218,11 @@ export const api = {
     async getArtifacts(projectId: string): Promise<{ artifacts: Artifact[]; edges: ArtifactEdge[] }> {
       const token = await getAccessToken();
 
-      // Use the backend API to get artifacts and edges
-      // Note: If projectId is a mock ID (e.g. proj-1), backend might 404. 
-      // User says "backend works", implying maybe we should try real fetch.
       try {
         const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/artifacts`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) {
-          // If backend fails (e.g. project not found), return empty for demo to avoid crashing
           console.warn("Backend getArtifacts failed, returning empty for demo", response.status);
           return { artifacts: [], edges: [] };
         }
@@ -290,7 +283,6 @@ export const api = {
       );
       if (!response.ok) throw await failure(response, "No download is available for this artifact");
       const body = await response.json();
-      // Local storage returns a relative path; make it absolute for the browser.
       if (body.download_url.startsWith("/")) {
         body.download_url = `${BACKEND_URL}${body.download_url}`;
       }
@@ -326,7 +318,6 @@ export const api = {
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${token}` }
       });
-      // Handle 403 gracefully - project may have been deleted
       if (response.status === 403) {
         console.warn("[api.jobs.list] Access denied - project may be deleted");
         return [];
@@ -415,7 +406,6 @@ export const api = {
     ): Promise<{ job_id: string; job: Job }> {
       const token = await getAccessToken();
 
-      // Determine source type from file
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       let sourceType: string;
 
@@ -433,13 +423,11 @@ export const api = {
         throw new Error(`Unsupported file type: ${ext}`);
       }
 
-      // Create form data
       const formData = new FormData();
       formData.append("file", file);
       formData.append("source_type", sourceType);
       formData.append("folder", folder);
 
-      // Upload and create ingest job (include auth token)
       const response = await fetch(`${BACKEND_URL}/api/projects/${projectId}/upload`, {
         method: "POST",
         headers: { 'Authorization': `Bearer ${token}` },
@@ -453,8 +441,6 @@ export const api = {
 
       const { job_id } = await response.json();
 
-      // Return immediately so UI can use Realtime to track progress
-      // The backend creates the job in 'pending' state
       const job: Job = {
         id: job_id,
         project_id: projectId,

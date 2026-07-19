@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  ChevronLeft, 
-  Presentation, 
-  Download, 
-  Play, 
-  Search, 
+import {
+  ChevronLeft,
+  Presentation,
+  Download,
+  Play,
+  Search,
   Filter,
   MoreVertical,
   Layout,
@@ -44,7 +44,7 @@ export default function PPTXPage() {
     <div className="p-12 space-y-12 max-w-7xl mx-auto min-h-screen">
       <header className="flex items-end justify-between">
         <div className="space-y-4">
-          <Link 
+          <Link
             href="/dashboard/library"
             className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity flex items-center gap-2"
           >
@@ -52,7 +52,7 @@ export default function PPTXPage() {
             Back to Library
           </Link>
           <h1 className="text-6xl font-display uppercase tracking-tighter leading-[0.8]">
-            Artifact <br /> 
+            Artifact <br />
             <span className="italic lowercase opacity-40">Presentations</span>
           </h1>
         </div>
@@ -60,8 +60,8 @@ export default function PPTXPage() {
         <div className="flex gap-4">
           <div className="glass px-6 py-3 rounded-2xl border border-border/40 flex items-center gap-4">
             <Search size={16} className="opacity-20" />
-            <input 
-              placeholder="Search decks..." 
+            <input
+              placeholder="Search decks..."
               className="bg-transparent border-none focus:outline-none text-[10px] font-bold uppercase tracking-widest w-48"
             />
           </div>
@@ -81,11 +81,10 @@ export default function PPTXPage() {
             transition={{ delay: i * 0.1 }}
             className="group glass rounded-[3rem] border border-border/40 hover:border-honey-500/50 transition-all overflow-hidden flex flex-col"
           >
-            {/* Slide Preview */}
             <div className="aspect-video bg-muted relative overflow-hidden flex items-center justify-center p-12">
               <div className="absolute inset-0 bg-gradient-to-br from-honey-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <Presentation size={64} className="text-bee-black/10 group-hover:scale-110 group-hover:text-honey-500/40 transition-all duration-700" />
-              
+
               <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
                 <div className="px-3 py-1 bg-white/80 backdrop-blur-md rounded-full text-[8px] font-black uppercase tracking-widest">
                   {deck.theme} Theme
@@ -97,7 +96,6 @@ export default function PPTXPage() {
               </div>
             </div>
 
-            {/* Deck Info */}
             <div className="p-8 space-y-6 flex-1 flex flex-col justify-between">
               <div className="space-y-3">
                 <h3 className="text-xl font-display font-bold uppercase tracking-tight line-clamp-2 leading-tight group-hover:text-honey-600 transition-colors">
@@ -112,7 +110,7 @@ export default function PPTXPage() {
 
               <div className="pt-6 border-t border-border/10 flex items-center justify-between">
                 <span className="text-[10px] font-bold opacity-30 uppercase tracking-tighter">{deck.date}</span>
-                <button 
+                <button
                   onClick={() => playSound("pickup")}
                   className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-honey-600 hover:text-honey-700 transition-colors group/btn"
                 >
@@ -124,7 +122,6 @@ export default function PPTXPage() {
           </motion.div>
         ))}
 
-        {/* Upload Placeholder */}
         <button
           className="group rounded-[3rem] border-2 border-dashed border-border/40 hover:border-honey-500 transition-all flex flex-col items-center justify-center gap-6 min-h-[400px] bg-honey-50/5 hover:bg-honey-50/20"
         >

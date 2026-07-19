@@ -35,8 +35,6 @@ const initialState: GenerationState = {
  * Handles job creation, polling, and artifact fetching.
  */
 export function useArtifactGenerator() {
-  // Built from the shared type list rather than hand-listed, so adding an
-  // artifact type on the backend does not silently miss a branch here.
   const [states, setStates] = useState<Record<TargetType, GenerationState>>(
     () =>
       Object.fromEntries(
@@ -59,7 +57,7 @@ export function useArtifactGenerator() {
   }, []);
 
   /**
-   * Get auth token for backend requests 
+   * Get auth token for backend requests
    */
   const getAuthToken = async (): Promise<string | null> => {
     try {
@@ -140,7 +138,6 @@ export function useArtifactGenerator() {
 
       const data = await res.json();
 
-      // Update progress estimate
       const progressMap: Record<string, number> = {
         'pending': 10,
         'running': 50,
@@ -160,7 +157,6 @@ export function useArtifactGenerator() {
         throw new Error(data.error_message || 'Generation failed');
       }
 
-      // Wait before next poll
       await new Promise(resolve => setTimeout(resolve, 2000));
       attempts++;
     }
@@ -192,7 +188,6 @@ export function useArtifactGenerator() {
     sourceArtifactIds: string | string[],
     targetType: TargetType
   ): Promise<Artifact | null> => {
-    // Cancel any existing generation for this target
     if (abortControllers.current[targetType]) {
       abortControllers.current[targetType]?.abort();
     }
@@ -200,7 +195,6 @@ export function useArtifactGenerator() {
     const controller = new AbortController();
     abortControllers.current[targetType] = controller;
 
-    // Reset state
     updateState(targetType, {
       ...initialState,
       status: 'pending',
@@ -212,18 +206,15 @@ export function useArtifactGenerator() {
     });
 
     try {
-      // Create job
       const jobId = await createGenerateJob(projectId, sourceArtifactIds, targetType);
       updateState(targetType, { jobId, status: 'running', progress: 20 });
 
-      // Poll for completion
       const { artifactId, result } = await pollJobStatus(jobId, targetType, controller.signal);
 
       if (!artifactId) {
         throw new Error('No artifact ID in result');
       }
 
-      // Fetch the artifact
       const artifact = await fetchArtifact(projectId, artifactId);
 
       if (!artifact) {

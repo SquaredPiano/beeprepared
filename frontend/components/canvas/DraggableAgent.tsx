@@ -4,7 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { 
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -33,13 +33,13 @@ const colorClasses = {
   indigo: "from-indigo-500/10 to-indigo-500/5 border-indigo-500/20 text-indigo-600",
 };
 
-export function DraggableAgent({ 
-  type, 
+export function DraggableAgent({
+  type,
   subType,
-  label, 
-  description, 
-  icon: Icon, 
-  color, 
+  label,
+  description,
+  icon: Icon,
+  color,
   collapsed,
   disabled,
   tooltip,
@@ -53,7 +53,7 @@ export function DraggableAgent({
     event.dataTransfer.setData("application/reactflow", JSON.stringify(data));
     event.dataTransfer.effectAllowed = "move";
   };
-  
+
   return (
     <TooltipProvider>
       <Tooltip delayDuration={0}>
@@ -83,8 +83,7 @@ export function DraggableAgent({
                 <GripVertical className="h-4 w-4 opacity-20 group-hover:opacity-40 transition-opacity" />
               )}
             </div>
-            
-            {/* Animated background pulse on hover */}
+
             {!disabled && (
               <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500 pointer-events-none" />
             )}

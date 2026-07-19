@@ -47,10 +47,6 @@ export function useJobOrchestrator() {
     const [isRunning, setIsRunning] = useState(false);
     const abortRef = useRef(false);
 
-    // =========================================================================
-    // API Helpers
-    // =========================================================================
-
     const createJob = async (type: 'ingest' | 'generate', payload: any): Promise<string> => {
         const res = await fetch(`${API_BASE}/api/jobs`, {
             method: 'POST',
@@ -82,10 +78,6 @@ export function useJobOrchestrator() {
         return artifact;
     };
 
-    // =========================================================================
-    // State Updaters
-    // =========================================================================
-
     const updateIngest = useCallback((update: Partial<JobState>) => {
         setState(prev => ({ ...prev, ingest: { ...prev.ingest, ...update } }));
     }, []);
@@ -97,10 +89,6 @@ export function useJobOrchestrator() {
         }));
     }, []);
 
-    // =========================================================================
-    // Main Orchestration
-    // =========================================================================
-
     const runPipeline = useCallback(async (
         sourceType: SourceType,
         sourceRef: string,
@@ -109,7 +97,6 @@ export function useJobOrchestrator() {
         abortRef.current = false;
         setIsRunning(true);
 
-        // Reset state
         setState({
             ingest: { ...initialJobState, status: 'pending' },
             generate: {
@@ -122,7 +109,6 @@ export function useJobOrchestrator() {
         });
 
         try {
-            // ==== INGEST ====
             console.log('[Orchestrator] Starting ingest...');
             updateIngest({ status: 'pending' });
 
@@ -144,8 +130,6 @@ export function useJobOrchestrator() {
             });
             console.log(`[Orchestrator] Ingest complete. Core ID: ${coreId}`);
 
-            // ==== FAN-OUT GENERATE ====
-            // Fire all 5 jobs concurrently, each updates independently
             TARGETS.forEach(async (target) => {
                 if (abortRef.current) return;
 
@@ -183,8 +167,6 @@ export function useJobOrchestrator() {
             updateIngest({ status: 'failed', error: e.message });
         }
 
-        // Note: We don't await the generate promises, they complete independently
-        // setIsRunning will stay true until user resets or page refresh
     }, [updateIngest, updateGenerate]);
 
     const abort = useCallback(() => {
@@ -207,7 +189,6 @@ export function useJobOrchestrator() {
         });
     }, []);
 
-    // Check if all jobs are done
     const allDone = state.ingest.status === 'completed' &&
         TARGETS.every(t => ['completed', 'failed'].includes(state.generate[t].status));
 

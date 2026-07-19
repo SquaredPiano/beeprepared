@@ -9,20 +9,17 @@ import { useIngestionStore } from "@/store/ingestionStore";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-
 export function HoneyDropZone() {
   const { addFile, files } = useStore();
   const { addTask } = useIngestionStore();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
-      // Check for 1GB limit (mock check for now using state)
       const currentStorage = useStore.getState().getTotalUsedStorage();
       if (currentStorage + file.size > 1 * 1024 * 1024 * 1024) {
         toast.error(`Not enough space for ${file.name}`);
         return;
       }
-
 
       const id = addFile(file.name, file.size);
       addTask({
@@ -35,7 +32,6 @@ export function HoneyDropZone() {
       });
     });
   }, [addFile, addTask]);
-
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -53,13 +49,13 @@ export function HoneyDropZone() {
         className={cn(
           "relative group cursor-pointer overflow-hidden transition-all duration-500",
           "aspect-[16/9] flex flex-col items-center justify-center rounded-2xl border-2 border-dashed",
-          isDragActive 
-            ? "border-honey-500 bg-honey-50/50 scale-[0.99]" 
+          isDragActive
+            ? "border-honey-500 bg-honey-50/50 scale-[0.99]"
             : "border-border hover:border-honey-300 hover:bg-honey-50/10"
         )}
       >
         <input {...getInputProps()} />
-        
+
         <AnimatePresence mode="wait">
           {isDragActive ? (
             <motion.div
@@ -92,7 +88,6 @@ export function HoneyDropZone() {
           )}
         </AnimatePresence>
 
-        {/* Decorative accents */}
         <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
           <div className="w-8 h-8 border-t-2 border-r-2 border-honey-500 rounded-tr-lg" />
         </div>
@@ -122,7 +117,7 @@ export function HoneyDropZone() {
               <CheckCircle2 className="text-green-500 w-5 h-5" />
             ) : (
               <div className="w-20 bg-muted h-1 rounded-full overflow-hidden">
-                <motion.div 
+                <motion.div
                   className="bg-honey-500 h-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${file.progress}%` }}

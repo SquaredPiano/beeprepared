@@ -31,8 +31,8 @@ export function Footer({ variant = "light" }: FooterProps) {
 
   return (
     <footer className={`relative z-10 px-8 md:px-16 lg:px-24 py-16 md:py-20 border-t-4 ${
-      isDark 
-        ? "bg-bee-black text-white border-white/5" 
+      isDark
+        ? "bg-bee-black text-white border-white/5"
         : "bg-bee-black text-white border-white/5"
     }`}>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12">
@@ -42,30 +42,30 @@ export function Footer({ variant = "light" }: FooterProps) {
             <span className="font-black uppercase tracking-tighter text-2xl md:text-3xl">BeePrepared</span>
           </div>
           <div className="max-w-xs text-honey/40 font-bold uppercase tracking-widest text-[9px] leading-relaxed cursor-text">
-            Design for Mastery. Engineered for High-Fidelity Knowledge Synthesis. 
+            Design for Mastery. Engineered for High-Fidelity Knowledge Synthesis.
             The Intentional Workspace for Students.
           </div>
           <p className="text-honey/20 font-bold uppercase tracking-widest text-[8px]">
             Knowledge Architecture © 2026
           </p>
         </div>
-        
+
         <div className="flex flex-col items-start md:items-end gap-8">
           <div className="flex flex-wrap gap-6">
-            <button 
-              onClick={() => openModal("privacy")} 
+            <button
+              onClick={() => openModal("privacy")}
               className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
             >
               Privacy
             </button>
-            <button 
-              onClick={() => openModal("terms")} 
+            <button
+              onClick={() => openModal("terms")}
               className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
             >
               Terms
             </button>
-            <button 
-              onClick={() => openModal("docs")} 
+            <button
+              onClick={() => openModal("docs")}
               className="text-[9px] font-black uppercase tracking-[0.15em] hover:text-honey transition-colors cursor-pointer"
             >
               Support

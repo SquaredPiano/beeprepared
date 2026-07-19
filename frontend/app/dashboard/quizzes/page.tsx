@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  CheckCircle2, 
-  Circle, 
-  Play, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Circle,
+  Play,
   RotateCcw,
   Book,
   Clock,
@@ -27,23 +27,23 @@ interface Question {
 }
 
 const mockQuestions: Question[] = [
-  { 
-    id: "1", 
-    text: "Which neural network architecture introduced the concept of self-attention?", 
-    options: ["RNN", "LSTM", "Transformer", "CNN"], 
-    correctAnswer: 2 
+  {
+    id: "1",
+    text: "Which neural network architecture introduced the concept of self-attention?",
+    options: ["RNN", "LSTM", "Transformer", "CNN"],
+    correctAnswer: 2
   },
-  { 
-    id: "2", 
-    text: "What does the 'GPT' in ChatGPT stand for?", 
-    options: ["General Pre-trained Transformer", "Generative Pre-trained Transformer", "Global Processing Tool", "Generative Processing Technology"], 
-    correctAnswer: 1 
+  {
+    id: "2",
+    text: "What does the 'GPT' in ChatGPT stand for?",
+    options: ["General Pre-trained Transformer", "Generative Pre-trained Transformer", "Global Processing Tool", "Generative Processing Technology"],
+    correctAnswer: 1
   },
-  { 
-    id: "3", 
-    text: "In machine learning, what is the 'Vanishing Gradient Problem' primarily associated with?", 
-    options: ["Overfitting", "Data augmentation", "Deep neural networks with many layers", "Large batch sizes"], 
-    correctAnswer: 2 
+  {
+    id: "3",
+    text: "In machine learning, what is the 'Vanishing Gradient Problem' primarily associated with?",
+    options: ["Overfitting", "Data augmentation", "Deep neural networks with many layers", "Large batch sizes"],
+    correctAnswer: 2
   },
 ];
 
@@ -122,7 +122,7 @@ export default function QuizzesPage() {
               <p className="text-2xl font-display font-bold">5 Min</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={startQuiz}
             className="mt-12 px-12 py-6 bg-bee-black text-white text-xs font-black uppercase tracking-[0.4em] rounded-[2rem] hover:bg-honey-600 transition-all shadow-2xl hover:scale-105 active:scale-95 flex items-center gap-4"
           >
@@ -137,7 +137,7 @@ export default function QuizzesPage() {
   if (quizFinished) {
     return (
       <div className="p-12 space-y-12 max-w-7xl mx-auto min-h-screen flex flex-col items-center justify-center text-center">
-        <motion.div 
+        <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="space-y-8"
@@ -153,13 +153,13 @@ export default function QuizzesPage() {
             </div>
           </div>
           <div className="pt-12 flex gap-4 justify-center">
-            <button 
+            <button
               onClick={restartQuiz}
               className="px-10 py-5 border-2 border-bee-black text-bee-black text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:bg-bee-black hover:text-white transition-all"
             >
               Restart
             </button>
-            <Link 
+            <Link
               href="/dashboard/library"
               className="px-10 py-5 bg-bee-black text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:bg-honey-600 transition-all shadow-xl"
             >
@@ -174,7 +174,7 @@ export default function QuizzesPage() {
   return (
     <div className="p-12 space-y-12 max-w-5xl mx-auto min-h-screen">
       <header className="flex items-center justify-between">
-        <Link 
+        <Link
           href="/dashboard/library"
           className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity flex items-center gap-2"
         >
@@ -189,7 +189,7 @@ export default function QuizzesPage() {
             </p>
           </div>
           <div className="w-32 h-2 bg-stone-100 rounded-full overflow-hidden">
-            <motion.div 
+            <motion.div
               className="h-full bg-honey-500"
               initial={{ width: 0 }}
               animate={{ width: `${((currentIndex + 1) / mockQuestions.length) * 100}%` }}
@@ -217,8 +217,8 @@ export default function QuizzesPage() {
                 onClick={() => handleOptionSelect(i)}
                 className={cn(
                   "p-8 rounded-[2rem] border-2 text-left transition-all duration-300 flex items-center justify-between group",
-                  selectedOption === i 
-                    ? "border-bee-black bg-bee-black text-white shadow-xl translate-x-2" 
+                  selectedOption === i
+                    ? "border-bee-black bg-bee-black text-white shadow-xl translate-x-2"
                     : "border-border/20 hover:border-honey-400 hover:bg-honey-50/10",
                   isAnswered && i === mockQuestions[currentIndex].correctAnswer && "border-green-500 bg-green-50 text-green-700",
                   isAnswered && selectedOption === i && i !== mockQuestions[currentIndex].correctAnswer && "border-red-500 bg-red-50 text-red-700"
@@ -245,14 +245,14 @@ export default function QuizzesPage() {
             <Clock size={14} />
             <span className="text-[10px] font-bold uppercase tracking-widest">Time elapsed: 02:45</span>
           </div>
-          
+
           <button
             disabled={selectedOption === null}
             onClick={isAnswered ? nextQuestion : submitAnswer}
             className={cn(
               "px-12 py-6 rounded-[2rem] text-xs font-black uppercase tracking-[0.3em] transition-all shadow-2xl flex items-center gap-4",
-              selectedOption === null 
-                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50" 
+              selectedOption === null
+                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
                 : "bg-bee-black text-white hover:bg-honey-600 hover:scale-105"
             )}
           >

@@ -51,7 +51,6 @@ export default function DashboardPage() {
   const [balance, setBalance] = useState(0);
   const container = useRef(null);
 
-  // Create Project Dialog State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -119,7 +118,6 @@ export default function DashboardPage() {
 
   const handleDeleteProject = async (id: string) => {
     try {
-      // Clear from global store if it's the current project
       const { currentProjectId, clearProject } = useCanvasStore.getState();
       if (currentProjectId === id) {
         clearProject();
@@ -141,7 +139,6 @@ export default function DashboardPage() {
 
   return (
     <div ref={container} className="max-w-6xl mx-auto px-8 md:px-12 py-16 space-y-16 min-h-screen bg-cream/30">
-      {/* Hero Section */}
       <header className="flex flex-col md:flex-row justify-between items-end gap-8 border-b border-wax/40 pb-12 reveal">
         <div className="space-y-4 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-honey/10 text-honey text-[10px] font-bold uppercase tracking-widest border border-honey/20">
@@ -210,7 +207,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((stat, i) => (
           <div
@@ -231,9 +227,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        {/* Project Grid */}
         <section className="lg:col-span-2 space-y-8 min-w-0">
           <div className="flex items-center justify-between border-b border-wax/40 pb-4 reveal">
             <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Recent Projects</h2>
@@ -306,9 +300,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Sidebar Controls */}
         <aside className="space-y-12">
-          {/* Points Section */}
           <div className="space-y-6 reveal">
             <h2 className="text-xs uppercase tracking-[0.2em] font-bold opacity-40">Your Progress</h2>
             <div className="p-8 bg-bee-black rounded-[2.5rem] space-y-8 relative overflow-hidden group shadow-2xl shadow-bee-black/20">

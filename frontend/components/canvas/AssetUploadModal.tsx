@@ -33,7 +33,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
   const [existingArtifacts, setExistingArtifacts] = useState<any[]>([]);
   const [youtubeUrl, setYoutubeUrl] = useState("");
 
-  // Vault / Folder State
   const [folderPath, setFolderPath] = useState("/");
   const [viewingPath, setViewingPath] = useState("/");
 
@@ -47,7 +46,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
 
   const loadVault = async () => {
     try {
-      // Fetch everything for the user (Global Vault)
       const { files } = await api.vault.list("/");
       setExistingArtifacts(files);
     } catch (error) {
@@ -57,13 +55,11 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
   };
 
   const filteredArtifacts = existingArtifacts.filter(a => {
-    if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix? 
-    // Simple exact match for "Folder" simulation
+    if (viewingPath === "/") return true; // Show everything or just root? Let's show everything matching folder prefix?
     return a.folder_path === viewingPath;
   });
 
   const selectExistingArtifact = (artifact: any) => {
-    // Convert artifact to node and add to canvas
     const newNode = {
       id: artifact.id,
       type: "artifactNode",
@@ -81,7 +77,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
     onClose();
     toast.success("Artifact added to canvas");
   };
-
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
@@ -101,10 +96,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
       }
     }
 
-    // Import supabase
-    // (This will be added by the tool automatically if I use imports? No, I must add import line explicitly or use a separate block)
-    // Actually, I'll use multi_replace to do both safely.
-
     setIsUploading(true);
 
     const jobIds: string[] = [];
@@ -122,7 +113,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
           file,
           folderPath || "/",
           (job) => {
-            // This callback isn't really used since we return immediately now
           }
         );
         if (result && result.job_id) {
@@ -141,7 +131,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
       setIsProcessing(true);
       setUploadProgress("Processing media... Please wait.");
 
-      // Use polling instead of Realtime (more reliable)
       const pendingJobIds = new Set(jobIds);
 
       const pollJobStatuses = async () => {
@@ -159,7 +148,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
             }
           }
 
-          // All jobs done?
           if (pendingJobIds.size === 0) {
             console.log('[AssetUploadModal] All jobs complete, reloading project');
             if (projectId) {
@@ -176,7 +164,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
         }
       };
 
-      // Poll every 2 seconds until all jobs are done
       const pollInterval = setInterval(async () => {
         const allDone = await pollJobStatuses();
         if (allDone) {
@@ -184,10 +171,8 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
         }
       }, 2000);
 
-      // Initial poll
       pollJobStatuses();
 
-      // Safety timeout after 5 minutes - don't leave user hanging
       setTimeout(() => {
         if (pendingJobIds.size > 0) {
           clearInterval(pollInterval);
@@ -205,14 +190,12 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
     }
   }, [currentProjectId, loadProject, onClose, folderPath]);
 
-  // YouTube URL Ingestion
   const onIngestYoutube = useCallback(async () => {
     if (!youtubeUrl.trim()) {
       toast.error("Please enter a YouTube URL");
       return;
     }
 
-    // Validate YouTube URL
     const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
     if (!ytRegex.test(youtubeUrl)) {
       toast.error("Invalid YouTube URL");
@@ -235,14 +218,12 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
     setUploadProgress("Downloading YouTube video...");
 
     try {
-      // Create ingest job for YouTube
       const { job_id } = await api.jobs.create(projectId, "ingest", {
         source_type: "youtube",
         source_ref: youtubeUrl.trim(),
         original_name: "YouTube Video"
       });
 
-      // Poll for completion
       const pollInterval = setInterval(async () => {
         try {
           const job = await api.jobs.getStatus(job_id);
@@ -303,7 +284,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             className="relative w-full max-w-2xl bg-cream rounded-[2.5rem] shadow-2xl border border-wax overflow-hidden flex flex-col max-h-[85vh]"
           >
-            {/* Header */}
             <div className="p-8 border-b border-wax flex justify-between items-center bg-white/50 backdrop-blur-xl shrink-0">
               <div className="flex items-center gap-6">
                 <div className="p-3 bg-honey/10 rounded-2xl">
@@ -342,7 +322,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                 <X className="w-6 h-6 text-bee-black/20 group-hover:text-bee-black transition-colors" />
               </button>
             </div>
-
 
             <div className="p-8 flex flex-col gap-6 overflow-y-auto min-h-[400px]">
               {activeTab === "upload" ? (
@@ -384,7 +363,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                     )}
                   </div>
 
-                  {/* Folder Selection */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Target Folder</label>
                     <div className="relative">
@@ -400,7 +378,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                       />
                     </div>
 
-                    {/* YouTube URL */}
                     <div className="space-y-2 pt-4 border-t border-wax">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-bee-black/40 pl-2">Or paste a YouTube URL</label>
                       <div className="flex gap-2">
@@ -425,7 +402,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                 </>
               ) : (
                 <div className="space-y-4">
-                  {/* Folder Navigation / Filter */}
                   <div className="flex items-center gap-2 pb-4 border-b border-wax/50 overflow-x-auto">
                     <button
                       onClick={() => setViewingPath("/")}
@@ -438,7 +414,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                       Root
                     </button>
 
-                    {/* Extract unique folders from artifacts to make quick filters */}
                     {Array.from(new Set(existingArtifacts.map(a => a.folder_path || "/").filter(p => p !== "/"))).map(folder => (
                       <button
                         key={folder}
@@ -452,7 +427,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
                       </button>
                     ))}
                   </div>
-
 
                   {filteredArtifacts.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3">
@@ -496,9 +470,6 @@ export function AssetUploadModal({ isOpen, onClose }: AssetUploadModalProps) {
               )}
             </div>
 
-
-
-            {/* Footer */}
             <div className="p-8 border-t border-wax bg-cream/50 flex justify-end items-center shrink-0">
               <Button variant="ghost" onClick={onClose} className="rounded-xl font-bold uppercase text-[10px] tracking-widest px-6 h-12">
                 Cancel

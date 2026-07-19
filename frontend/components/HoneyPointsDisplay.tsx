@@ -17,12 +17,11 @@ export function HoneyPointsDisplay() {
         setDiff(b - balance);
         setPrevBalance(balance);
         setBalance(b);
-        
-        // Hide diff after 3 seconds
+
         setTimeout(() => setDiff(0), 3000);
       }
     }
-    
+
     fetchBalance();
     const interval = setInterval(fetchBalance, 10000); // Check every 10s
     return () => clearInterval(interval);
@@ -54,7 +53,6 @@ export function HoneyPointsDisplay() {
         )}
       </AnimatePresence>
 
-      {/* Tooltip hint */}
       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-bee-black border border-white/10 rounded-xl text-[9px] font-bold uppercase tracking-widest text-honey opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-[100]">
         Earn drops by synthesizing knowledge
       </div>

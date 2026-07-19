@@ -21,8 +21,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
   const [isCreating, setIsCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
 
-
-  // Fetch projects on mount - only auto-select if no selectedId was provided
   useEffect(() => {
     let mounted = true;
 
@@ -33,7 +31,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
 
         setProjects(data);
 
-        // Only auto-select if no selectedId was provided and we have projects
         if (!selectedId && data.length > 0) {
           onSelect(data[0].id);
         }
@@ -52,8 +49,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
     fetchProjects();
 
     return () => { mounted = false; };
-    // Only run on mount, not when selectedId changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCreateInline = async () => {
@@ -101,7 +96,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
         <ChevronDown size={16} className={cn("text-bee-black/20 transition-transform duration-300", isOpen && "rotate-180")} />
       </button>
 
-
       <AnimatePresence>
         {isOpen && (
           <>
@@ -129,7 +123,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                   />
                 </div>
               </div>
-
 
               <div className="overflow-y-auto p-2 space-y-1">
                 {projects.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase())).length > 0 ? (
@@ -176,7 +169,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                   </div>
                 )}
               </div>
-
 
               <div className="p-4 bg-white border-t border-wax shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
                 {isCreating ? (
@@ -231,8 +223,6 @@ export function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) 
                   </button>
                 )}
               </div>
-
-
 
             </motion.div>
           </>

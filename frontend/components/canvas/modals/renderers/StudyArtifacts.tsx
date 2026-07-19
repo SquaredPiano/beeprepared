@@ -21,8 +21,6 @@ const MARKDOWN_PLUGINS = {
   rehypePlugins: [rehypeKatex],
 };
 
-// --- Study guide -----------------------------------------------------------
-
 interface StudyGuideData {
   title?: string;
   estimated_minutes?: number;
@@ -32,8 +30,6 @@ interface StudyGuideData {
 }
 
 export function StudyGuideRenderer({ data }: { data: StudyGuideData }) {
-  // Checking off items is deliberately local state: this is a working aid
-  // during a study session, not something worth a write to the artifact.
   const [checked, setChecked] = useState<Set<number>>(new Set());
 
   const toggle = (index: number) =>
@@ -112,8 +108,6 @@ export function StudyGuideRenderer({ data }: { data: StudyGuideData }) {
   );
 }
 
-// --- Cheat sheet -----------------------------------------------------------
-
 interface CheatSheetData {
   title?: string;
   sections?: { heading?: string; entries?: string[] }[];
@@ -126,8 +120,6 @@ export function CheatSheetRenderer({ data }: { data: CheatSheetData }) {
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">{data.title || "Cheat Sheet"}</h2>
 
-      {/* Two columns: the point of a cheat sheet is density, and this is how it
-          would be laid out on paper. Collapses to one column on narrow screens. */}
       <div className="columns-1 gap-4 md:columns-2 [&>*]:mb-4 [&>*]:break-inside-avoid">
         {data.sections.map((section, index) => (
           <section key={index} className="rounded-xl border border-wax bg-white p-4">
@@ -151,8 +143,6 @@ export function CheatSheetRenderer({ data }: { data: CheatSheetData }) {
   );
 }
 
-// --- Mind map --------------------------------------------------------------
-
 interface MindMapNode {
   label?: string;
   detail?: string;
@@ -165,8 +155,6 @@ interface MindMapData {
 }
 
 function MindMapBranch({ node, depth }: { node: MindMapNode; depth: number }) {
-  // Top two levels start open; leaves are collapsed so the map reads as a
-  // summary first and drills down on demand.
   const [open, setOpen] = useState(depth < 2);
   const hasChildren = Boolean(node.children?.length);
 
@@ -224,8 +212,6 @@ export function MindMapRenderer({ data }: { data: MindMapData }) {
     </div>
   );
 }
-
-// --- Shared ----------------------------------------------------------------
 
 function EmptyState({ label }: { label: string }) {
   return (

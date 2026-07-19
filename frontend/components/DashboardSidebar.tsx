@@ -3,11 +3,11 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Library, 
-  Settings, 
-  GitBranch, 
+import {
+  LayoutDashboard,
+  Library,
+  Settings,
+  GitBranch,
   PlusCircle,
   HelpCircle,
   LogOut,
@@ -45,8 +45,8 @@ export function DashboardSidebar() {
               href={item.href}
               className={cn(
                 "group flex items-center justify-between px-4 py-4 rounded-2xl transition-all duration-500 cursor-pointer",
-                isActive 
-                  ? "bg-bee-black text-white shadow-lg shadow-bee-black/10" 
+                isActive
+                  ? "bg-bee-black text-white shadow-lg shadow-bee-black/10"
                   : "hover:bg-honey-50/50 hover:translate-x-1"
               )}
             >

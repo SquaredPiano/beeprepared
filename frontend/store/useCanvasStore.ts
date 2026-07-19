@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import { generateProjectName } from "@/lib/utils/naming";
 import { api, Artifact, ArtifactEdge, FlowNodeState, FlowPlan } from "@/lib/api";
 
-// Maps artifact types to node display info
 const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   video: { label: "Video", color: "#8B5CF6", icon: "Video" },
   audio: { label: "Audio", color: "#EC4899", icon: "Mic" },
@@ -40,7 +39,6 @@ const ARTIFACT_TYPE_CONFIG: Record<string, { label: string; color: string; icon:
   mindmap: { label: "Mind Map", color: "#A855F7", icon: "Network" },
 };
 
-// Convert an artifact to a React Flow node
 function artifactToNode(artifact: Artifact, position: { x: number; y: number }): Node {
   const config = ARTIFACT_TYPE_CONFIG[artifact.type] || { label: artifact.type, color: "#6B7280", icon: "📦" };
 
@@ -59,7 +57,6 @@ function artifactToNode(artifact: Artifact, position: { x: number; y: number }):
   };
 }
 
-// Convert an artifact edge to a React Flow edge
 function artifactEdgeToFlowEdge(edge: ArtifactEdge): Edge {
   return {
     id: edge.id,
@@ -100,7 +97,6 @@ interface CanvasState {
   history: { nodes: Node[]; edges: Edge[] }[];
   historyIndex: number;
 
-  // Actions
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -121,7 +117,6 @@ interface CanvasState {
   save: () => Promise<void>;
   autoSave: () => void;
 
-  // Flow execution
   runFlow: () => Promise<void>;
   validateFlow: () => Promise<FlowPlan | null>;
   applyFlowState: (nodeStates: Record<string, FlowNodeState>) => void;
@@ -274,7 +269,6 @@ export const useCanvasStore = create<CanvasState>()(
         const { currentProjectId, isSaving } = get();
         if (!currentProjectId || isSaving) return;
 
-        // Use a simple timer-based debounce for auto-save
         const timeoutId = (window as any)._autoSaveTimeout;
         if (timeoutId) clearTimeout(timeoutId);
 
@@ -294,14 +288,11 @@ export const useCanvasStore = create<CanvasState>()(
             edges,
           };
 
-
-
           if (currentProjectId) {
             const updatedProject = await api.projects.update(currentProjectId, {
               name: projectName,
               canvas_state,
             });
-            // Sync back in case server modified it
             set({ projectName: updatedProject.name });
           } else {
             const project = await api.projects.create(projectName, "");
@@ -312,16 +303,12 @@ export const useCanvasStore = create<CanvasState>()(
             window.history.pushState({}, "", url.toString());
           }
 
-
-          // toast.success("Hive saved successfully"); // Disable toast for auto-save to be silent
         } catch (error: any) {
           console.error("Save error:", error);
-          // toast.error(`Failed to save: ${error.message}`);
         } finally {
           set({ isSaving: false });
         }
       },
-
 
       /**
        * Compile the canvas and check whether it can run.
@@ -379,8 +366,6 @@ export const useCanvasStore = create<CanvasState>()(
           );
         } catch (error: any) {
           set({ isRunning: false });
-          // 422 means the graph itself is the problem, and the message names
-          // the offending node - worth surfacing verbatim.
           toast.error("This flow cannot run", { description: error.message });
         }
       },
@@ -413,7 +398,6 @@ export const useCanvasStore = create<CanvasState>()(
 
       loadProject: async (id: string) => {
         try {
-          // Clear previous state first
           set({
             nodes: [],
             edges: [],
@@ -422,31 +406,24 @@ export const useCanvasStore = create<CanvasState>()(
             historyIndex: -1
           });
 
-          // 1. Load project metadata
           const project = await api.projects.get(id);
           set({ projectName: project.name });
 
-          // 2. Load artifacts AND edges
           const { artifacts, edges: artifactEdges } = await api.projects.getArtifacts(id);
 
           let nodes: Node[] = [];
 
-          // If we have saved canvas state, use it as base (positions)
-          // But we MUST sync the data with real artifacts
           if (project.canvas_state?.nodes && project.canvas_state.nodes.length > 0) {
             const generatorTypes = ['quiz', 'notes', 'slides', 'flashcards', 'exam'];
 
             nodes = project.canvas_state.nodes
               .filter(node => {
-                // FILTER OUT duplicate artifactNodes for generator types
-                // We only want 'generator' nodes for these, not 'artifactNode' pills
                 if (node.type === 'artifactNode' && generatorTypes.includes(node.data?.type)) {
                   return false;
                 }
                 return true;
               })
               .map(node => {
-                // Update data if it corresponds to an artifact
                 if (node.type === 'asset' || node.type === 'artifactNode' || node.type === 'result' || node.type === 'generator') {
                   const artifactId = node.id; // Assuming node ID is artifact ID for synced nodes
                   const artifact = artifacts.find(a => a.id === artifactId || (node.data?.artifact as any)?.id === artifactId);
@@ -464,8 +441,6 @@ export const useCanvasStore = create<CanvasState>()(
                 return node;
               });
           } else {
-            // 3. Fresh Layout Generation
-            // Source (Asset)
             const sourceArtifact = artifacts.find(a => ['video', 'audio', 'pdf', 'text', 'flat_text'].includes(a.type));
             if (sourceArtifact) {
               nodes.push({
@@ -481,8 +456,6 @@ export const useCanvasStore = create<CanvasState>()(
               });
             }
 
-            // Generators
-            // Only spawn if we actually have artifacts (don't clutter canvas with idle nodes)
             const existingGenerators = artifacts.filter(a => ['quiz', 'notes', 'slides', 'flashcards', 'exam'].includes(a.type));
 
             existingGenerators.forEach((gen, idx) => {
@@ -502,13 +475,11 @@ export const useCanvasStore = create<CanvasState>()(
             });
           }
 
-          // Generate Edges (Restore or Auto-connect)
           let edges: Edge[] = [];
 
           if (project.canvas_state?.edges && project.canvas_state.edges.length > 0) {
             edges = project.canvas_state.edges;
           } else {
-            // Auto-connect Source -> Generators (Default for fresh projects)
             const sourceNode = nodes.find(n => n.type === 'asset');
             if (sourceNode) {
               nodes.filter(n => n.type === 'generator').forEach(gen => {
@@ -541,27 +512,20 @@ export const useCanvasStore = create<CanvasState>()(
           const { artifacts } = await api.projects.getArtifacts(currentProjectId);
           console.log('[refreshArtifacts] Got', artifacts.length, 'artifacts:', artifacts.map(a => a.type));
 
-          // ONLY update existing nodes - do NOT create new nodes
-          // Nodes are created by: 1) drag-drop from sidebar, 2) loadProject
           const updatedNodes = nodes.map(node => {
-            // Update generator nodes with their corresponding artifact
             if (node.type === 'generator' && node.data.subType) {
               const currentId = (node.data as any).artifact?.id;
               let relevantArtifact;
 
               if (currentId) {
-                // Priority 1: Match by specific ID (Preserve specific assignment)
                 relevantArtifact = artifacts.find(a => a.id === currentId);
               }
 
               if (!relevantArtifact && !currentId) {
-                // Priority 2: Fallback to type matching ONLY if no ID assigned (Initial load/Auto-bind)
-                // We pick the most recent one ideally, or just the first found
                 relevantArtifact = artifacts.find(a => a.type === node.data.subType);
               }
 
               if (relevantArtifact) {
-                // Only log if we are changing something or binding for the first time
                 if (currentId !== relevantArtifact.id) {
                   console.log('[refreshArtifacts] Binding generator', node.data.subType, 'to', relevantArtifact.id);
                 }
@@ -572,7 +536,6 @@ export const useCanvasStore = create<CanvasState>()(
               }
             }
 
-            // Update asset nodes with their artifact data
             if (node.type === 'asset' && (node.data as any).artifact?.id) {
               const refreshed = artifacts.find(a => a.id === (node.data as any).artifact.id);
               if (refreshed) {
@@ -580,7 +543,6 @@ export const useCanvasStore = create<CanvasState>()(
               }
             }
 
-            // Update artifactNode (knowledge_core etc) if it exists
             if (node.type === 'artifactNode' && (node.data as any).artifact?.id) {
               const refreshed = artifacts.find(a => a.id === (node.data as any).artifact.id);
               if (refreshed) {
@@ -612,7 +574,6 @@ export const useCanvasStore = create<CanvasState>()(
             historyIndex: -1
           });
 
-          // Update URL
           const url = new URL(window.location.href);
           url.searchParams.set("id", project.id);
           window.history.pushState({}, "", url.toString());
@@ -639,7 +600,6 @@ export const useCanvasStore = create<CanvasState>()(
 
           toast.success(`Uploaded ${file.name}`);
 
-          // Reload project to get new artifacts
           await get().loadProject(currentProjectId);
         } catch (error: any) {
           console.error("Upload error:", error);

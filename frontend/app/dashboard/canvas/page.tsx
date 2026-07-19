@@ -13,10 +13,8 @@ export default function CanvasPage() {
   const router = useRouter();
   const initRef = useRef(false);
 
-  // If no projectId, we are in "resolving" mode (loading/creating)
   const isResolving = !projectId;
 
-  // Auto-redirect to latest project or create new one if no ID
   useEffect(() => {
     if (!isResolving) return;
     if (initRef.current) return;
@@ -27,24 +25,17 @@ export default function CanvasPage() {
         const projects = await api.projects.list();
 
         if (projects.length > 0) {
-          // Sort by updated_at desc just to be safe
           const sorted = projects.sort((a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
           );
           router.replace(`/dashboard/canvas?id=${sorted[0].id}`);
         } else {
-          // Create new project
           const name = generateProjectName();
           const newProject = await api.projects.create(name);
           router.replace(`/dashboard/canvas?id=${newProject.id}`);
         }
       } catch (error) {
         console.error("Failed to resolve project:", error);
-        // Fallback: stay on empty canvas or show error?
-        // For now, let's just allow rendering BeeCanvas (empty) via derived state override?
-        // Actually, if we fail to resolve, we are stuck in 'isResolving' state (loading).
-        // Let's redirect to a default anyway to break the loop or allow empty param.
-        // router.replace(`/dashboard/canvas?id=new`); // logic loop risk.
       }
     }
 

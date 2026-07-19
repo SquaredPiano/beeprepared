@@ -19,7 +19,6 @@ export function ProcessNode({ id, data }: NodeProps & { id: string }) {
       nodeType="process"
       onDelete={handleDelete}
       onRerun={() => {
-        // Logic for re-running synthesis
       }}
     >
       <motion.div

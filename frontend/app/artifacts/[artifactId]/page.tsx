@@ -51,7 +51,7 @@ export default function ArtifactPreviewPage() {
           <TabsContent value="notes" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <Card className="p-10 border-2 border-honey-200 bg-white shadow-xl rounded-3xl min-h-[600px] prose prose-amber max-w-none">
               <h2 className="text-3xl font-black text-amber-900 border-b-4 border-honey-400 pb-2 mb-8 inline-block">Lecture Summary</h2>
-              
+
               <div className="space-y-8">
                 <section>
                   <h3 className="text-xl font-bold text-amber-800 flex items-center">
@@ -76,7 +76,7 @@ export default function ArtifactPreviewPage() {
                     <li><strong>Elastic:</strong> Change in price results in large change in quantity (e.g., luxury cars).</li>
                   </ul>
                 </section>
-                
+
                 <div className="p-6 bg-honey-50 rounded-2xl border-l-8 border-honey-500 italic text-amber-900 font-medium">
                   "Economics is not just about numbers; it's about the stories behind why people make the choices they do." - Professor Honeycomb
                 </div>
@@ -128,9 +128,9 @@ export default function ArtifactPreviewPage() {
                 </div>
                 <div className="p-4 bg-white border-t-2 border-honey-100">
                   <div className="flex space-x-2">
-                    <input 
-                      type="text" 
-                      placeholder="Ask the hive..." 
+                    <input
+                      type="text"
+                      placeholder="Ask the hive..."
                       className="flex-1 bg-honey-50 border-2 border-honey-100 rounded-full px-6 py-3 focus:outline-none focus:border-honey-400 font-medium text-amber-900"
                     />
                     <Button className="bg-honey-500 hover:bg-honey-600 text-white rounded-full h-12 w-12 p-0 shadow-md">
@@ -146,7 +146,6 @@ export default function ArtifactPreviewPage() {
   );
 }
 
-// Reuse the ArrowRight icon
 import { ArrowRight as ArrowRightIcon } from 'lucide-react';
 function ArrowRight(props: any) {
   return <ArrowRightIcon {...props} />

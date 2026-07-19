@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useCallback, useMemo } from "react";
-import { 
-  ReactFlow, 
-  Background, 
-  Controls, 
-  BackgroundVariant, 
-  NodeTypes, 
-  useNodesState, 
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  BackgroundVariant,
+  NodeTypes,
+  useNodesState,
   useEdgesState,
   ConnectionMode,
   Node,
@@ -15,10 +15,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { BeeNode } from "./BeeNode";
-import { 
-  FileText, 
-  Search, 
-  Sparkles, 
+import {
+  FileText,
+  Search,
+  Sparkles,
   Workflow,
   Archive,
   Cpu
@@ -33,10 +33,10 @@ const initialNodes: Node[] = [
     id: "ingest",
     type: "bee",
     position: { x: 0, y: 0 },
-    data: { 
-      label: "Ingestion", 
+    data: {
+      label: "Ingestion",
       beeType: "Forager",
-      description: "Collecting artifacts", 
+      description: "Collecting artifacts",
       icon: FileText,
       status: "completed"
     },
@@ -45,10 +45,10 @@ const initialNodes: Node[] = [
     id: "analyze",
     type: "bee",
     position: { x: 350, y: -50 },
-    data: { 
-      label: "Analysis", 
+    data: {
+      label: "Analysis",
       beeType: "Transcriber",
-      description: "Extracting essence", 
+      description: "Extracting essence",
       icon: Search,
       status: "processing"
     },
@@ -57,10 +57,10 @@ const initialNodes: Node[] = [
     id: "synthesize",
     type: "bee",
     position: { x: 700, y: 50 },
-    data: { 
-      label: "Synthesis", 
+    data: {
+      label: "Synthesis",
       beeType: "Extractor",
-      description: "Structuring knowledge", 
+      description: "Structuring knowledge",
       icon: Cpu,
       status: "pending"
     },
@@ -69,10 +69,10 @@ const initialNodes: Node[] = [
     id: "organize",
     type: "bee",
     position: { x: 1050, y: 0 },
-    data: { 
-      label: "Artifacts", 
+    data: {
+      label: "Artifacts",
       beeType: "Builder",
-      description: "Finalizing library", 
+      description: "Finalizing library",
       icon: Archive,
       status: "pending"
     },
@@ -80,24 +80,24 @@ const initialNodes: Node[] = [
 ];
 
 const initialEdges: Edge[] = [
-  { 
-    id: "e1-2", 
-    source: "ingest", 
-    target: "analyze", 
+  {
+    id: "e1-2",
+    source: "ingest",
+    target: "analyze",
     animated: true,
     style: { stroke: "#F59E0B", strokeWidth: 3 }
   },
-  { 
-    id: "e2-3", 
-    source: "analyze", 
-    target: "synthesize", 
+  {
+    id: "e2-3",
+    source: "analyze",
+    target: "synthesize",
     animated: true,
     style: { stroke: "#F59E0B", strokeWidth: 3 }
   },
-  { 
-    id: "e3-4", 
-    source: "synthesize", 
-    target: "organize", 
+  {
+    id: "e3-4",
+    source: "synthesize",
+    target: "organize",
     animated: true,
     style: { stroke: "#F59E0B", strokeWidth: 3 }
   },
@@ -112,26 +112,24 @@ export function FlowCanvas({ currentStage, progress }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Update nodes based on currentStage
   React.useEffect(() => {
-    setNodes((nds) => 
+    setNodes((nds) =>
       nds.map((node) => {
         let status: "pending" | "processing" | "completed" = "pending";
-        
-        // Simple mapping logic
+
         const stages = ["ingest", "analyze", "synthesize", "organize"];
         const stageIndex = stages.indexOf(node.id);
         const currentStageStr = currentStage?.toLowerCase() || "";
-        
+
         let currentIndex = -1;
         if (currentStageStr.includes("ingest") || currentStageStr.includes("upload")) currentIndex = 0;
         else if (currentStageStr.includes("analyze") || currentStageStr.includes("transcribe")) currentIndex = 1;
         else if (currentStageStr.includes("synthesize") || currentStageStr.includes("extract")) currentIndex = 2;
         else if (currentStageStr.includes("organize") || currentStageStr.includes("generate")) currentIndex = 3;
-        
+
         if (stageIndex < currentIndex) status = "completed";
         else if (stageIndex === currentIndex) status = "processing";
-        
+
         return {
           ...node,
           data: { ...node.data, status }
@@ -156,20 +154,19 @@ export function FlowCanvas({ currentStage, progress }: FlowCanvasProps) {
           animated: true,
         }}
       >
-        <Background 
-          variant={BackgroundVariant.Lines} 
-          gap={60} 
-          size={1} 
-          color="#F59E0B" 
+        <Background
+          variant={BackgroundVariant.Lines}
+          gap={60}
+          size={1}
+          color="#F59E0B"
           className="opacity-5"
         />
-        <Controls 
-          showInteractive={false} 
+        <Controls
+          showInteractive={false}
           className="!bg-white/80 !backdrop-blur-md !border-border/40 !rounded-2xl !shadow-2xl [&>button]:!bg-transparent [&>button]:!rounded-xl [&>button]:!border-none [&>button]:!w-12 [&>button]:!h-12 [&>button]:hover:!bg-honey-50 [&>button]:!text-bee-black transition-all"
         />
       </ReactFlow>
-      
-      {/* HUD Overlay */}
+
       <div className="absolute top-10 left-10 flex items-center gap-6 pointer-events-none">
         <div className="w-14 h-14 bg-bee-black rounded-2xl flex items-center justify-center shadow-2xl">
           <Workflow className="w-6 h-6 text-honey-500 animate-spin-slow" />

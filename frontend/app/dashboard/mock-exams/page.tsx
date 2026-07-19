@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
-  ChevronLeft, 
-  FileText, 
-  Download, 
-  Eye, 
-  Search, 
+import {
+  ChevronLeft,
+  FileText,
+  Download,
+  Eye,
+  Search,
   Filter,
   MoreVertical,
   ArrowUpRight,
@@ -44,7 +44,7 @@ export default function MockExamsPage() {
     <div className="p-12 space-y-12 max-w-7xl mx-auto min-h-screen">
       <header className="flex items-end justify-between">
         <div className="space-y-4">
-          <Link 
+          <Link
             href="/dashboard/library"
             className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-opacity flex items-center gap-2"
           >
@@ -52,7 +52,7 @@ export default function MockExamsPage() {
             Back to Library
           </Link>
           <h1 className="text-6xl font-display uppercase tracking-tighter leading-[0.8]">
-            Mock <br /> 
+            Mock <br />
             <span className="italic lowercase opacity-40">Exams</span>
           </h1>
         </div>
@@ -60,8 +60,8 @@ export default function MockExamsPage() {
         <div className="flex gap-4">
           <div className="glass px-6 py-3 rounded-2xl border border-border/40 flex items-center gap-4">
             <Search size={16} className="opacity-20" />
-            <input 
-              placeholder="Filter assessments..." 
+            <input
+              placeholder="Filter assessments..."
               className="bg-transparent border-none focus:outline-none text-[10px] font-bold uppercase tracking-widest w-48"
             />
           </div>
@@ -81,7 +81,6 @@ export default function MockExamsPage() {
             transition={{ delay: i * 0.1 }}
             className="group glass p-10 rounded-[3rem] border border-border/40 hover:border-honey-500/50 transition-all flex items-center justify-between relative overflow-hidden"
           >
-            {/* Background Accent */}
             <div className="absolute top-0 right-0 p-12 opacity-0 group-hover:opacity-5 transition-opacity">
               <FileText size={180} className="-rotate-12" />
             </div>
@@ -90,13 +89,13 @@ export default function MockExamsPage() {
               <div className="w-20 h-20 bg-muted rounded-3xl flex items-center justify-center text-bee-black/20 group-hover:bg-honey-500 group-hover:text-white transition-all duration-500 shadow-2xl group-hover:shadow-honey-500/40">
                 <FileText size={32} />
               </div>
-              
+
               <div className="space-y-3">
                 <div className="flex items-center gap-4">
                   <span className={cn(
                     "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
-                    exam.difficulty === "Expert" ? "bg-red-50 text-red-600" : 
-                    exam.difficulty === "Intermediate" ? "bg-honey-50 text-honey-700" : 
+                    exam.difficulty === "Expert" ? "bg-red-50 text-red-600" :
+                    exam.difficulty === "Intermediate" ? "bg-honey-50 text-honey-700" :
                     "bg-green-50 text-green-600"
                   )}>
                     {exam.difficulty} Rank
@@ -123,7 +122,7 @@ export default function MockExamsPage() {
                 <button className="p-4 glass rounded-2xl hover:bg-honey-50 transition-colors shadow-lg"><Download size={18} /></button>
                 <button className="p-4 glass rounded-2xl hover:bg-red-50 hover:text-red-600 transition-colors shadow-lg"><Trash2 size={18} /></button>
               </div>
-              <button 
+              <button
                 onClick={() => playSound("complete")}
                 className="bg-bee-black text-white px-10 py-5 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.3em] hover:bg-honey-600 transition-all shadow-2xl flex items-center gap-3 active:scale-95"
               >
@@ -135,7 +134,6 @@ export default function MockExamsPage() {
         ))}
       </div>
 
-      {/* Pro Tip Section */}
       <div className="p-12 glass rounded-[4rem] border-2 border-honey-500/20 bg-honey-50/5 flex items-center gap-12">
         <div className="w-24 h-24 rounded-full bg-honey-500 flex items-center justify-center text-white shrink-0">
           <ShieldCheck size={48} />

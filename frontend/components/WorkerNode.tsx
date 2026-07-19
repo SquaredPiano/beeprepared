@@ -27,7 +27,7 @@ export const WorkerNode = memo(({ data }: { data: WorkerNodeData }) => {
           position={Position.Left}
           className="!w-3 !h-3 !bg-honey-500 !border-2 !border-background"
         />
-        
+
         <div className="flex items-center gap-4">
           <div className={cn(
             "p-3 rounded-xl transition-colors duration-500",
@@ -65,7 +65,6 @@ export const WorkerNode = memo(({ data }: { data: WorkerNodeData }) => {
         />
       </div>
 
-      {/* Hive background decoration */}
       <div className="absolute -z-10 -top-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
         <svg width="40" height="40" viewBox="0 0 40 40" fill="currentColor">
           <path d="M20 0l17.32 10v20L20 40 2.68 30V10z" />

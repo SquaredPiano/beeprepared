@@ -25,7 +25,6 @@ export function AgentPalette() {
     event.dataTransfer.setData("application/reactflow", JSON.stringify(agent));
     event.dataTransfer.effectAllowed = "move";
 
-    // Use the icon container as drag image to avoid "text dragging"
     const dragImage = event.currentTarget.querySelector('.agent-icon-container');
     if (dragImage) {
       event.dataTransfer.setDragImage(dragImage, 24, 24);

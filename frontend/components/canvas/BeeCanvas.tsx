@@ -44,7 +44,6 @@ import { AssetUploadModal } from "./AssetUploadModal";
 import { DeleteConfirmationDialog } from "./DeleteConfirmationDialog";
 import { NodeContextMenu } from "./NodeContextMenu";
 
-// Modals
 import { AssetPreviewModal } from "./modals/AssetPreviewModal";
 import { ProcessStatusModal } from "./modals/ProcessStatusModal";
 import { ArtifactPreviewModal } from "./modals/ArtifactPreviewModal";
@@ -86,40 +85,26 @@ function BeeCanvasInner() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
 
-  // Local UI State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [nodesToDelete, setNodesToDelete] = useState<Node[]>([]);
 
-  // Preview Modals State
   const [previewAsset, setPreviewAsset] = useState<any>(null);
   const [previewProcess, setPreviewProcess] = useState<any>(null);
   const [previewArtifact, setPreviewArtifact] = useState<any>(null);
   const [contextMenu, setContextMenu] = useState<{ id: string; top: number; left: number } | null>(null);
-
-  // Sounds
 
   const [playConnect] = useSound("/sounds/connect.mp3", { volume: 0.5 });
   const [playClick] = useSound("/sounds/click.mp3", { volume: 0.3 });
   const [playComplete] = useSound("/sounds/complete.mp3", { volume: 0.6 });
   const [playDelete] = useSound("/sounds/delete.mp3", { volume: 0.4 });
 
-  // Initial Load
   useEffect(() => {
     if (projectId && projectId !== currentProjectId) {
       loadProject(projectId);
     }
   }, [projectId, loadProject, currentProjectId]);
 
-  // ---------------------------------------------------------------------------
-  // Realtime
-  //
-  // This used to be a `GET /api/jobs` every five seconds plus a Supabase
-  // Realtime channel, with node status inferred by matching a job's
-  // `target_type` against a node's `subType` - which broke the moment a canvas
-  // had two generators of the same type. Now the backend pushes events over a
-  // WebSocket and each event names the node it belongs to.
-  // ---------------------------------------------------------------------------
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
 
   const handleEvent = useCallback((event: ProjectEvent) => {
@@ -130,8 +115,6 @@ function BeeCanvasInner() {
         setActiveJobs(
           (event.data.jobs ?? []).filter((job: any) => ["pending", "running"].includes(job.status)),
         );
-        // Resynchronise the canvas with the most recent run, so a reconnect (or
-        // a reload mid-flow) shows real state instead of stale node badges.
         const latest = event.data.flow_runs?.[0];
         if (latest?.node_states) applyFlowState(latest.node_states);
         break;
@@ -142,7 +125,6 @@ function BeeCanvasInner() {
         break;
 
       case "job.progress": {
-        // Progress is reported per job; map it back to the node that owns it.
         const node = nodes.find((n) => (n.data as any)?.jobId === event.data.job_id);
         if (node) {
           setNodeStatus(node.id, {
@@ -197,7 +179,6 @@ function BeeCanvasInner() {
 
   const { connection } = useProjectSocket(currentProjectId, handleEvent);
 
-  // Constraints & Auto-connect logic
   const findNearestCompatibleNode = (
     position: { x: number, y: number },
     targetType: 'asset' | 'process' | 'knowledge_core'
@@ -207,7 +188,6 @@ function BeeCanvasInner() {
     let minDistance = threshold;
 
     for (const node of nodes) {
-      // For knowledge_core, look for artifactNode with type knowledge_core
       if (targetType === 'knowledge_core') {
         if (node.type !== 'artifactNode' || node.data?.type !== 'knowledge_core') continue;
       } else {
@@ -260,10 +240,8 @@ function BeeCanvasInner() {
         toast.success(`Output connected to processor`);
       }
     } else if (newNode.type === 'generator') {
-      // Smart auto-connect: Find nearest asset OR generator for chaining
       const nearestAsset = findNearestCompatibleNode(newNode.position, 'asset');
 
-      // Also find nearest generator (for chaining Quiz -> Flashcards)
       let nearestGenerator: Node | null = null;
       let genDistance = 300; // threshold
       for (const node of nodes) {
@@ -279,7 +257,6 @@ function BeeCanvasInner() {
         }
       }
 
-      // Calculate asset distance
       let assetDistance = 9999;
       if (nearestAsset) {
         assetDistance = Math.sqrt(
@@ -288,7 +265,6 @@ function BeeCanvasInner() {
         );
       }
 
-      // Connect to whichever is closer
       const sourceNode = (nearestGenerator && genDistance < assetDistance) ? nearestGenerator : nearestAsset;
 
       if (sourceNode) {
@@ -324,7 +300,6 @@ function BeeCanvasInner() {
 
     const nodeData = JSON.parse(dataStr);
 
-    // Check constraints
     const hasSource = nodes.some(n => n.type === 'asset');
     const hasProcess = nodes.some(n => n.type === 'process');
     const hasKnowledgeCore = nodes.some(n =>
@@ -347,17 +322,12 @@ function BeeCanvasInner() {
       return;
     }
 
-    // Generator nodes need a knowledge core (but we'll be lenient and allow adding them)
-    // They'll show an error message when trying to generate without one
-    // Generator nodes need a source
     if (nodeData.type === 'generator' && !hasSource) {
       toast.info("No Source Yet", {
         description: "Upload a source file to enable generation.",
         icon: <AlertCircle className="h-4 w-4" />,
       });
-      // Still allow adding the node
     }
-
 
     const position = screenToFlowPosition({
       x: event.clientX,
@@ -382,7 +352,6 @@ function BeeCanvasInner() {
     playClick();
   }, [nodes, setNodes, screenToFlowPosition, autoConnectNode, takeSnapshot, playClick]);
 
-  // Handle deletion with confirmation
   const onNodesDelete = useCallback((deletedNodes: Node[]) => {
     const hasImportant = deletedNodes.some(n =>
       n.type === 'asset' ||
@@ -411,26 +380,18 @@ function BeeCanvasInner() {
     playDelete();
   };
 
-  // Node interaction handlers
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === 'asset') setPreviewAsset(node.data);
     else if (node.type === 'process') setPreviewProcess(node.data);
     else if (node.type === 'result') setPreviewArtifact({ ...node.data, id: node.id });
     else if (node.type === 'artifactNode' && node.data?.artifact) {
-      // Show artifact preview for artifact nodes
       setPreviewArtifact(node.data.artifact);
     }
-    // Generator nodes handle their own click via internal button
   }, []);
 
-  // Handle immutable artifact updates (versioning)
   const handleArtifactUpdate = useCallback((newArtifact: any) => {
-    // Find node containing the *original* artifact (we don't know the old ID easily unless passed, 
-    // but typically we can match by checking if the node's artifact.id matches the *current* previewArtifact.id)
     if (!previewArtifact) return;
 
-
-    // Define the shape we expect
     type NodeData = {
       artifact?: { id: string;[key: string]: any };
       [key: string]: any;
@@ -438,7 +399,6 @@ function BeeCanvasInner() {
 
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
-        // Narrow type for access
         const data = node.data as NodeData;
 
         if (node.type === 'artifactNode' && data.artifact?.id === previewArtifact.id) {
@@ -451,7 +411,6 @@ function BeeCanvasInner() {
       })
     );
 
-    // Update the preview modal state to show the new artifact
     setPreviewArtifact(newArtifact);
     toast.success("Saved new version");
   }, [previewArtifact, setNodes]);
@@ -460,7 +419,6 @@ function BeeCanvasInner() {
     useCanvasStore.getState().setViewport(viewport);
   }, []);
 
-  // Edge styling logic
   const styledEdges = useMemo(() => {
 
     return edges.map(edge => {
@@ -490,7 +448,6 @@ function BeeCanvasInner() {
       <CanvasSidebar onIngestClick={() => setIsUploadModalOpen(true)} />
       <CanvasControls />
 
-      {/* Active Jobs Indicator */}
       <AnimatePresence>
         {activeJobs.length > 0 && (
           <motion.div
@@ -565,8 +522,6 @@ function BeeCanvasInner() {
         </div>
       )}
 
-
-      {/* Delete Confirmation */}
       <DeleteConfirmationDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
@@ -576,7 +531,6 @@ function BeeCanvasInner() {
         itemName={nodesToDelete.map(n => n.data.label).join(', ')}
       />
 
-      {/* Preview Modals */}
       <AssetPreviewModal
         isOpen={!!previewAsset}
         onClose={() => setPreviewAsset(null)}
@@ -594,7 +548,6 @@ function BeeCanvasInner() {
         onUpdate={handleArtifactUpdate}
       />
 
-      {/* Assistant - refines whichever artifact is currently open */}
       <AssistantPanel
         projectId={currentProjectId}
         artifactId={previewArtifact?.id ?? null}
@@ -602,7 +555,6 @@ function BeeCanvasInner() {
         onJobQueued={(jobId) => setActiveJobs((jobs) => [...jobs, { id: jobId, status: "pending" }])}
       />
 
-      {/* Upload Modal Relay */}
       <AssetUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}

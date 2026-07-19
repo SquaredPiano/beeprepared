@@ -91,7 +91,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -100,7 +99,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
             className="fixed inset-0 bg-bee-black/80 backdrop-blur-xl z-[200] cursor-pointer"
           />
 
-          {/* Modal Container */}
           <div className="fixed inset-0 flex items-center justify-center z-[201] pointer-events-none p-4 md:p-6">
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -109,7 +107,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
               transition={{ type: "spring", damping: 30, stiffness: 400 }}
               className="w-full max-w-2xl bg-cream border border-wax rounded-[32px] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.5)] overflow-hidden pointer-events-auto flex flex-col max-h-[85vh] relative z-[202]"
             >
-              {/* Header - Fixed Height & Centered Content */}
               <div className="h-20 px-8 flex items-center justify-between border-b border-wax/50">
                 <div className="flex gap-8 h-full items-center">
                   {tabs.map((tab) => (
@@ -141,7 +138,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
                 </button>
               </div>
 
-              {/* Title Area */}
               <div className="px-8 pt-8">
                 <motion.h3
                   key={`${activeTab}-title`}
@@ -153,7 +149,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
                 </motion.h3>
               </div>
 
-              {/* Content Area */}
               <div className="flex-1 overflow-y-auto p-8 pt-6 custom-scrollbar cursor-text">
                 <motion.div
                   key={activeTab}
@@ -167,7 +162,6 @@ export function LegalModals({ isOpen, onClose, initialTab = "privacy" }: LegalMo
                 </motion.div>
               </div>
 
-              {/* Footer Decoration */}
               <div className="h-2 bg-gradient-to-r from-honey-400 via-honey-500 to-honey-600 opacity-20" />
             </motion.div>
           </div>

@@ -10,7 +10,7 @@ export const useMascotAI = () => {
 
   const triggerReaction = async (context: InteractionContext) => {
     store.setMood('thinking');
-    
+
     try {
       const response = await fetch('/api/mascot/react', {
         method: 'POST',
@@ -26,7 +26,7 @@ export const useMascotAI = () => {
       const { object } = await response.json();
 
       if (object.position) store.flyTo(object.position);
-      
+
       if (object.mood === 'celebrating') {
         store.celebrate(object.message);
       } else {

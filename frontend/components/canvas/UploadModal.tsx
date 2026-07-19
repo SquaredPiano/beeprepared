@@ -76,18 +76,15 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
     setUploading(true);
     playSound("complete");
 
-    // Upload files directly via store action which calls backend API
     for (const file of files) {
       try {
         await uploadFile(file);
-        // Simulate some progress for UI feedback
         setProgress(100);
       } catch (err) {
         console.error("Failed to upload", file.name, err);
       }
     }
 
-    // Mascot reaction to upload complete
     if (files.length > 0) {
       triggerReaction({
         event: 'upload_complete',
@@ -123,7 +120,6 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             className="relative w-full max-w-2xl glass-card rounded-[3rem] border-2 border-border/40 bg-white overflow-hidden shadow-2xl"
           >
-            {/* Header */}
             <div className="px-10 py-8 border-b border-border/10 flex items-center justify-between bg-stone-50/50">
               <div className="space-y-1">
                 <h2 className="text-2xl font-display font-bold uppercase tracking-tight">Ingest Artifacts</h2>
@@ -137,7 +133,6 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
               </button>
             </div>
 
-            {/* Content */}
             <div className="p-10 space-y-8">
               {!uploading ? (
                 <>
@@ -175,7 +170,6 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                       </div>
                     </div>
 
-                    {/* Decorative Elements */}
                     <div className="absolute -bottom-10 -right-10 opacity-5 group-hover:opacity-10 transition-opacity">
                       <Plus size={160} />
                     </div>
