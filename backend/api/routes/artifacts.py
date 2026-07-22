@@ -64,14 +64,21 @@ def update_artifact(
     Save user edits.
 
     Content is merged rather than replaced, so a client sending only `data` does
-    not discard the attached export metadata.
+    not discard the attached export metadata. The export block itself is written
+    by the renderer and kept out of the client's reach: it names a storage key,
+    and a caller that could rewrite it could point a download at any stored file.
     """
     artifact = require_artifact(artifact_id, user_id, database)
 
     if updates.content is None:
         raise HTTPException(status_code=400, detail="No content supplied")
 
-    merged = {**(artifact.get("content") or {}), **updates.content, "edited_by_user": True}
+    existing = artifact.get("content") or {}
+    merged = {**existing, **updates.content, "edited_by_user": True}
+    merged.pop("binary", None)
+    if "binary" in existing:
+        merged["binary"] = existing["binary"]
+
     rows = database.update("artifacts", [("id", f"eq.{artifact_id}")], {"content": merged})
     if not rows:
         raise HTTPException(status_code=500, detail="Update returned no row")
@@ -129,7 +136,7 @@ def list_vault(
     names = {project["id"]: project.get("name") for project in projects}
     artifacts = database.select(
         "artifacts",
-        [("project_id", f"in.({','.join(names)})")],
+        [("project_id", f"in.({','.join(names.keys())})")],
         order="created_at.desc",
         limit=limit,
     )
