@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Header, HTTPException
 
 from backend.services.database import Database, get_database
 
@@ -28,14 +28,6 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> str:
     return resolve_user(authorization)
 
 
-def get_socket_user(
-    token: Optional[str] = Query(None),
-    authorization: Optional[str] = Header(None),
-) -> str:
-    """The caller's id for a WebSocket, where the token arrives as a query parameter."""
-    return resolve_user(authorization or token)
-
-
 def get_db() -> Database:
     """The shared database handle."""
     return get_database()
@@ -53,8 +45,7 @@ def require_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    owner = project.get("user_id")
-    if owner and owner != user_id:
+    if project.get("user_id") != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     return project
@@ -76,4 +67,21 @@ def require_artifact(
     return artifact
 
 
-CurrentUser = Depends(get_current_user)
+def require_project_artifact(
+    artifact_id: str,
+    project_id: str,
+    user_id: str,
+    database: Optional[Database] = None,
+) -> Dict[str, Any]:
+    """
+    Load an artifact the caller owns and assert it sits in the named project.
+
+    Provenance edges are filed under a single project, so an edge to a parent
+    living elsewhere would render as a dangling link on the canvas.
+    """
+    artifact = require_artifact(artifact_id, user_id, database)
+
+    if str(artifact["project_id"]) != str(project_id):
+        raise HTTPException(status_code=400, detail="Artifact belongs to a different project")
+
+    return artifact
