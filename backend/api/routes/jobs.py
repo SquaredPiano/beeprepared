@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from backend.api.deps import get_current_user, get_db, require_project
+from backend.api.deps import get_current_user, get_db, require_project, require_project_artifact
 from backend.api.schemas import (
     GenerateRequest,
     IngestRequest,
@@ -53,6 +53,9 @@ def create_job(
         payload = REQUEST_MODELS[request.type](**request.payload)
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Invalid {request.type} payload: {error}") from error
+
+    for artifact_id in _source_ids(payload):
+        require_project_artifact(artifact_id, request.project_id, user_id, database)
 
     if isinstance(payload, GenerateRequest):
         duplicate = _find_in_flight_duplicate(database, request.project_id, payload)
@@ -136,6 +139,15 @@ def cancel_job(
     return {"status": "cancelled", "id": job_id}
 
 
+def _source_ids(payload: BaseModel) -> List[str]:
+    """Every artifact this job will read, so ownership can be checked before it is queued."""
+    if isinstance(payload, GenerateRequest):
+        return payload.sources()
+    if isinstance(payload, RefineRequest):
+        return [payload.source_artifact_id]
+    return []
+
+
 def _normalise(payload: BaseModel) -> Dict[str, Any]:
     """Store generate payloads in their multi-source form, whichever was sent."""
     if isinstance(payload, GenerateRequest):
@@ -161,9 +173,6 @@ def _find_in_flight_duplicate(
         return None
 
     wanted = sorted(payload.sources())
-    if not wanted:
-        return None
-
     candidates = database.select(
         "jobs",
         [("project_id", f"eq.{project_id}"), ("type", "eq.generate"),
