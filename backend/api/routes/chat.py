@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from backend.api.deps import get_current_user, get_db, require_artifact, require_project
+from backend.api.deps import get_current_user, get_db, require_project, require_project_artifact
 from backend.api.schemas import ChatRequest, ChatResponse
 from backend.handlers.sources import ArtifactFlattener
 from backend.llm.base import LLMProvider
@@ -107,18 +107,24 @@ async def send_message(
 ) -> ChatResponse:
     """Answer a message, or queue a refinement of the artifact in view."""
     require_project(request.project_id, user_id, database)
-    artifact = require_artifact(request.artifact_id, user_id, database) if request.artifact_id else None
+    artifact = (
+        require_project_artifact(request.artifact_id, request.project_id, user_id, database)
+        if request.artifact_id
+        else None
+    )
 
     _record(database, request, "user", request.message, {})
 
     context = AssistantContext(database).build(request.project_id, artifact, request.message)
     intent = await _classify(provider, context)
 
-    if intent.action != "refine" or artifact is None:
-        reply = intent.reply if artifact or intent.action != "refine" else (
-            "Open an artifact and I can revise it for you."
-        )
-        return _reply(database, request, ChatResponse(reply=reply, action="answer"))
+    if intent.action != "refine":
+        return _reply(database, request, ChatResponse(reply=intent.reply, action="answer"))
+
+    if artifact is None:
+        return _reply(database, request, ChatResponse(
+            reply="Open an artifact and I can revise it for you.", action="answer",
+        ))
 
     target_type = intent.target_type if intent.target_type in GENERATED_TYPES else artifact.get("type")
     if target_type not in GENERATED_TYPES:
