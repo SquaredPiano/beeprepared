@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.models.artifacts import GENERATED_TYPES, SOURCE_TYPES
 
@@ -44,6 +44,18 @@ class IngestRequest(BaseModel):
             raise ValueError(f"source_type must be one of: {', '.join(sorted(SOURCE_TYPES))}")
         return value
 
+    @model_validator(mode="after")
+    def youtube_ref_is_a_url(self) -> "IngestRequest":
+        """
+        Keep the downloader on the network.
+
+        Given a bare path yt-dlp will happily read a local file, which would turn
+        a YouTube ingest into an arbitrary file read.
+        """
+        if self.source_type == "youtube" and not self.source_ref.startswith(("http://", "https://")):
+            raise ValueError("source_ref must be an http(s) URL for a youtube source")
+        return self
+
 
 class GenerateRequest(BaseModel):
     target_type: str
@@ -58,6 +70,12 @@ class GenerateRequest(BaseModel):
             raise ValueError(f"target_type must be one of: {', '.join(sorted(GENERATED_TYPES))}")
         return value
 
+    @model_validator(mode="after")
+    def at_least_one_source(self) -> "GenerateRequest":
+        if not self.sources():
+            raise ValueError("source_artifact_ids must name at least one artifact")
+        return self
+
     def sources(self) -> List[str]:
         """Every source id, accepting the single-source shorthand."""
         return self.source_artifact_ids or ([self.source_artifact_id] if self.source_artifact_id else [])
@@ -67,6 +85,13 @@ class RefineRequest(BaseModel):
     source_artifact_id: str
     instructions: str = Field(min_length=1, max_length=4000)
     target_type: Optional[str] = None
+
+    @field_validator("target_type")
+    @classmethod
+    def known_target(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in GENERATED_TYPES:
+            raise ValueError(f"target_type must be one of: {', '.join(sorted(GENERATED_TYPES))}")
+        return value
 
 
 class JobRequest(BaseModel):
