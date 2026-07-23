@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
@@ -25,7 +25,11 @@ CLOSE_FORBIDDEN = 4403
 
 
 @router.websocket("/ws/projects/{project_id}")
-async def project_events(websocket: WebSocket, project_id: str, token: str = Query(None)) -> None:
+async def project_events(
+    websocket: WebSocket,
+    project_id: str,
+    token: Optional[str] = Query(None),
+) -> None:
     """
     Stream events for one project.
 
@@ -92,14 +96,20 @@ async def _read_client(websocket: WebSocket, database: Database, project_id: str
 
     Reading is what makes a dropped connection detectable, and it lets a client
     ask for a fresh snapshot after waking from sleep.
+
+    A disconnect returns rather than raising: nothing retrieves this task's
+    result, so raising the ordinary end of a connection would leave asyncio
+    logging an unretrieved exception for every socket that closes.
     """
     try:
         while True:
             message = await websocket.receive_json()
             if message.get("type") == "resync":
                 await _send_snapshot(websocket, database, project_id)
-    except (WebSocketDisconnect, asyncio.CancelledError):
+    except asyncio.CancelledError:
         raise
+    except WebSocketDisconnect:
+        return
     except Exception as error:
         logger.debug("Client stream for %s ended: %s", project_id, error)
 
