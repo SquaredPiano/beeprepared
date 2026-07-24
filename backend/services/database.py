@@ -152,15 +152,36 @@ class Database:
 
     @contextmanager
     def _transaction(self):
+        """
+        Hold the write lock for one atomic unit of work.
+
+        Nesting joins the transaction already open on this thread instead of
+        issuing a second `BEGIN`, which SQLite rejects. That is what lets a
+        caller wrap several writes that each transact on their own.
+
+        Rollback is on `BaseException`, not `Exception`: a cancellation or an
+        interrupt that escaped with the transaction still open would leave the
+        connection unusable for every later write on this thread.
+        """
         with self._write_lock:
             connection = self._connection
+            if connection.in_transaction:
+                yield connection
+                return
+
             connection.execute("BEGIN IMMEDIATE")
             try:
                 yield connection
-            except Exception:
+            except BaseException:
                 connection.execute("ROLLBACK")
                 raise
             connection.execute("COMMIT")
+
+    @contextmanager
+    def transaction(self):
+        """Group several operations so they commit or roll back together."""
+        with self._transaction():
+            yield
 
     def select(
         self,
@@ -297,15 +318,24 @@ class Database:
             )
 
     def fail_job(self, job_id: Any, error: str, *, retryable: bool = False) -> str:
-        """Record a failure, requeuing the job while it still has attempts left."""
+        """
+        Record a failure, requeuing the job while it still has attempts left.
+
+        Returns the outcome: `pending` when requeued, `failed` when recorded,
+        `missing` when the row is gone, otherwise the terminal status the job
+        already holds. A job reclaimed by the reaper can be running twice, and
+        the loser's failure must not overwrite the winner's committed result.
+        """
         max_attempts = get_settings().job_max_attempts
 
         with self._transaction() as connection:
             row = connection.execute(
-                "SELECT attempts FROM jobs WHERE id=?", (str(job_id),)
+                "SELECT status, attempts FROM jobs WHERE id=?", (str(job_id),)
             ).fetchone()
             if row is None:
                 return "missing"
+            if row["status"] in TERMINAL_STATUSES:
+                return row["status"]
 
             if retryable and (row["attempts"] or 0) < max_attempts:
                 connection.execute(
