@@ -81,16 +81,27 @@ class FlowEngine:
         """
         Dispatch every step whose inputs are now satisfied.
 
-        Idempotent: a step already running is skipped, so a repeated completion
-        notification cannot start it twice.
+        Idempotent: reading a step's state, creating its job row and marking it
+        running happen inside one transaction, so a repeated or concurrent
+        completion notification cannot start the same step twice.
         """
+        with self._database.transaction():
+            queued = self._schedule(flow_run_id)
+            run = self.get(flow_run_id) or {}
+
+        self._hand_off(queued, dispatch)
+        return run
+
+    def _schedule(self, flow_run_id: str) -> List[str]:
+        """Queue the ready steps and return their job ids. Caller holds the transaction."""
         run = self.get(flow_run_id)
         if not run or run["status"] != "running":
-            return run or {}
+            return []
 
         plan = FlowPlan.from_dict(run["plan"])
         states = dict(run["node_states"])
         project_id = run["project_id"]
+        queued: List[str] = []
 
         for step in plan.steps:
             if states.get(step.node_id, {}).get("status") != "pending":
@@ -100,11 +111,19 @@ class FlowEngine:
 
             sources = self._input_artifacts(step, states)
             if not sources:
+                reason = "This node's inputs produced no artifacts"
                 states[step.node_id] = {
                     **states.get(step.node_id, {}),
                     "status": "failed",
-                    "error": "This node's inputs produced no artifacts",
+                    "error": reason,
                 }
+                self._skip_downstream(step.node_id, plan, states)
+                publish(project_id, FLOW_NODE, {
+                    "flow_run_id": flow_run_id,
+                    "node_id": step.node_id,
+                    "status": "failed",
+                    "error": reason,
+                })
                 continue
 
             job = self._queue_job(project_id, flow_run_id, step, sources)
@@ -120,12 +139,18 @@ class FlowEngine:
                 "status": "running",
                 "job_id": job["id"],
             })
-
-            if dispatch:
-                dispatch(job["id"])
+            queued.append(job["id"])
 
         self._save(flow_run_id, project_id, plan, states)
-        return self.get(flow_run_id) or {}
+        return queued
+
+    @staticmethod
+    def _hand_off(job_ids: List[str], dispatch: Optional[Dispatch]) -> None:
+        """Tell the workers about jobs only once their rows are committed."""
+        if not dispatch:
+            return
+        for job_id in job_ids:
+            dispatch(job_id)
 
     def on_job_finished(
         self,
@@ -136,35 +161,49 @@ class FlowEngine:
         error: Optional[str] = None,
         dispatch: Optional[Dispatch] = None,
     ) -> Dict[str, Any]:
-        """Record a step's outcome and schedule whatever it unblocked."""
-        run = self.get(flow_run_id)
-        if not run:
-            logger.warning("Completion for unknown flow run %s", flow_run_id)
-            return {}
+        """
+        Record a step's outcome and schedule whatever it unblocked.
 
-        states = dict(run["node_states"])
-        project_id = run["project_id"]
+        The read of `node_states`, the write back and the scheduling that
+        follows share one transaction. Two parents of a fan-in step finishing at
+        once would otherwise each overwrite the other's completion, and the step
+        below them would wait on a parent the row no longer remembers.
+        """
+        with self._database.transaction():
+            run = self.get(flow_run_id)
+            if not run:
+                logger.warning("Completion for unknown flow run %s", flow_run_id)
+                return {}
 
-        if error:
-            states[node_id] = {**states.get(node_id, {}), "status": "failed", "error": error}
-            self._skip_downstream(node_id, FlowPlan.from_dict(run["plan"]), states)
-        else:
-            states[node_id] = {
-                **states.get(node_id, {}),
-                "status": "completed",
+            states = dict(run["node_states"])
+            project_id = run["project_id"]
+
+            if error:
+                states[node_id] = {**states.get(node_id, {}), "status": "failed", "error": error}
+                self._skip_downstream(node_id, FlowPlan.from_dict(run["plan"]), states)
+            else:
+                states[node_id] = {
+                    **states.get(node_id, {}),
+                    "status": "completed",
+                    "artifact_id": artifact_id,
+                }
+
+            publish(project_id, FLOW_NODE, {
+                "flow_run_id": flow_run_id,
+                "node_id": node_id,
+                "status": states[node_id]["status"],
                 "artifact_id": artifact_id,
-            }
+                "error": error,
+            })
 
-        publish(project_id, FLOW_NODE, {
-            "flow_run_id": flow_run_id,
-            "node_id": node_id,
-            "status": states[node_id]["status"],
-            "artifact_id": artifact_id,
-            "error": error,
-        })
+            self._database.update(
+                "flow_runs", [("id", f"eq.{flow_run_id}")], {"node_states": states}
+            )
+            queued = self._schedule(flow_run_id)
+            outcome = self.get(flow_run_id) or {}
 
-        self._database.update("flow_runs", [("id", f"eq.{flow_run_id}")], {"node_states": states})
-        return self.advance(flow_run_id, dispatch=dispatch)
+        self._hand_off(queued, dispatch)
+        return outcome
 
     def get(self, flow_run_id: str) -> Optional[Dict[str, Any]]:
         rows = self._database.select("flow_runs", [("id", f"eq.{flow_run_id}")])
