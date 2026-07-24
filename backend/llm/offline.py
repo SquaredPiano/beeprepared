@@ -21,6 +21,14 @@ under until using very were what when where which while will with would your
 WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]{3,}")
 SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
 
+PASS_THROUGH_MARKERS = (
+    "verbatim",
+    "do not summarise",
+    "do not summarize",
+    "keep the meaning identical",
+    "preserve every idea",
+)
+
 
 class OfflineProvider(LLMProvider):
     """
@@ -38,9 +46,21 @@ class OfflineProvider(LLMProvider):
 
     async def complete(self, prompt: str, context: Optional[str] = None) -> str:
         source = self._source_text(prompt, context)
-        if "verbatim" in prompt or "Do NOT summarize" in prompt:
+        if self._wants_the_source_back(prompt):
             return source
         return self._markdown(source)
+
+    @staticmethod
+    def _wants_the_source_back(prompt: str) -> bool:
+        """
+        Whether the prompt edits its input rather than deriving something new.
+
+        A cleaning or transcription pass must get its text back unchanged; the
+        heuristic rewrite would replace a whole lecture transcript with a
+        synthetic study document and every later stage would build on that.
+        """
+        lowered = prompt.lower()
+        return any(marker in lowered for marker in PASS_THROUGH_MARKERS)
 
     async def complete_as(
         self,
