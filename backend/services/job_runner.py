@@ -176,6 +176,12 @@ class JobExecutor:
             logger.info("Job %s requeued for another attempt", job.id)
             return
 
+        if outcome not in {"failed", "missing"}:
+            logger.warning(
+                "Job %s already finished as %s; leaving that outcome alone", job.id, outcome
+            )
+            return
+
         publish(project_id, JOB_FAILED, {
             "job_id": str(job.id), "type": job_type, "error": message,
         })
