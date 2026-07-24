@@ -91,8 +91,12 @@ class InProcessEventBus(EventBus):
 
         if running is loop:
             self._deliver(str(project_id), event)
-        else:
+            return
+
+        try:
             loop.call_soon_threadsafe(self._deliver, str(project_id), event)
+        except RuntimeError:
+            logger.debug("Event loop gone; dropping an event for project %s", project_id)
 
     async def subscribe(self, project_id: str) -> AsyncIterator[Dict[str, Any]]:
         queue: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_SIZE)
