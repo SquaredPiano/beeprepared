@@ -138,19 +138,22 @@ async def upload_source(
 
     temp_path, size = await _buffer_upload(file)
 
-    rows = database.insert("jobs", {
-        "project_id": project_id,
-        "type": "ingest",
-        "status": "pending",
-        "payload": {
-            "source_type": source_type,
-            "source_ref": temp_path,
-            "original_name": file.filename or "Untitled",
-        },
-    })
-    if not rows:
+    try:
+        rows = database.insert("jobs", {
+            "project_id": project_id,
+            "type": "ingest",
+            "status": "pending",
+            "payload": {
+                "source_type": source_type,
+                "source_ref": temp_path,
+                "original_name": file.filename or "Untitled",
+            },
+        })
+        if not rows:
+            raise HTTPException(status_code=500, detail="Could not queue the ingest job")
+    except Exception:
         os.unlink(temp_path)
-        raise HTTPException(status_code=500, detail="Could not queue the ingest job")
+        raise
 
     job_id = rows[0]["id"]
     publish(project_id, JOB_CREATED, {"job_id": job_id, "type": "ingest", "filename": file.filename})
@@ -164,7 +167,12 @@ async def upload_source(
 
 
 async def _buffer_upload(file: UploadFile) -> tuple[str, int]:
-    """Stream an upload to disk, enforcing the size limit as it goes."""
+    """
+    Stream an upload to disk, enforcing the size limit as it goes.
+
+    The buffered copy is handed to the ingest job as its `source_ref` and is
+    deleted by `IngestHandler` once that job no longer needs it.
+    """
     limit = get_settings().upload_max_mb * 1024 * 1024
     suffix = os.path.splitext(file.filename or "")[1]
     written = 0
