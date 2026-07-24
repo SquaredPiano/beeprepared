@@ -119,7 +119,11 @@ class KnowledgeExtractor:
         cores = [result for result in results if isinstance(result, KnowledgeCore)]
 
         if not cores:
-            reasons = "; ".join(str(result) for result in results if isinstance(result, Exception))
+            reasons = "; ".join(
+                f"{type(result).__name__}: {result}"
+                for result in results
+                if isinstance(result, BaseException)
+            )
             raise RuntimeError(f"Every chunk failed extraction: {reasons}")
 
         if len(cores) < len(chunks):

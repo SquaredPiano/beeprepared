@@ -76,6 +76,13 @@ class TextCleaner:
         return WHITESPACE.sub(" ", text).strip()
 
     async def _repair(self, text: str) -> str:
+        """
+        Rewrite every chunk concurrently, keeping the original where one fails.
+
+        `gather` reports failures as values rather than raising, and a cancelled
+        chunk arrives as a `BaseException` that `Exception` would not catch,
+        which would put an exception object into the joined text.
+        """
         chunks = self._chunks(text)
         logger.info("Repairing %d chunk(s) of transcript", len(chunks))
 
@@ -85,10 +92,10 @@ class TextCleaner:
         )
 
         repaired = [
-            chunk if isinstance(result, Exception) else result
+            chunk if isinstance(result, BaseException) else result
             for chunk, result in zip(chunks, results)
         ]
-        failures = sum(1 for result in results if isinstance(result, Exception))
+        failures = sum(1 for result in results if isinstance(result, BaseException))
         if failures:
             logger.warning("%d/%d chunks kept their original text", failures, len(chunks))
 
