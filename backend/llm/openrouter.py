@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import random
+import weakref
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
@@ -36,7 +37,11 @@ TRANSCRIBE_PROMPT = (
 )
 
 
-class TruncatedResponse(LLMError):
+class PermanentFailure(LLMError):
+    """The request would fail identically however many times it is repeated."""
+
+
+class TruncatedResponse(PermanentFailure):
     """The model ran out of output budget mid-document."""
 
 
@@ -57,7 +62,9 @@ class OpenRouterProvider(LLMProvider):
         self._max_retries = settings.llm_max_retries
         self._max_output_tokens = settings.llm_max_output_tokens
         self._concurrency = settings.llm_max_concurrency
-        self._limiters: Dict[int, asyncio.Semaphore] = {}
+        self._limiters: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+            weakref.WeakKeyDictionary()
+        )
         self._headers = {
             "Authorization": f"Bearer {settings.openrouter_api_key}",
             "Content-Type": "application/json",
@@ -84,7 +91,8 @@ class OpenRouterProvider(LLMProvider):
             raise LLMError(f"Response did not match {schema.__name__}: {error}. Got: {preview}") from error
 
     async def transcribe(self, audio_path: str) -> str:
-        return await self._send(self._audio_request(audio_path))
+        """Return the spoken words in an audio file."""
+        return await self._send(await asyncio.to_thread(self._audio_request, audio_path))
 
     def _text_request(self, prompt: str, context: Optional[str]) -> Dict[str, Any]:
         return self._request(SYSTEM_PROMPT, self._user_text(prompt, context), temperature=0.7)
@@ -144,6 +152,13 @@ class OpenRouterProvider(LLMProvider):
         return f"{prompt}\n\n--- SOURCE MATERIAL ---\n{context}"
 
     async def _send(self, body: Dict[str, Any]) -> str:
+        """
+        Post one request, retrying only what a retry could fix.
+
+        A rejected key, a malformed request and a truncated document all fail
+        the same way on every attempt, so they surface immediately instead of
+        spending the whole output budget twice more to say so again.
+        """
         last_error: Optional[Exception] = None
 
         async with self._limiter():
@@ -152,6 +167,8 @@ class OpenRouterProvider(LLMProvider):
                     try:
                         response = await client.post(self._url, headers=self._headers, json=body)
                         return self._content_of(self._checked(response))
+                    except PermanentFailure:
+                        raise
                     except Exception as error:
                         last_error = error
                         if attempt == self._max_retries - 1:
@@ -166,17 +183,28 @@ class OpenRouterProvider(LLMProvider):
         raise LLMError(f"OpenRouter failed after {self._max_retries} attempts: {last_error}")
 
     def _limiter(self) -> asyncio.Semaphore:
-        loop_id = id(asyncio.get_running_loop())
-        if loop_id not in self._limiters:
-            self._limiters[loop_id] = asyncio.Semaphore(self._concurrency)
-        return self._limiters[loop_id]
+        """
+        The semaphore belonging to the caller's event loop.
+
+        A semaphore binds itself to the first loop that contends on it and
+        refuses every other one, so the provider keeps one per loop. The loop
+        itself is the key: `id()` is recycled once a loop is collected, which
+        would hand a fresh loop the dead loop's semaphore, and holding the loop
+        weakly keeps the table from growing for the life of the process.
+        """
+        loop = asyncio.get_running_loop()
+        limiter = self._limiters.get(loop)
+        if limiter is None:
+            limiter = asyncio.Semaphore(self._concurrency)
+            self._limiters[loop] = limiter
+        return limiter
 
     @staticmethod
     def _checked(response: httpx.Response) -> Dict[str, Any]:
         if response.status_code in RETRYABLE_STATUS:
             raise LLMError(f"HTTP {response.status_code}: {response.text[:200]}")
         if response.status_code >= 400:
-            raise LLMError(f"HTTP {response.status_code}: {response.text[:400]}")
+            raise PermanentFailure(f"HTTP {response.status_code}: {response.text[:400]}")
         return response.json()
 
     @staticmethod
