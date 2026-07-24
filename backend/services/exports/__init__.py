@@ -26,6 +26,8 @@ MIME_TYPES = {
 
 MARKDOWN_TYPES = frozenset({"notes", "study_guide", "cheatsheet"})
 
+EXAM_ARTEFACTS = (".pdf", ".tex", ".aux", ".log")
+
 
 @dataclass(frozen=True)
 class Export:
@@ -84,15 +86,22 @@ class ExportService:
         return None
 
     def _export_exam(self, exam, project_id: uuid.UUID, artifact_id: uuid.UUID) -> Optional[Export]:
-        rendered = self._exam.render(exam, f"exam_{artifact_id}")
-        if rendered is None:
-            return None
+        """
+        Render into the scratch directory and clear every intermediate afterwards.
+
+        The cleanup covers rendering itself, not just storage: a LaTeX run that
+        dies partway still leaves its source and logs behind, and nothing else
+        ever revisits that directory.
+        """
+        stem = self._exam.output_dir / f"exam_{artifact_id}"
 
         try:
+            rendered = self._exam.render(exam, stem.name)
+            if rendered is None:
+                return None
             return self._store_file(rendered, project_id, artifact_id, rendered.suffix.lstrip("."))
         finally:
-            self._cleanup(rendered, rendered.with_suffix(".tex"), rendered.with_suffix(".aux"),
-                          rendered.with_suffix(".log"))
+            self._cleanup(*(stem.with_suffix(suffix) for suffix in EXAM_ARTEFACTS))
 
     def _export_slides(self, deck, project_id: uuid.UUID, artifact_id: uuid.UUID) -> Export:
         with tempfile.TemporaryDirectory() as workspace:
