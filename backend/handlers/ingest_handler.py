@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
+import tempfile
 import uuid
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 from backend.handlers.base import JobHandler
@@ -109,6 +110,11 @@ class IngestHandler(JobHandler):
     the project's graph, and provenance back to the source file is carried by
     `created_by_job_id` rather than by an edge, because the core was not derived
     from anything already in the graph.
+
+    Ingest is also the end of the buffered upload's life. The upload endpoint
+    stages a copy on disk so a large recording never has to be held in memory,
+    and this is the last reader of it; leaving it behind would duplicate every
+    ingested file for as long as the machine stays up.
     """
 
     def __init__(
@@ -139,37 +145,75 @@ class IngestHandler(JobHandler):
         self.report("storing source", 10)
         source = self._store(payload, str(job.project_id))
 
-        self.report("reading source", 30)
-        extracted = await self._read(source, payload.source_ref)
-        if len(extracted.text) < MIN_EXTRACTED_CHARS:
-            raise RuntimeError(
-                f"Only {len(extracted.text)} characters came out of {payload.original_name}. "
-                "The file may be empty, image-only, or an unsupported format."
-            )
+        try:
+            self.report("reading source", 30)
+            extracted = await self._read(source, payload.source_ref)
+            if len(extracted.text) < MIN_EXTRACTED_CHARS:
+                raise RuntimeError(
+                    f"Only {len(extracted.text)} characters came out of {payload.original_name}. "
+                    "The file may be empty, image-only, or an unsupported format."
+                )
 
-        self.report("cleaning text", 50)
-        cleaned = await self._cleaner.clean(extracted.text)
+            self.report("cleaning text", 50)
+            cleaned = await self._cleaner.clean(extracted.text)
 
-        self.report("building knowledge core", 70)
-        core = await self._knowledge.extract(cleaned)
+            self.report("building knowledge core", 70)
+            core = await self._knowledge.extract(cleaned)
 
-        self.report("validating knowledge core", 90)
-        self._validator.validate(core)
-        logger.info("Knowledge core ready: %s", core.title)
+            self.report("validating knowledge core", 90)
+            self._validator.validate(core)
+            logger.info("Knowledge core ready: %s", core.title)
+        finally:
+            self._discard_staged_upload(payload.source_ref)
 
         return self._bundle(job, payload, source, extracted.metadata, core)
 
     def _store(self, payload: IngestPayload, project_id: str) -> StoredSource:
+        """
+        Put a durable copy of the source in the file store.
+
+        Deliberately outside the cleanup block: until this returns, the staged
+        upload is the only copy there is.
+        """
         if payload.source_type == "youtube":
             return self._ingestion.store_youtube(payload.source_ref, project_id)
+
+        if not Path(payload.source_ref).is_file():
+            raise RuntimeError(
+                f"No readable file at {payload.source_ref}. A buffered upload is deleted "
+                "once its ingest finishes, so a finished job cannot be re-run; upload again."
+            )
+
         return self._ingestion.store_upload(
             payload.source_ref, project_id, payload.original_name, payload.source_type
         )
 
     async def _read(self, source: StoredSource, original_path: str):
-        if original_path and os.path.exists(original_path):
+        if original_path and Path(original_path).exists():
             return await self._extraction.extract(original_path)
         return await self._extraction.extract_stored(source.key)
+
+    @staticmethod
+    def _discard_staged_upload(source_ref: str) -> None:
+        """
+        Delete the upload the API buffered for this job, if that is what this is.
+
+        The upload endpoint stages through `tempfile.NamedTemporaryFile`, so a
+        staged upload is a regular file sitting directly in the system temp
+        directory under the temp-file prefix. A YouTube URL is not a path, and a
+        caller naming source material of their own is naming something outside
+        that shape; deleting the wrong file here is far worse than leaking one.
+        """
+        path = Path(source_ref)
+        if not path.name.startswith(tempfile.gettempprefix()):
+            return
+        if path.parent != Path(tempfile.gettempdir()):
+            return
+        if not path.is_file():
+            return
+
+        path.unlink(missing_ok=True)
+        logger.info("Discarded the staged upload %s", path.name)
 
     @staticmethod
     def _bundle(
