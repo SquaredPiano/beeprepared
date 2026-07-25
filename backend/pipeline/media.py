@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import tempfile
@@ -56,7 +57,12 @@ class Transcriber:
         return self._provider.supports_audio
 
     async def transcribe(self, media_path: str) -> str:
-        """Return the spoken words in an audio or video file."""
+        """
+        Return the spoken words in an audio or video file.
+
+        ffmpeg runs off the event loop: a lecture-length recording takes it
+        minutes, and the local worker pool shares its loop with the API.
+        """
         if not self.available:
             raise MediaError(
                 "Transcription needs a language model that accepts audio. "
@@ -64,7 +70,9 @@ class Transcriber:
             )
 
         with tempfile.TemporaryDirectory() as workspace:
-            wav_path = to_wav(media_path, os.path.join(workspace, "audio.wav"))
+            wav_path = await asyncio.to_thread(
+                to_wav, media_path, os.path.join(workspace, "audio.wav")
+            )
             transcript = await self._provider.transcribe(wav_path)
 
         if not transcript.strip():
