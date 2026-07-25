@@ -81,13 +81,26 @@ class CoreMerger:
         self._provider = provider or get_provider()
 
     async def merge(self, cores: List[KnowledgeCore]) -> CombinedContext:
-        """Reduce many knowledge cores to one context."""
+        """
+        Reduce many knowledge cores to one context.
+
+        `summarise` absorbs its own failures, so the only thing `gather` can
+        hand back here is a cancelled child. Falling through to a structural
+        summary would turn that teardown into a plausible-looking result, so it
+        is re-raised instead. Cancelling the whole `merge` already propagates on
+        its own; this covers a child cancelled by itself, which is what a
+        per-call timeout inside `summarise` would produce.
+        """
         if not cores:
             raise ValueError("merge needs at least one knowledge core")
 
         results = await asyncio.gather(
             *(self.summarise(core) for core in cores), return_exceptions=True
         )
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
         summaries = [
             result if isinstance(result, CoreSummary) else self._structural_summary(core)
             for core, result in zip(cores, results)
