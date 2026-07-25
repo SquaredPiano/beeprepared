@@ -245,6 +245,14 @@ class ArtifactGenerator:
 
         The model writes an assessment contract first, then writes each question
         batch against it. The batches are independent, so they run concurrently.
+
+        A batch that fails is dropped and the exam is built from the rest. A
+        batch that was cancelled is not a failure: it means teardown, so the
+        cancellation is re-raised rather than absorbed into a partial exam.
+
+        The classification is on `BaseException` because that is what `gather`
+        captures, and `CancelledError` is one: an `Exception` check lets a
+        cancelled batch reach `extend` as if it were a list of questions.
         """
         context = core.model_dump_json(indent=2)
         spec = await self._exam_spec(context, instructions)
@@ -255,9 +263,13 @@ class ArtifactGenerator:
             return_exceptions=True,
         )
 
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
         questions: List[ExamQuestion] = []
         for (kind, _, _), result in zip(EXAM_BATCHES, results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning("Exam batch '%s' failed: %s", kind, result)
                 continue
             questions.extend(result)
