@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 from dataclasses import dataclass, field
@@ -39,6 +40,12 @@ class DocumentReader:
     """Pulls text out of documents that already contain it."""
 
     def read(self, path: Path) -> Extracted:
+        """
+        Return the text of a document, naming the file when it cannot be read.
+
+        Every parser signals a corrupt or mislabelled file in its own vocabulary,
+        and those exceptions reach the user as the reason their job failed.
+        """
         readers: Dict[str, Callable[[Path], Extracted]] = {
             ".pdf": self._pdf,
             ".pptx": self._pptx,
@@ -46,7 +53,15 @@ class DocumentReader:
             ".docx": self._docx,
         }
         reader = readers.get(path.suffix.lower(), self._plain_text)
-        return reader(path)
+
+        try:
+            return reader(path)
+        except ExtractionError:
+            raise
+        except Exception as error:
+            raise ExtractionError(
+                f"{path.name} could not be read as {path.suffix.lower() or 'plain text'}: {error}"
+            ) from error
 
     def _pdf(self, path: Path) -> Extracted:
         pages = []
@@ -124,7 +139,12 @@ class ExtractionService:
         self._store = store or get_file_store()
 
     async def extract(self, file_path: str) -> Extracted:
-        """Read a local file and return its text."""
+        """
+        Read a local file and return its text.
+
+        Document parsing runs off the event loop, because a large PDF holds it
+        for seconds and the local worker pool shares its loop with the API.
+        """
         path = Path(file_path)
         if not path.exists():
             raise ExtractionError(f"File not found: {file_path}")
@@ -135,7 +155,7 @@ class ExtractionService:
         if suffix in AUDIO_SUFFIXES or suffix in VIDEO_SUFFIXES:
             result = Extracted(await self._transcriber.transcribe(str(path)), {"transcribed": True})
         else:
-            result = self._reader.read(path)
+            result = await asyncio.to_thread(self._reader.read, path)
 
         result.metadata.update({
             "source": path.name,
@@ -150,5 +170,5 @@ class ExtractionService:
         """Read a file out of the store, extract it, then drop the local copy."""
         with tempfile.TemporaryDirectory() as workspace:
             local = Path(workspace) / Path(key).name
-            self._store.copy_to(key, str(local))
+            await asyncio.to_thread(self._store.copy_to, key, str(local))
             return await self.extract(str(local))
