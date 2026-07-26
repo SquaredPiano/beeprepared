@@ -39,7 +39,6 @@ def serve_file(
 
     return FileResponse(
         path,
-        filename=filename,
         media_type=store.content_type(key),
         headers={
             "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",

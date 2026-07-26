@@ -11,7 +11,6 @@ from typing import List
 from backend.env import load_environment
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = BACKEND_DIR.parent
 
 
 def _text(name: str, default: str = "") -> str:
