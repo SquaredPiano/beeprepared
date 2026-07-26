@@ -8,7 +8,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yt_dlp
 
@@ -65,13 +65,15 @@ class IngestionService:
             try:
                 with yt_dlp.YoutubeDL(options) as downloader:
                     info = downloader.extract_info(url, download=True)
-                    downloaded = downloader.prepare_filename(info)
-                    title = info.get("title", "YouTube video")
+                    downloaded = self._downloaded_path(downloader, info, Path(workspace))
+                    title = info.get("title") or "YouTube video"
+            except IngestionError:
+                raise
             except Exception as error:
                 raise IngestionError(f"Could not download {url}: {error}") from error
 
-            key = f"{project_id}/sources/{uuid.uuid4()}{Path(downloaded).suffix}"
-            self._store.put(downloaded, key)
+            key = f"{project_id}/sources/{uuid.uuid4()}{downloaded.suffix}"
+            self._store.put(str(downloaded), key)
 
         return StoredSource(
             key=key,
@@ -79,3 +81,31 @@ class IngestionService:
             source_type="youtube",
             size_bytes=self._store.size_of(key),
         )
+
+    @staticmethod
+    def _downloaded_path(downloader: Any, info: Any, workspace: Path) -> Path:
+        """
+        The file yt-dlp actually left on disk.
+
+        The name built from the output template is a prediction: format merging
+        and post-processing rewrite the extension, so the path yt-dlp reports
+        wins and the workspace itself is the last resort.
+        """
+        if not isinstance(info, dict):
+            raise IngestionError("yt-dlp returned no metadata for this video")
+
+        candidates = [
+            download.get("filepath")
+            for download in info.get("requested_downloads") or []
+            if isinstance(download, dict)
+        ]
+        candidates.append(downloader.prepare_filename(info))
+
+        for candidate in candidates:
+            if candidate and Path(candidate).is_file():
+                return Path(candidate)
+
+        produced = sorted(path for path in workspace.iterdir() if path.is_file())
+        if not produced:
+            raise IngestionError("yt-dlp reported success but wrote no file")
+        return produced[0]
