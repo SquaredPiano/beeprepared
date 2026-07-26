@@ -186,7 +186,7 @@ class SourceResolver:
         if allowed is not None and target_type not in allowed:
             raise SourceResolutionError(
                 f"Cannot generate '{target_type}' from '{source_type}'. "
-                f"Allowed: {', '.join(sorted(allowed)) or 'nothing'}"
+                f"Allowed: {', '.join(sorted(allowed))}"
             )
 
     @staticmethod

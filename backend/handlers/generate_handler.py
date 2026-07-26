@@ -164,8 +164,5 @@ class GenerateHandler(JobHandler):
 
     @staticmethod
     def _unique(values: List[str]) -> List[str]:
-        seen: set = set()
-        return [
-            str(value) for value in values
-            if str(value) not in seen and not seen.add(str(value))
-        ]
+        """The same sources in the order they were wired, each counted once."""
+        return list(dict.fromkeys(str(value) for value in values))

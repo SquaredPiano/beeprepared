@@ -36,7 +36,12 @@ class JobHandler(ABC):
         return self
 
     def report(self, stage: str, percent: int) -> None:
-        """Announce the stage now running and how far through the job it is."""
+        """
+        Announce the stage now running and how far through the job it is.
+
+        A reporter that fails is swallowed: progress is decoration, and losing a
+        WebSocket mid-run must not fail work that is otherwise succeeding.
+        """
         try:
             self.progress(stage, max(0, min(100, percent)))
         except Exception:
