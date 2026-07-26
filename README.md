@@ -153,14 +153,17 @@ gets three `derived_from` edges, and cycles are rejected at compile time.
 ## Testing
 
 ```bash
-pytest backend/tests -q          # 77 tests, no network, no API keys
+pytest -q                        # 96 tests, no network, no API keys
 ```
 
 - `test_flow_engine.py` — compilation, fan-in, fan-out, cycle detection, waves
 - `test_pipeline.py` — every artifact type end to end, chaining, refinement,
-  retry classification, atomic claim, stale-job reaping
+  retry classification, racing workers partitioning one queue, stale-job reaping
 - `test_api.py` — HTTP contract, ownership, upload limits, WebSocket lifecycle,
   signed-link verification
+- `test_seams.py` — the abstraction boundaries, driven through fakes: a
+  substitute provider standing in for OpenRouter, and a handler running against
+  an injected generator
 
 ---
 
