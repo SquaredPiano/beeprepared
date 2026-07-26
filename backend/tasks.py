@@ -17,13 +17,20 @@ REAP_INTERVAL_SECONDS = 300.0
 
 
 def _run(coroutine: Coroutine) -> Any:
-    """Run a coroutine to completion from Celery's synchronous worker."""
+    """
+    Run a coroutine to completion from Celery's synchronous worker.
+
+    The loop is torn down with its executor, because the pipeline offloads
+    ffmpeg and document parsing to worker threads and a loop that is closed
+    without them leaves those threads behind on every task.
+    """
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(coroutine)
     finally:
         loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
         asyncio.set_event_loop(None)
         loop.close()
 
