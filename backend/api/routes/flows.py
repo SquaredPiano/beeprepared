@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.deps import get_current_user, get_db, require_project
+from backend.api.deps import get_current_user, get_db, require_project, require_project_artifact
 from backend.api.schemas import FlowPlanResponse, FlowRequest, FlowRunResponse, FlowStepView
 from backend.services.database import Database
 from backend.services.dispatcher import enqueue
-from backend.services.flow import FlowCompiler, FlowEngine, FlowValidationError
+from backend.services.flow import FlowCompiler, FlowEngine, FlowPlan, FlowValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,31 @@ def _graph(project: Dict[str, Any], request: FlowRequest) -> Tuple[List[dict], L
     return canvas.get("nodes") or [], canvas.get("edges") or []
 
 
+def _require_owned_seeds(
+    plan: FlowPlan,
+    project_id: str,
+    user_id: str,
+    database: Database,
+) -> None:
+    """
+    Assert every artifact the canvas seeds the run with sits in this project.
+
+    The nodes are client-supplied, so a seed id is a request to read a stored
+    artifact. Handlers resolve those ids without an ownership check, which makes
+    this the last point where naming somebody else's artifact can be refused.
+    The whole request fails rather than the offending node being dropped: a flow
+    that quietly ran without one of its inputs is worse than one that refused.
+    """
+    for node_id, artifact_id in plan.seed_artifacts.items():
+        try:
+            require_project_artifact(artifact_id, project_id, user_id, database)
+        except HTTPException as error:
+            raise HTTPException(
+                status_code=error.status_code,
+                detail=f"Node '{node_id}': {error.detail}",
+            ) from error
+
+
 @router.post("/{project_id}/flow/validate", response_model=FlowPlanResponse)
 def validate_flow(
     project_id: str,
@@ -47,6 +72,8 @@ def validate_flow(
         plan = FlowCompiler().compile(nodes, edges)
     except FlowValidationError as error:
         return FlowPlanResponse(valid=False, error=str(error))
+
+    _require_owned_seeds(plan, project_id, user_id, database)
 
     return FlowPlanResponse(
         valid=True,
@@ -75,9 +102,12 @@ def run_flow(
     nodes, edges = _graph(project, request)
 
     try:
-        run = FlowEngine(database).start(project_id, nodes, edges, dispatch=enqueue)
+        plan = FlowCompiler().compile(nodes, edges)
     except FlowValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+    _require_owned_seeds(plan, project_id, user_id, database)
+    run = FlowEngine(database).start(project_id, nodes, edges, dispatch=enqueue)
 
     logger.info("Flow run %s started", run["id"])
     return FlowRunResponse(**{field: run.get(field) for field in FlowRunResponse.model_fields})
