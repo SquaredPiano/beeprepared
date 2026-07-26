@@ -89,7 +89,7 @@ Production passes nothing; tests pass fakes. The handlers depend on
 
 ## Data model
 
-Five tables. The interesting one is `artifact_edges`.
+Six tables. The interesting one is `artifact_edges`.
 
 | Table | Holds |
 |---|---|
