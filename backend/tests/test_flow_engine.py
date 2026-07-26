@@ -214,6 +214,31 @@ class TestScheduling:
         assert run["node_states"]["g2"]["status"] == "skipped"
         assert run["status"] == "failed"
 
+    def test_a_step_with_no_usable_input_still_reaches_a_terminal_state(
+        self, database, project, knowledge_core
+    ):
+        """A parent that finished without an artifact must not strand the run as running."""
+        engine = FlowEngine(database)
+        engine.start(
+            project["id"],
+            [
+                source_node("s1", knowledge_core["id"]),
+                generator_node("g1", "notes"),
+                generator_node("g2", "quiz"),
+                generator_node("g3", "flashcards"),
+            ],
+            [edge("s1", "g1"), edge("g1", "g2"), edge("g2", "g3")],
+            dispatch=lambda _: None,
+        )
+        run_id = engine.list_for_project(project["id"])[0]["id"]
+
+        engine.on_job_finished(run_id, "g1", artifact_id=None)
+
+        run = engine.get(run_id)
+        assert run["node_states"]["g2"]["status"] == "failed"
+        assert run["node_states"]["g3"]["status"] == "skipped"
+        assert run["status"] == "failed"
+
     def test_run_completes_when_every_step_lands(self, database, project, knowledge_core):
         engine = FlowEngine(database)
         engine.start(

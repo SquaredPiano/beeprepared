@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 
 import pytest
@@ -11,6 +12,7 @@ from backend.handlers.generate_handler import GenerateHandler
 from backend.handlers.sources import SourceResolver
 from backend.models.graph import JobBundle
 from backend.models.jobs import JobModel
+from backend.services.flow import FlowEngine
 from backend.services.job_runner import JobExecutor, is_transient
 
 
@@ -26,6 +28,16 @@ def run(database, project_id: str, job_type: str, payload: dict) -> tuple[bool, 
     """Queue a job and execute it, returning whether it committed."""
     job = queue(database, project_id, job_type, payload)
     return asyncio.run(JobExecutor(database).execute(job)), job
+
+
+def run_threads(target, *, count: int) -> None:
+    """Run `target` on `count` real threads and wait for all of them."""
+    threads = [threading.Thread(target=target) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert not any(thread.is_alive() for thread in threads), "a thread did not finish"
 
 
 class TestGeneration:
@@ -242,3 +254,85 @@ class TestQueue:
         assert database.cancel_job(row["id"]) is True
         assert database.claim_job() is None
         assert database.cancel_job(row["id"]) is False
+
+    def test_racing_workers_partition_the_queue(self, database, project):
+        """Six real threads on one queue: every job claimed, none claimed twice."""
+        queued = [
+            database.insert("jobs", {
+                "project_id": project["id"], "type": "generate", "status": "pending", "payload": {},
+            })[0]["id"]
+            for _ in range(24)
+        ]
+        claimed: list[str] = []
+        ready = threading.Barrier(6)
+
+        def drain() -> None:
+            ready.wait()
+            while True:
+                job = database.claim_job()
+                if job is None:
+                    return
+                claimed.append(str(job.id))
+
+        run_threads(drain, count=6)
+
+        assert sorted(claimed) == sorted(queued)
+
+    def test_a_late_failure_cannot_undo_a_committed_result(self, database, project, knowledge_core):
+        """A job reclaimed by the reaper runs twice; the loser must not erase the winner."""
+        committed, job = run(database, project["id"], "generate", {
+            "target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]],
+        })
+        assert committed
+
+        assert database.fail_job(job.id, "the slow worker finally gave up") == "completed"
+        assert database.get_job(job.id)["status"] == "completed"
+
+    def test_a_late_failure_cannot_undo_a_cancellation(self, database, project):
+        row = database.insert("jobs", {
+            "project_id": project["id"], "type": "generate", "status": "pending", "payload": {},
+        })[0]
+        database.claim_job(row["id"])
+        assert database.cancel_job(row["id"]) is True
+
+        assert database.fail_job(row["id"], "handler noticed later") == "cancelled"
+        assert database.get_job(row["id"])["status"] == "cancelled"
+
+
+class TestFlowConcurrency:
+    def test_concurrent_completions_queue_the_next_step_once(self, database, project, knowledge_core):
+        """Eight notifications for one finished step must produce one downstream job."""
+        engine = FlowEngine(database)
+        dispatched: list[str] = []
+
+        engine.start(
+            project["id"],
+            [
+                {"id": "s1", "type": "artifactNode", "data": {"artifact": {"id": knowledge_core["id"]}}},
+                {"id": "g1", "type": "generator", "data": {"subType": "notes"}},
+                {"id": "g2", "type": "generator", "data": {"subType": "quiz"}},
+            ],
+            [
+                {"id": "e1", "source": "s1", "target": "g1"},
+                {"id": "e2", "source": "g1", "target": "g2"},
+            ],
+            dispatch=dispatched.append,
+        )
+        run_id = engine.list_for_project(project["id"])[0]["id"]
+
+        ready = threading.Barrier(8)
+        failures: list[BaseException] = []
+
+        def notify() -> None:
+            ready.wait()
+            try:
+                engine.on_job_finished(run_id, "g1", artifact_id="notes-1", dispatch=dispatched.append)
+            except BaseException as error:
+                failures.append(error)
+
+        run_threads(notify, count=8)
+
+        assert not failures
+        assert len(dispatched) == 2
+        assert len(database.select("jobs", [("project_id", f"eq.{project['id']}")])) == 2
+        assert engine.get(run_id)["node_states"]["g2"]["status"] == "running"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from typing import List, Optional, Type
 
 import pytest
@@ -118,6 +120,23 @@ class TestGenerationContract:
             await ArtifactGenerator(RecordingProvider(model=thin)).generate("quiz", core)
 
     @pytest.mark.asyncio
+    async def test_a_cancelled_exam_batch_is_not_absorbed(self, core):
+        """Cancellation is the job being torn down, not one batch coming back empty."""
+        import asyncio
+
+        from backend.models.artifacts import ExamSpec
+        from backend.services.generators import DEFAULT_EXAM_SPEC, ArtifactGenerator
+
+        class CancellingProvider(RecordingProvider):
+            async def complete_as(self, prompt, schema, context=None):
+                if schema is ExamSpec:
+                    return DEFAULT_EXAM_SPEC
+                raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            await ArtifactGenerator(CancellingProvider()).generate("exam", core)
+
+    @pytest.mark.asyncio
     async def test_notes_below_the_length_floor_are_rejected(self, core):
         from backend.services.generators import ArtifactGenerator, GenerationError
 
@@ -163,6 +182,119 @@ class TestHandlerInjection:
 
         assert bundle.artifacts[0].content["data"]["title"] == "From a fake"
         assert len(bundle.edges) == 1
+
+
+class StubIngestion:
+    """Files a source without touching the real store or the network."""
+
+    def store_upload(self, file_path, project_id, original_name, source_type):
+        from backend.pipeline.ingestion import StoredSource
+
+        return StoredSource(
+            key=f"{project_id}/sources/stub",
+            original_name=original_name,
+            source_type=source_type,
+            size_bytes=Path(file_path).stat().st_size,
+        )
+
+
+class StubExtraction:
+    """Returns fixed text, or raises to stand in for an unreadable source."""
+
+    def __init__(self, text: str = "lecture text " * 20, error: Optional[Exception] = None) -> None:
+        self.text = text
+        self.error = error
+
+    async def extract(self, file_path: str):
+        from backend.pipeline.extraction import Extracted
+
+        if self.error:
+            raise self.error
+        return Extracted(text=self.text)
+
+    async def extract_stored(self, key: str):
+        return await self.extract(key)
+
+
+class StubCleaner:
+    async def clean(self, text: str, *, use_model: bool = True) -> str:
+        return text
+
+
+class StubKnowledge:
+    def __init__(self, core: KnowledgeCore) -> None:
+        self.core = core
+
+    async def extract(self, text: str) -> KnowledgeCore:
+        return self.core
+
+
+class TestStagedUploads:
+    """
+    The upload endpoint buffers to disk and ingest is the last reader.
+
+    Without this every ingested lecture leaves a full-size duplicate in the
+    system temp directory for as long as the machine stays up.
+    """
+
+    @staticmethod
+    def staged(suffix: str = ".md") -> Path:
+        handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        handle.write(b"# Lecture\n\nConsensus is hard.")
+        handle.close()
+        return Path(handle.name)
+
+    @staticmethod
+    def handler(core: KnowledgeCore, extraction: Optional[StubExtraction] = None):
+        from backend.handlers.ingest_handler import IngestHandler
+
+        return IngestHandler(
+            ingestion=StubIngestion(),
+            extraction=extraction or StubExtraction(),
+            cleaner=StubCleaner(),
+            knowledge=StubKnowledge(core),
+        )
+
+    @staticmethod
+    def job(database, project, source_ref: str):
+        from backend.models.jobs import JobModel
+
+        row = database.insert("jobs", {
+            "project_id": project["id"],
+            "type": "ingest",
+            "status": "pending",
+            "payload": {"source_type": "md", "source_ref": source_ref, "original_name": "lecture.md"},
+        })[0]
+        return JobModel(**{**row, "status": "running"})
+
+    @pytest.mark.asyncio
+    async def test_a_successful_ingest_removes_the_staged_upload(self, database, project, core):
+        upload = self.staged()
+
+        bundle = await self.handler(core).run(self.job(database, project, str(upload)))
+
+        assert bundle.result["status"] == "success"
+        assert not upload.exists()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_ingest_removes_the_staged_upload(self, database, project, core):
+        upload = self.staged()
+        handler = self.handler(core, StubExtraction(error=RuntimeError("unreadable")))
+
+        with pytest.raises(RuntimeError, match="unreadable"):
+            await handler.run(self.job(database, project, str(upload)))
+
+        assert not upload.exists()
+
+    @pytest.mark.asyncio
+    async def test_a_callers_own_file_is_never_deleted(self, database, project, core, tmp_path):
+        """Only what the upload endpoint staged is ours to delete."""
+        theirs = tmp_path / "my-lecture.md"
+        theirs.write_text("# Lecture\n\nConsensus is hard.")
+
+        await self.handler(core).run(self.job(database, project, str(theirs)))
+
+        assert theirs.exists()
 
 
 class TestFileStoreContract:
