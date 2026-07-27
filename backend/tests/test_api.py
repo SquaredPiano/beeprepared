@@ -265,9 +265,9 @@ class TestSecurity:
     The checks that stop a caller reaching state they do not own.
 
     Each of these covers a hole that was open once: a job reading someone else's
-    artifact, a project with no owner passing every ownership check, an edit
-    repointing an export at another stored file, and a YouTube ingest pointed at
-    the local filesystem.
+    artifact, a canvas seeding a flow with one, a project with no owner passing
+    every ownership check, an edit repointing an export at another stored file,
+    and a YouTube ingest pointed at the local filesystem.
     """
 
     @staticmethod
@@ -322,6 +322,59 @@ class TestSecurity:
 
         assert response.status_code == 404, response.text
         assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    @staticmethod
+    def seeded_graph(artifact_id):
+        """A canvas whose one source node names an artifact by id."""
+        return {
+            "nodes": [
+                {"id": "s1", "type": "artifactNode", "data": {"artifact": {"id": artifact_id}}},
+                {"id": "g1", "type": "generator", "data": {"subType": "notes"}},
+            ],
+            "edges": [{"id": "e1", "source": "s1", "target": "g1"}],
+        }
+
+    def test_a_flow_seeded_with_another_users_artifact_is_refused(self, client, database, project):
+        """
+        The canvas is request data, so a seed id is a read the API has to authorise.
+
+        Jobs check their sources, but the flow route reached the same handler by
+        another door: nodes came from the body, the compiler lifted their
+        artifact ids into the plan, and the engine wrote them straight into a
+        generate job's sources.
+        """
+        stolen = self.foreign_artifact(database)
+
+        response = client.post(
+            f"/api/projects/{project['id']}/flow/run", json=self.seeded_graph(stolen["id"])
+        )
+
+        assert response.status_code == 403, response.text
+        assert "s1" in response.json()["detail"]
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+        assert database.select("flow_runs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_a_saved_canvas_cannot_smuggle_a_foreign_seed_into_a_run(self, client, database, project):
+        """Running with no body uses the stored canvas, which is equally caller-written."""
+        stolen = self.foreign_artifact(database)
+        database.update("projects", [("id", f"eq.{project['id']}")], {
+            "canvas_state": {"viewport": {}, **self.seeded_graph(stolen["id"])},
+        })
+
+        response = client.post(f"/api/projects/{project['id']}/flow/run", json={})
+
+        assert response.status_code == 403, response.text
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_validating_a_foreign_seed_is_refused_the_same_way(self, client, database, project):
+        """Validate compiles the same graph, so it must not report the flow as runnable."""
+        stolen = self.foreign_artifact(database)
+
+        response = client.post(
+            f"/api/projects/{project['id']}/flow/validate", json=self.seeded_graph(stolen["id"])
+        )
+
+        assert response.status_code == 403, response.text
 
     def test_a_project_with_no_owner_belongs_to_nobody(self, client, database):
         """
