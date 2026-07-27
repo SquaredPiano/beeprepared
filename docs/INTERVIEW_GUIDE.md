@@ -186,9 +186,9 @@ the graph load-bearing:
   it `pending` forever — including the case where a step's inputs produced no
   artifacts at all, which previously hung the run with no error anywhere.
 
-### 3.3 Security: four holes found auditing my own API
+### 3.3 Security: five holes found auditing my own API
 
-All four were in `backend/api/`. The framing matters: these were found by going
+All five were in `backend/api/`. The framing matters: these were found by going
 back over his own code looking for them.
 
 | Hole | What it gets you | The fix |
@@ -197,12 +197,26 @@ back over his own code looking for them.
 | **`deps.py` used `if owner and owner != user_id`.** | A project with a NULL `user_id` was readable by anyone, while `list_projects` filtered on `user_id` and hid it. Read said yes, list said no — the two disagreeing is how this kind of hole survives review. | `require_project` is now `if project.get("user_id") != user_id`. Absent ownership is denial, not permission. |
 | **`update_artifact` merged client `content` wholesale.** | Rewrite `content.binary.storage_path` to any key in the store, then call `/download` and have the server sign a valid link to it. Escalation through the *export metadata*, not through the file server. | The `binary` block is renderer-owned. `update_artifact` drops whatever the client sent and restores it from the existing row, so the storage key is never client-writable. |
 | **`IngestRequest` with `source_type: "youtube"` and a filesystem `source_ref`** went straight to `yt_dlp.extract_info`, which reads local files as happily as URLs. | Arbitrary local file read, dressed as a video download. | A `model_validator` on `IngestRequest` requires `http://` or `https://` for youtube sources. |
+| **`/flow/run` reached the same place through a different door.** Fixing `create_job` did not fix this: canvas nodes arrive in the request body, and the compiler reads artifact ids straight out of them into `seed_artifacts`. | Run a flow in your own project seeded with a node naming someone else's artifact, and the engine queues a generate job carrying that id. Confirmed before fixing: `202`, with the foreign id visible in the job payload. The saved canvas was a third door, since `canvas_state` is caller-written through `PATCH`. | `_require_owned_seeds` checks every seed before anything is persisted, so a refused run leaves no `flow_run` and no job. `/flow/validate` refuses identically instead of reporting the graph as valid. |
 
 The line to say if they ask how he found them: *"I went back through the API
 looking specifically for places where I'd checked the obvious thing and stopped.
-Three of the four are that exact shape — I checked the project and forgot the
+Most of them are that exact shape — I checked the project and forgot the
 artifact, I checked the owner and forgot that NULL isn't a match, I validated the
 type and forgot the value."*
+
+The fifth one is the better story, because it is about the *fix* being
+incomplete rather than the code being wrong: *"I fixed the ownership check on
+the jobs endpoint, wrote the test, and then asked whether anything else reaches
+the same code by another route. The flow endpoint did — it takes the canvas from
+the request body, so the artifact ids are just as caller-controlled. Same hole,
+different door. That is the one I would not have found by reading the diff."*
+
+Worth volunteering alongside it: **`resolve_user` currently returns the same
+local user for every caller**, so today nobody can *be* a second user and none of
+this is remotely exploitable. The ownership model is real in the queries and
+vacuous in practice until an identity provider exists. Saying that unprompted is
+the difference between "I found bugs" and "I understand my own threat model".
 
 ### 3.4 The other defects worth naming
 

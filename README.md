@@ -153,7 +153,7 @@ gets three `derived_from` edges, and cycles are rejected at compile time.
 ## Testing
 
 ```bash
-pytest -q                        # 96 tests, no network, no API keys
+pytest -q                        # 108 tests, no network, no API keys
 ```
 
 - `test_flow_engine.py` — compilation, fan-in, fan-out, cycle detection, waves
