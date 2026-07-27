@@ -42,3 +42,6 @@ htmlcov/
 eg_temp/
 frontend/eg/
 .orchids/
+
+# Session handoff, not part of the project
+HANDOFF.md
