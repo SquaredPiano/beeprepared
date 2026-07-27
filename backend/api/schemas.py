@@ -51,6 +51,11 @@ class IngestRequest(BaseModel):
 
         Given a bare path yt-dlp will happily read a local file, which would turn
         a YouTube ingest into an arbitrary file read.
+
+        This is a cheap early rejection, not the guard: it says nothing about
+        where the URL points, and an http(s) URL naming an internal address is
+        an SSRF. `YouTubeUrlGuard` in `backend/pipeline/ingestion.py` authorises
+        the host, immediately before the call that fetches it.
         """
         if self.source_type == "youtube" and not self.source_ref.startswith(("http://", "https://")):
             raise ValueError("source_ref must be an http(s) URL for a youtube source")

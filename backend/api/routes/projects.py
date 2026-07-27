@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.api.deps import get_current_user, get_db, require_project
-from backend.api.schemas import ProjectCreate, ProjectResponse, ProjectUpdate
+from backend.api.schemas import IngestRequest, ProjectCreate, ProjectResponse, ProjectUpdate
 from backend.core.config import get_settings
 from backend.models.artifacts import SOURCE_TYPES
 from backend.services.database import Database
@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 EMPTY_CANVAS = {"viewport": {"x": 0, "y": 0, "zoom": 1}, "nodes": [], "edges": []}
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+UPLOADABLE_SOURCE_TYPES = SOURCE_TYPES - {"youtube"}
 
 
 @router.get("")
@@ -127,13 +128,18 @@ async def upload_source(
 
     The upload streams to a temp file rather than being read into memory, so a
     large lecture recording does not become an equally large resident process.
+
+    A `youtube` source is fetched from a URL by the ingest pipeline and is not
+    something anybody uploads, so it is refused before a byte is read. Accepting
+    it queued a job whose `source_ref` was a path on this server's filesystem
+    and whose handler then took the download branch with it.
     """
     require_project(project_id, user_id, database)
 
-    if source_type not in SOURCE_TYPES:
+    if source_type not in UPLOADABLE_SOURCE_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"source_type must be one of: {', '.join(sorted(SOURCE_TYPES))}",
+            detail=f"source_type must be one of: {', '.join(sorted(UPLOADABLE_SOURCE_TYPES))}",
         )
 
     temp_path, size = await _buffer_upload(file)
@@ -143,11 +149,7 @@ async def upload_source(
             "project_id": project_id,
             "type": "ingest",
             "status": "pending",
-            "payload": {
-                "source_type": source_type,
-                "source_ref": temp_path,
-                "original_name": file.filename or "Untitled",
-            },
+            "payload": _ingest_payload(source_type, temp_path, file.filename),
         })
         if not rows:
             raise HTTPException(status_code=500, detail="Could not queue the ingest job")
@@ -164,6 +166,27 @@ async def upload_source(
         "size_bytes": size,
         "dispatch": enqueue(job_id),
     }
+
+
+def _ingest_payload(source_type: str, source_ref: str, filename: Optional[str]) -> Dict[str, Any]:
+    """
+    Build the job payload through the model the other ingest door already uses.
+
+    Hand-writing the dictionary here is what let this route contradict
+    `IngestRequest`: the rules about what a source may be lived in that model,
+    and an upload never went through it. Sharing the model makes the invariant
+    structural rather than something two routes have to remember separately.
+    """
+    try:
+        request = IngestRequest(
+            source_type=source_type,
+            source_ref=source_ref,
+            original_name=filename or "Untitled",
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"Invalid ingest payload: {error}") from error
+
+    return request.model_dump()
 
 
 async def _buffer_upload(file: UploadFile) -> tuple[str, int]:
