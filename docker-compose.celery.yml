@@ -1,0 +1,68 @@
+# The distributed shape, laid over docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.celery.yml up
+#
+# Three processes instead of one: an API that accepts work and streams progress,
+# workers that do it, and Redis carrying both the queue and the event stream
+# between them. The image and the code are identical to the single-container
+# path; only CELERY_ENABLED and REDIS_URL differ, which is what turns the API's
+# in-process pool off and sends jobs to the broker instead.
+#
+# `beat` runs the periodic tasks: re-dispatching jobs that were written to the
+# database but never enqueued, and returning jobs stranded by a dead worker.
+# Without it a retryable failure would sit pending until something else swept it.
+
+x-celery-env: &celery-env
+  BEE_DATA_DIR: /data
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  SIGNING_SECRET: ${SIGNING_SECRET:-}
+  REDIS_URL: redis://redis:6379/0
+  CELERY_ENABLED: "true"
+
+x-worker: &worker
+  build:
+    context: ./backend
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    <<: *celery-env
+  volumes:
+    - beedata:/data
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: beeprepared-redis
+    command: redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    environment:
+      <<: *celery-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *worker
+    container_name: beeprepared-worker
+    command: celery -A backend.celery_app:celery_app worker --loglevel=info --concurrency=4
+
+  beat:
+    <<: *worker
+    container_name: beeprepared-beat
+    command: celery -A backend.celery_app:celery_app beat --loglevel=info

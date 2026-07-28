@@ -27,6 +27,28 @@ docker compose up
 
 Open **[localhost:3000](http://localhost:3000)**.
 
+That is two containers: the backend and the frontend. The API runs its own
+worker pool and an in-process event bus, so there is no broker and no database
+server to stand up.
+
+### Running the distributed shape
+
+The same code can run as three processes instead of one, with Redis carrying
+both the job queue and the event stream between an API and separate Celery
+workers. Add the overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.celery.yml up
+```
+
+Nothing about the image or the code changes. Which shape you get is decided by
+`CELERY_ENABLED` and `REDIS_URL`, and by nothing else — `/health` will report
+`events: redis` and `jobs: celery` instead of `memory` and `local`.
+
+Do not run `docker compose up api` on its own under the overlay. `api` there is
+the Celery half of the stack: it hands work to the broker and starts no worker,
+so without the `worker` service every job is accepted and then never runs.
+
 ### Do I need to configure anything?
 
 One value, and only for quality. Everything else has a working default:
@@ -35,7 +57,8 @@ One value, and only for quality. Everything else has a working default:
 |---|---|
 | Database | SQLite on a Docker volume, durable across restarts |
 | File storage | The same volume, served through signed links |
-| Queue | Redis and Celery, started by compose |
+| Queue | The API's own in-process worker pool |
+| Signing key | Minted per install and persisted on the volume |
 | Model | A local heuristic engine |
 
 Set `OPENROUTER_API_KEY` in `.env` to switch generation from the heuristic
@@ -60,11 +83,15 @@ The API logs what it resolved at startup:
 beeprepared-api  | BeePrepared starting
 beeprepared-api  |   database : /data/beeprepared.db
 beeprepared-api  |   files    : /data/files
-beeprepared-api  |   events   : redis
-beeprepared-api  |   jobs     : celery
+beeprepared-api  |   events   : memory
+beeprepared-api  |   jobs     : local
 beeprepared-api  |   model    : openrouter
 beeprepared-api  | INFO:     Application startup complete.
 ```
+
+Under the Celery overlay the last two read `events : redis` and `jobs : celery`.
+If they say `local` while you expected `celery`, the API did not reach the
+broker and is quietly doing the work itself.
 
 The same information is on `/health`:
 
@@ -96,8 +123,11 @@ root, then `docker compose up -d --force-recreate api worker`.
 Same cause: audio goes through the model, and the offline engine cannot listen.
 
 **Nodes never leave "pending".**
-Nothing is draining the queue. Check `docker compose ps worker`. Jobs are not
-lost while a worker is down — beat re-dispatches pending work every two minutes.
+Nothing is draining the queue. On the default stack that should be impossible,
+because the API is the worker — check `/health` says `jobs: local`. Under the
+Celery overlay, check `docker compose ps worker`. Jobs are not lost while a
+worker is down: the row is written before anything is dispatched, and beat
+re-dispatches pending work every two minutes.
 
 **Progress never updates, but artifacts eventually appear.**
 The WebSocket is not connecting; the canvas shows *"Live updates offline"*.
@@ -142,8 +172,11 @@ cd frontend && npm install && npm run dev
 ```
 
 ```bash
-pytest backend/tests -q
+backend/venv/bin/python -m pytest -q -p no:warnings
 ```
+
+Invoke the virtualenv's Python explicitly. A bare `pytest` or `python3` will
+pick up the system interpreter, which does not have the dependencies.
 
 The tests need no network and no key: they run the real handlers against a
 temporary database and the offline model.

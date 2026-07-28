@@ -1,0 +1,28 @@
+# Keep the build context small and let the image build its own artefacts.
+# node_modules in particular is platform-specific: copying the host's copy in
+# and then running `npm ci` over it is both slow and a source of native-module
+# mismatches.
+
+node_modules
+.next
+out
+build
+dist
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.DS_Store
+*.md
+coverage
+.vercel
+.idea
+.vscode

@@ -97,9 +97,21 @@ falls back to a local heuristic engine that still runs the whole pipeline, just
 with much duller output — which is also what lets the test suite exercise the
 real code paths with no network.
 
-Redis is optional. With it, jobs run in Celery workers that scale independently:
-`docker compose up --scale worker=3`. Without it, the API runs its own worker
-pool through the same code path.
+Redis is optional, and `docker compose up` does without it: the API runs its own
+worker pool and an in-process event bus, so the default install is two
+containers and no broker.
+
+To run the distributed shape instead — an API, separate Celery workers, and
+Redis carrying both the queue and the event stream between them — add the
+overlay, and scale the workers if you want to watch them share the queue:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.celery.yml up
+docker compose -f docker-compose.yml -f docker-compose.celery.yml up --scale worker=3
+```
+
+Same image, same code path. `CELERY_ENABLED` and `REDIS_URL` decide which shape
+you get, and `/health` tells you which one you actually got.
 
 ---
 

@@ -1,52 +1,45 @@
-# BeePrepared - the full stack.
+# BeePrepared - the whole application in one command.
 #
-#   docker compose up            redis + api + worker + beat + frontend
-#   docker compose up api        api only; it runs its own worker pool
+#   docker compose up
 #
-# There is no database service: state lives in SQLite on the `beedata` volume,
-# alongside every uploaded source and rendered export. One command, no accounts.
+# That gives you the backend and the frontend. The API runs its own worker pool
+# and an in-process event bus, so there is no broker and no database server to
+# stand up. State lives in SQLite on the `beedata` volume, alongside every
+# uploaded source and every rendered export.
+#
+# To run the distributed shape instead - Redis carrying the queue and the event
+# stream between an API and separate Celery workers - add the overlay:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.celery.yml up
+#
+# Both are the same image and the same code. Which one you get is decided by
+# CELERY_ENABLED and REDIS_URL, and by nothing else.
 
 name: beeprepared
 
-x-backend: &backend
-  build:
-    context: ./backend
-  env_file:
-    - path: .env
-      required: false
-  environment:
-    BEE_DATA_DIR: /data
-    REDIS_URL: redis://redis:6379/0
-    CELERY_ENABLED: "true"
-    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash}
-    CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    SIGNING_SECRET: ${SIGNING_SECRET:-change-me-in-production}
-  volumes:
-    - beedata:/data
-  depends_on:
-    redis:
-      condition: service_healthy
-  restart: unless-stopped
-
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: beeprepared-redis
-    command: redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
   api:
-    <<: *backend
+    build:
+      context: ./backend
     container_name: beeprepared-api
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BEE_DATA_DIR: /data
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # No broker, so the API starts its own worker pool in-process.
+      REDIS_URL: ""
+      CELERY_ENABLED: "false"
+      # Left empty on purpose. An unset key makes each install mint and persist
+      # a private one on the volume; a key written here would be public, and a
+      # download link is unforgeable only while its key is not.
+      SIGNING_SECRET: ${SIGNING_SECRET:-}
+    volumes:
+      - beedata:/data
     ports:
       - "8000:8000"
     healthcheck:
@@ -54,27 +47,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 20s
+    restart: unless-stopped
 
-  worker:
-    <<: *backend
-    command: celery -A backend.celery_app:celery_app worker --loglevel=info --concurrency=4
-
-  beat:
-    <<: *backend
-    command: celery -A backend.celery_app:celery_app beat --loglevel=info
-
+  # No dependency on the API: this serves an app that talks to the backend from
+  # the browser, so it has nothing to wait for and should come up either way.
   frontend:
     build:
       context: ./frontend
     container_name: beeprepared-frontend
-    ports:
-      - "3000:3000"
+    command: node server.js
     environment:
       NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
-    depends_on:
-      api:
-        condition: service_healthy
+    ports:
+      - "3000:3000"
     restart: unless-stopped
 
 volumes:
