@@ -185,10 +185,20 @@ before any tokens are spent.
 Steps are grouped by depth into waves. Everything in a wave has its inputs
 satisfied, so it dispatches at once and independent branches run concurrently.
 
-When a job finishes, `on_job_finished` records the artifact against its node and
-calls `advance`, which dispatches every step whose parents are now complete.
-`advance` is idempotent, so a repeated completion cannot double-run a step. A
-failed step marks its entire downstream subtree `skipped` rather than leaving
+When a job finishes, `on_job_finished` opens one transaction and does four
+things inside it: records the artifact against its node, writes `node_states`
+back, calls `_schedule` to insert a job row for every step whose parents are now
+complete, and reads the resulting run. Dispatch happens *after* the commit, via
+`_hand_off`, so a job is only announced once its row exists.
+
+It does not call `advance`, and that is deliberate. `advance` opens its own
+transaction, which is the right shape for the initial run but the wrong shape
+here — nesting it would put the read, the queue and the write-back in separate
+atomic units, which is exactly the race the fix removed. Idempotence comes from
+the `status != "pending"` guard in `_schedule` combined with the write lock, not
+from anything named `advance`.
+
+A failed step marks its entire downstream subtree `skipped` rather than leaving
 those nodes pending forever.
 
 ### Fan-in and fan-out
