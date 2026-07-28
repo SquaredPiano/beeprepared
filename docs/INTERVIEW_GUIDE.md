@@ -117,7 +117,7 @@ Do not apologise and start debugging. Say one sentence and move to code.
   with frequency analysis. The output is dull; every stage executes. That is
   also what lets `docker compose up` work with an empty `.env`.
 - **Anything else.** "Let me show you the tests instead —
-  `backend/venv/bin/python -m pytest -q`, 172 tests, no network, no API keys."
+  `backend/venv/bin/python -m pytest -q`, 183 tests, no network, no API keys."
   That takes under two seconds and it exercises real handlers, real
   transactions, real threads and real DAG traversal, so it is a legitimate
   substitute for the demo rather than a consolation prize.
@@ -141,7 +141,9 @@ applied at the wrong layer, is a different claim.
 
 The three to lead with, in this order: the SSRF (§3.1), the scheduler race
 (§3.2), and mutation testing (§3.5). If they want distributed systems rather than
-security, swap the first two.
+security, swap the first two — and if they want *operations*, the fourth one to
+have ready is §3.13, the bug that only appeared the first time the distributed
+configuration was actually built and run.
 
 ### 3.1 The headline: a critical SSRF in my own ingest path
 
@@ -209,6 +211,12 @@ payload by hand — so an upload could queue an ingest job naming a path in the
 server's own temp directory *as a URL to download*. Uploads now go through
 `IngestRequest` and `UPLOADABLE_SOURCE_TYPES`, which is `SOURCE_TYPES` minus
 youtube. An upload is a file; it can never be the source type that is a URL.
+
+That door has since been closed a second time and more thoroughly, and the second
+closing came out of a bug that had nothing to do with security — see
+[§3.13](#313-the-bug-only-the-real-deployment-could-show). An upload is no longer
+named by a path at all, by any door, so there is no longer a field for a path to
+sit in.
 
 ### 3.2 The scheduler race, found and measured
 
@@ -373,7 +381,7 @@ would have noticed if they were wrong.
 > job is still in flight — is a fact rather than a question of timing.
 >
 > All 21 surviving mutations are killed now. The suite went from 108 tests to
-> 172.
+> 172, and it is 183 today.
 
 **The framing to use, and it is the honest one:** *"I had regression tests that
 made me feel covered, and mutation testing showed me two of them proved nothing
@@ -512,7 +520,7 @@ better story.
 | **`create_job` never checked the source artifacts.** It checked that you owned the *project* and stopped there. | Queue a generate or refine naming artifact ids from someone else's project. The handler resolves them, reads their content, and writes it into a new artifact in *your* project — a clean cross-tenant read, laundered through the generator. | Every source id now goes through `require_project_artifact` before the row is written: it asserts you own the artifact *and* that it lives in the project you named. `_source_ids` extracts them per request type. |
 | **`deps.py` used `if owner and owner != user_id`.** | A project with a NULL `user_id` was readable by anyone, while `list_projects` filtered on `user_id` and hid it. Read said yes, list said no — the two disagreeing is how this kind of hole survives review. | `require_project` is now `if project.get("user_id") != user_id`. Absent ownership is denial, not permission. |
 | **`update_artifact` merged client `content` wholesale.** | Rewrite `content.binary.storage_path` to any key in the store, then call `/download` and have the server sign a valid link to it. Escalation through the *export metadata*, not through the file server. | The `binary` block is renderer-owned. `update_artifact` drops whatever the client sent and restores it from the existing row, so the storage key is never client-writable. |
-| **`IngestRequest` with `source_type: "youtube"` and a filesystem `source_ref`** went straight to `yt_dlp.extract_info`, which reads local files as happily as URLs. | Arbitrary local file read, dressed as a video download. | A `model_validator` on `IngestRequest` requires `http://` or `https://` for youtube sources. **This fix was incomplete — see [§3.1](#31-the-headline-a-critical-ssrf-in-my-own-ingest-path).** |
+| **`IngestRequest` accepted a filesystem path as `source_ref`.** With `source_type: "youtube"` it went straight to `yt_dlp.extract_info`, which reads local files as happily as URLs. With `pdf`, `audio`, `video`, `pptx` or `md` it went down the upload branch, which read the path directly — no downloader needed. | Arbitrary local file read, either dressed as a video download or not dressed at all. Read, extracted, and committed as an artifact you could download. | Two halves, closed at different times. The youtube half got a `model_validator` requiring `http://` or `https://` — **and that fix was incomplete in a second way, see [§3.1](#31-the-headline-a-critical-ssrf-in-my-own-ingest-path)**. The other half is closed now: `IngestRequest` refuses a `source_ref` on any non-youtube type at all, an upload is named by the `staged_key` it was staged under, and `IngestHandler` refuses it again at the point of use. Five parametrised tests, one per non-youtube source type. |
 | **`/flow/run` reached the same place through a different door.** Fixing `create_job` did not fix this: canvas nodes arrive in the request body, and the compiler reads artifact ids straight out of them into `seed_artifacts`. | Run a flow in your own project seeded with a node naming someone else's artifact, and the engine queues a generate job carrying that id. Confirmed before fixing: `202`, with the foreign id visible in the job payload. The saved canvas was a third door, since `canvas_state` is caller-written through `PATCH`. | `_require_owned_seeds` checks every seed before anything is persisted, so a refused run leaves no `flow_run` and no job. `/flow/validate` refuses identically instead of reporting the graph as valid. |
 | **The HMAC signing key was published in this repository** — `beeprepared-dev-secret` as the default in `config.py`, `change-me-in-production` in `.env.example` and `docker-compose.yml`. | Download links are unforgeable only while the key is private. Anyone who had *read the repo* could mint a valid, unexpired link for any object in the store, with no session at all. The signed-link scheme was decorative in every default deployment. | `require_unforgeable_links` refuses to boot on an unset or published key, and `get_settings` mints a private random key and persists it when the configured one is published — so a fresh clone and `docker compose up` still work rather than being broken by the fix. Five tests. |
 
@@ -560,7 +568,7 @@ between "I found bugs" and "I understand my own threat model".
 | 9 | **Source ids parsed as `uuid.uuid4() if isinstance(x, str) else x` inside a bare `except: pass`.** | A malformed id became a *fresh random* id, which became a lookup for an artifact that had never existed. The error surfaced three layers from its cause. | `as_uuid()` parses and raises, naming the offending value. |
 | 10 | **`ALLOWED_GENERATIONS` was checked and the failure branch was `pass`.** | The type map documented a rule it did not enforce. A comment pretending to be a constraint is worse than no constraint. | `ALLOWED_TARGETS`; `_check_transition` raises, listing what *is* allowed. |
 | 11 | **CORS was `allow_origins=["*"]` with `allow_credentials=True`.** | Browsers reject that combination outright, so there was effectively no CORS — it only ever worked same-origin. | Explicit origin list from settings, plus an `allow_origin_regex` for localhost. |
-| 12 | **Uploads were read whole into memory**; a 600 MB recording became 600 MB resident. | Two concurrent uploads on a small box is an OOM kill, not a slow request. | `_buffer_upload` streams in chunks and enforces the limit *as it goes*. `IngestHandler` deletes the staged file in a `finally` — see [3.11](#311-also-fixed). |
+| 12 | **Uploads were read whole into memory**; a 600 MB recording became 600 MB resident. | Two concurrent uploads on a small box is an OOM kill, not a slow request. | `_stage_upload` streams in chunks and enforces the limit *as it goes*. Where the streamed copy then goes was a second bug of its own — see [§3.13](#313-the-bug-only-the-real-deployment-could-show). |
 | 13 | **The knowledge-core validator required every collection to be populated.** | A short recording with no worked examples failed ingest, discarding an otherwise usable extraction. Strictness that costs the user their upload is a bug. | `REQUIRED_FIELDS` is now only the fields every generator actually reads. Markup rejection stayed — stray LaTeX in the core corrupts everything derived from it. |
 
 Rows 4 and 5 have a sequel: fixing the *matching* left the classifier correct and
@@ -592,15 +600,13 @@ things that should not have been on the event loop.**
   dead loop raises — outside the retry loop, so it was not even retried. It is
   now a `weakref.WeakKeyDictionary` keyed by the loop object itself, which also
   stops the table growing for the life of the process.
-- **The staged upload leaked.** `_buffer_upload` unlinked on every failure path,
+- **The staged upload leaked.** The upload route unlinked on every failure path,
   but nothing deleted the file after a *successful* ingest, so every ingested
-  lecture left a full-size duplicate in `/tmp` until reboot.
-  `IngestHandler._discard_staged_upload` now deletes it in a `finally`, guarded
-  by shape-matching what the upload endpoint actually creates: the name starts
-  with `tempfile.gettempprefix()`, the parent is exactly `tempfile.gettempdir()`,
-  and it is a regular file. A YouTube URL and a developer's own file path both
-  fail that guard, because deleting the wrong file is far worse than leaking one.
-  Three tests cover it, including `test_a_callers_own_file_is_never_deleted`.
+  lecture left a full-size duplicate behind until reboot. `IngestHandler` now
+  releases the staging slot once the ingest has succeeded. Where that release
+  sits, and the guard on what it is allowed to delete, both changed again with
+  the staging move — [§3.13](#313-the-bug-only-the-real-deployment-could-show)
+  is the current version and this bullet is only the first half of the story.
 
 ### 3.12 The frontend, briefly
 
@@ -621,14 +627,109 @@ mistake as §3.3 stated in React: a property that holds in one code path and is
 assumed to hold in all of them. Do not oversell it; the frontend is still the
 weak half and §8 says so.
 
-### 3.13 And the shape of it changed
+### 3.13 The bug only the real deployment could show
+
+**This is the best "why didn't your tests catch it" answer in the document**, and it is
+worth telling even when nobody asks, because the answer is not "I forgot a case".
+It is that every test ran in one process and the bug only exists in two.
+
+The story, in his words:
+
+> I had never actually built the images and run the distributed configuration.
+> I'd run the single-container one hundreds of times and the test suite
+> thousands. The first time I brought up `docker compose -f docker-compose.yml
+> -f docker-compose.celery.yml up` and uploaded a lecture, the job failed
+> immediately with `No readable file at /tmp/tmplvqcq44o.md`.
+>
+> The upload endpoint streamed the file into the operating system temp directory
+> and put that absolute path into the ingest job's `source_ref`. That works only
+> while the process that accepts the upload and the process that runs the job
+> are the same process. Under the Celery overlay they are separate containers,
+> and separate containers have separate `/tmp`. So the worker was looking for a
+> file that had never existed on its filesystem, and *every* upload failed. Not
+> some of them. Upload was completely broken in the distributed configuration —
+> which is the configuration my whole architecture story is about.
+>
+> It worked in the single-container shape for a reason that is worth saying out
+> loud: there the worker pool runs *inside* the API process, so the two of them
+> share a temp directory by accident rather than by design. The code was relying
+> on a coincidence of deployment, and one of my two supported deployments did
+> not provide it.
+
+**The fix, and why it is a fix and not a patch:**
+
+> The staging moved into the file store. The store sits on the data volume, and
+> `docker-compose.celery.yml` mounts that volume into the API container and both
+> worker containers, so it is the one surface all three genuinely share. The job
+> payload now carries a *storage key* instead of a path, and a key resolves to
+> the same bytes in every process that can reach the volume.
+>
+> The route still streams through a `NamedTemporaryFile` for memory safety — a
+> 600 MB recording must not become 600 MB resident — but with `delete=True`, and
+> the copy into the store happens inside the `with` block. That temp file is now
+> what it should always have been: a private buffer belonging to one request,
+> gone when the request ends. Three `os.unlink` calls disappeared with it,
+> because the `with` block does all of that, and the route no longer imports
+> `os` at all.
+
+**Two consequences worth volunteering, because they are the interesting part:**
+
+- **It closed the arbitrary local file read.** Once an upload is named by a key
+  rather than a path, `source_ref` has exactly one remaining meaning — a URL to
+  fetch — so `IngestRequest` can refuse it outright for every source type but
+  youtube. My own notes called that the largest genuinely-open item in the
+  backend, and it closed as a side effect of fixing a deployment bug rather than
+  as a security fix. Say that; it is more interesting than pretending it was
+  planned. What is still open on that field is the youtube door, and that is the
+  resolve-time-versus-connect-time gap in §8, not a file read.
+- **It made the job payload stop disclosing a server path.** `GET /api/jobs/{id}`
+  hands the payload back to the caller. It used to hand back the absolute path of
+  a file in the server's temp directory. A storage key is scoped to a project and
+  means nothing outside the store.
+
+**The regression test is the part to point at**, because a test that only proved
+the happy path would prove nothing here — the old code passed the happy path too:
+
+> `TestCrossProcessIngest` simulates the container split rather than asserting
+> around it. It deletes and replaces the accepting process's temp directory after
+> the upload, so nothing the API buffered can still be read. It drops the module
+> singletons, so the store, the database and the settings are resolved again from
+> configuration the way a fresh process would. It builds the handler only *after*
+> all of that, so the handler cannot have captured anything from before. And then
+> it runs the job through `JobExecutor().run_job`, which is the exact entry point
+> `tasks.py` calls under Celery, rather than through the handler directly.
+>
+> Its companion in the same class asserts the other half — that the temp
+> directory the request buffered through is *empty* once the upload returns, so
+> there is nothing left for a second reader to find. And over in the upload tests
+> there is one asserting the stored payload contains no absolute host path, which
+> checks that through `GET /api/jobs/{id}` rather than by reading the row, because
+> the endpoint is the thing that actually discloses.
+
+**And one honest cost, which he should state before being asked.** Releasing the
+staged copy used to happen in a `finally`. That meant a *retryable* ingest failure
+deleted the only copy of what the caller had uploaded, so the retry the runner
+queued failed for a second, unrelated reason — a transient failure became a
+permanent one. Releasing now happens on the success path only. The price is that a
+job which exhausts its attempts leaves one file in that project's staging folder
+with nothing pointing at it. Losing the user's upload is worse than leaking a file,
+so that is the right way round, but it is a real cost and it is unbounded.
+
+**The framing to use:** *"That bug existed for the entire life of the project and
+no test caught it, because every test ran in one process and the bug only exists
+in two. It took building the images and running the thing for real. That is the
+same lesson as my other two 'why didn't the tests catch it' answers — the test
+exercised a configuration in which the property happened to hold — except this
+time the configuration wasn't a code path, it was a deployment."*
+
+### 3.14 And the shape of it changed
 
 | Before | After |
 |---|---|
 | One 1,060-line `main.py`: hand-rolled Supabase HTTP client, auth, every endpoint | `main.py` is 199 lines of assembly. Six packages with a one-way dependency rule |
 | Jobs on an `asyncio.create_task` loop inside the API process | A job table, an atomic claim, a reaper, and a pluggable transport (Celery, or an in-process pool through the same executor) |
 | Supabase, Cloudflare R2, Vertex, Gemini, Deepgram — 96 packages | SQLite, a local file store with signed links, OpenRouter — 52 pinned packages |
-| Tests: effectively none | 172, no network, no keys, including two real-thread concurrency tests |
+| Tests: effectively none | 183, no network, no keys, including two real-thread concurrency tests |
 
 **The local-first reasoning, in his words:** personal projects rot when a free
 tier lapses or a key gets rotated, which is exactly what happened here — the
@@ -918,9 +1019,18 @@ execute.
 > written. That only passes because nothing downstream can tell one provider from
 > another, which is Liskov doing work rather than being cited. `TestStagedUploads`
 > is the same idea with stub pipeline stages, and it includes the one I care
-> about most — `test_a_callers_own_file_is_never_deleted` — because the cleanup I
-> added is an `unlink`, and I wanted a test standing between it and someone's
-> actual files.
+> about most — `test_only_a_staged_upload_can_be_released` — because the cleanup
+> I added is a delete, and I wanted a test standing between it and a project's
+> stored sources. It puts a real source in the store, tries to release it both by
+> its own key and by climbing out of the staging folder with `..`, and asserts the
+> source is still there afterwards.
+
+`TestCrossProcessIngest` lives in the same file and is the newest thing in it. It
+is the regression test for §3.13, and it is worth showing next to the others
+because it is testing a *seam between processes* rather than a seam between
+classes: it destroys the accepting process's temp directory, drops the singletons,
+and only then builds the handler and runs the job through the real Celery entry
+point.
 
 It also now holds `TestProgressAttribution`, which is the second concurrency
 bug's regression test, so if the conversation lands here anyway it is a clean
@@ -956,7 +1066,7 @@ needed a different shape rather than being forced through the same one.
 **Liskov.** `OfflineProvider` and `OpenRouterProvider` are interchangeable
 everywhere. The proof is that the entire suite runs the real handlers against the
 offline one — only possible because nothing downstream can tell them apart. If
-that substitution were leaky, 172 tests would fail.
+that substitution were leaky, 183 tests would fail.
 
 The limit of that, which is worth volunteering: the substitution is so complete
 that the offline provider never calls `extract_json`, so a real parser bug lived
@@ -1038,6 +1148,32 @@ answer that is not a list of features.
 > nothing about the configuration where it didn't. That's the pattern I now look
 > for first.
 
+**"Has your test suite ever missed something completely?"**
+
+This is the strongest version of the "why didn't your tests catch it" family,
+because the answer is not a missing case — it is a missing *environment*.
+
+> Yes, and it's the one I'd tell. Upload was completely broken in the distributed
+> configuration for the entire life of the project. The endpoint streamed the file
+> into the OS temp directory and put that absolute path into the job payload,
+> which works only while the process that accepts the upload and the process that
+> runs the job are the same process. Under the Celery overlay they're separate
+> containers with separate `/tmp`, so the worker couldn't open the file and every
+> single upload failed with `No readable file at /tmp/…`.
+>
+> No test caught it because every test ran in one process. It took building the
+> images and bringing the distributed stack up for the first time. The fix is that
+> staging moved into the file store, which lives on the volume every container
+> mounts, and the payload carries a storage key instead of a path — a key resolves
+> to the same bytes in every process that can reach the volume. The regression test
+> deletes the accepting process's temp directory, drops the singletons, builds the
+> handler only afterwards and runs the job through the real Celery entry point, so
+> it fails against the old code for the right reason.
+>
+> The thing I actually took from it: a suite that never runs your other supported
+> deployment is not testing that deployment, it is testing the one it happens to
+> run in.
+
 **"How do you know your tests are any good?"**
 
 Use this instead of quoting a coverage number. It is the strongest behavioural
@@ -1058,7 +1194,8 @@ answer in the document.
 > kept the worker asleep between two requests. At a 1 ms backoff it failed 3 out
 > of 3.
 >
-> All 21 survivors are killed now and the suite went from 108 to 172. But the
+> All 21 survivors are killed now and the suite went from 108 to 172, and it is
+> 183 today. But the
 > answer to your question isn't the number — it's that coverage told me those
 > lines ran and mutation testing told me nothing would have noticed if they were
 > wrong.
@@ -1162,7 +1299,7 @@ failures were the two the retry logic had stopped covering.
 > I don't mock the LLM; I substitute the provider. `OfflineProvider` implements
 > the same interface and derives artifacts from the source text with frequency
 > analysis, so the tests run the *real* handlers, the real transactions and the
-> real DAG traversal against a temp SQLite database — 172 tests, no network, no
+> real DAG traversal against a temp SQLite database — 183 tests, no network, no
 > keys, under two seconds. Where I need to assert on what the model was *asked*,
 > `test_seams.py` uses `RecordingProvider`, which answers from a script and
 > records the prompts. Mocking `httpx` would only have tested my mock.
@@ -1212,8 +1349,8 @@ what fits the conversation. The first is the strongest thing on this list.
 | Limitation | The line to say |
 |---|---|
 | **The SSRF guard checks at resolve time, not connect time** | "This is the sharpest edge I know about, and it's a gap in a fix I'm otherwise pleased with. I resolve the host and check every address, then hand the URL to yt-dlp, which opens its own socket. A DNS rebind — public answer for my check, internal answer a moment later for the fetch — gets through, and so does a redirect from a genuine YouTube host to an internal address. Closing it properly means pinning the resolved IP into the socket or putting an egress proxy in front, and yt-dlp doesn't give me a connect hook clean enough to do the first. I'd do the proxy before any multi-user deployment." |
-| **`ingest` submitted directly to `POST /api/jobs` with a non-YouTube `source_ref` is still an arbitrary local file read** | "Same family, still open. The upload route sets `source_ref` server-side and now refuses `youtube` outright, and the youtube branch has a real guard on it, but `IngestRequest` still doesn't constrain `source_ref` for `pdf`, `audio`, `video`, `pptx` or `md` — name a local path and `IngestHandler` reads it, extracts the text and commits it as an artifact you can download. It's single-user and local-only, so today the 'attacker' is the operator, and the workspace page deliberately lets a developer type a local path. The fix is making `source_ref` a storage key rather than a filesystem path, and I've left it deliberately rather than not seen it." |
 | **Single-user, no multi-tenancy** | "`resolve_user` takes an `Authorization` header and ignores it — one local user for every caller. Ownership is recorded and enforced on every read, so the queries are already correct; there's just no identity provider behind it. Deliberate: one seam to replace, not a refactor. Worth being precise though — that makes the *cross-tenant* holes unexploitable today, and it does nothing for the SSRF or the signing key, which were exploitable by anyone who could reach the API." |
+| **A permanently-failed ingest leaves its staged upload behind** | "This is a cost I chose. Releasing the staged copy used to be in a `finally`, and that made every retryable ingest failure permanent — the retry found nothing to read and failed for a completely unrelated reason. It's on the success path now, so a job that exhausts its attempts leaves one file in that project's staging folder with nothing pointing at it. Losing the caller's upload is worse than leaking a file, so that's the right way round, but it's unbounded and the real fix is releasing it when `fail_job` records a *terminal* failure rather than a retryable one." |
 | **A retried ingest orphans its first copy** | "`store_upload` mints a fresh uuid key per attempt, so a failed-then-retried ingest leaves the first attempt's copy in the file store referenced by nothing. Small, but it's unbounded growth, and the fix is either keying on job id or sweeping artifacts with no row." |
 | **Mutation testing was a one-off, not a habit** | "I ran about 45 mutations by hand against a sandbox copy and killed all 21 survivors, but it isn't in CI and there's no tooling behind it. The suite runs in under two seconds so there's no real reason it couldn't be — I just haven't wired it up, and until I do, the next regression test I write gets the same benefit of the doubt the two broken ones did." |
 | **No vector store / RAG** | "A lecture fits in a modern context window, and the knowledge core is a better summary than top-k chunks — it's structured, and every generator reads the same one, which is what keeps artifacts consistent. RAG would have been resume-driven." |
@@ -1241,7 +1378,7 @@ Sixty seconds before the call.
    produced 9 dispatches before, 2 after. Events wait for the commit too, through
    an outbox.
 
-### The three since last time
+### The four since last time
 
 1. **The SSRF.** I fixed the URL *scheme* and never asked what the *host* could
    be. yt-dlp fetched a cloud metadata endpoint and my pipeline committed the
@@ -1251,21 +1388,26 @@ Sixty seconds before the call.
    reporter attached by mutation — jobs reported into each other's projects.
    `copy.copy` per job.
 3. **Mutation testing.** ~45 mutations; 8 of 10 regression tests held, 2 proved
-   nothing, 1 more was passing on scheduling luck. 108 tests → 172.
+   nothing, 1 more was passing on scheduling luck. 108 tests → 172; 183 today.
+4. **The one only the real deployment showed.** Uploads were staged in `/tmp` and
+   the job carried that path. Two containers, two `/tmp`s — every upload failed
+   under Celery with `No readable file at /tmp/…`. Staging moved into the file
+   store on the shared volume, the payload carries a storage key, and that closed
+   the last arbitrary-file-read as a side effect.
 
 ### The numbers
 
 | | |
 |---|---|
-| Tests | **172** — no network, no API keys, temp SQLite + offline provider, ~1.4s |
-| Test files | 72 API, 59 pipeline, 21 flow engine, 20 seams |
+| Tests | **183** — no network, no API keys, temp SQLite + offline provider, ~1.5s |
+| Test files | 79 API, 59 pipeline, 21 flow engine, 24 seams |
 | The measurement | 8 concurrent completions → **9 dispatches before, 2 after** |
 | Mutation sweep | ~45 mutations, **21 survivors, all now killed**; 108 tests → 172 |
 | Racing-workers test | 6 threads, 24 jobs, every job claimed exactly once |
 | SSRF guard tests | **18** in `TestYouTubeIngestGuard` |
 | Dependencies | **52** pinned (was 96) |
 | Artifact types | **8** in `ARTIFACT_MODELS` — quiz, exam, notes, slides, flashcards, study guide, cheat sheet, mind map (**7** in `SPECS`; the exam has its own two-stage path) |
-| Source types | **6** — youtube, audio, video, pdf, pptx, md (5 uploadable; youtube is URL-only) |
+| Source types | **6** — youtube, audio, video, pdf, pptx, md (5 uploadable, each named by a `staged_key`; youtube is URL-only and the only type that may carry a `source_ref`) |
 | Tables | **6** — projects, jobs, artifacts, artifact_edges, flow_runs, chat_messages |
 | Security holes found and fixed | **6** in `backend/api/`, plus the SSRF in `pipeline/ingestion.py` |
 | Node ceiling | 100 per flow |
@@ -1290,6 +1432,8 @@ Sixty seconds before the call.
 | The corruption bug | `backend/pipeline/cleaning.py` — `clean` vs `clean_transcript`, `TRANSCRIBED_SOURCE_TYPES` |
 | The signing-key guard | `backend/main.py` — `require_unforgeable_links`; `PUBLISHED_SECRETS` in `core/config.py` |
 | Ownership | `backend/api/deps.py` — `require_project`, `require_project_artifact` |
+| Upload staging | `backend/services/uploads.py` — `UploadStaging.stage`, `path_for`, `discard`, `_require_staged_by` |
+| Its tests | `backend/tests/test_seams.py` — `TestStagedUploads`, `TestCrossProcessIngest` |
 | The SOLID evidence | `backend/tests/test_seams.py` — `RecordingProvider`, `TestStagedUploads` |
 | Line by line, any file | `docs/walkthrough/` — start at `09-flow-engine.md` |
 
@@ -1299,7 +1443,7 @@ Sixty seconds before the call.
   still runs.
 - Frontend hangs on Run → it's fixed, but reload the page and carry on; do not
   debug it live.
-- Anything else fails → `backend/venv/bin/python -m pytest -q`, 172 tests, under
+- Anything else fails → `backend/venv/bin/python -m pytest -q`, 183 tests, under
   two seconds.
 - Asked something you don't know → "I don't know off the top of my head, let me
   look" and open the file. Reading your own code in front of them is a *good*

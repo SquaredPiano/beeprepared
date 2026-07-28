@@ -198,7 +198,7 @@ that gated on `require_project` — read, update, delete, artifacts, jobs, flows
 WebSocket — inherited that.
 
 What made it a real inconsistency rather than a theoretical one is that `list_projects`
-disagreed. That endpoint (`projects.py:35`) filters with `("user_id", f"eq.{user_id}")`,
+disagreed. That endpoint (`projects.py:36`) filters with `("user_id", f"eq.{user_id}")`,
 which compiles to `WHERE user_id = ?`. In SQL, `NULL = 'local-user'` is not true, so an
 unowned project never appeared in a listing. Read said yes and list said no about the same
 row. That is the shape of bug that survives a long time, because the UI never shows you the
@@ -211,7 +211,7 @@ not "the owner must not be somebody else".
 
 Where do unowned projects come from at all? The schema at
 `backend/services/database.py:39` declares `user_id TEXT` with no `NOT NULL` constraint, so
-any insert that omits the column produces one. The test at `test_api.py:379-390` creates one
+any insert that omits the column produces one. The test at `test_api.py:566-577` creates one
 deliberately and asserts both the 403 and the absence from the listing.
 
 **Worth knowing.** A foreign project returns 403, not 404. That confirms to the caller that
@@ -247,7 +247,7 @@ for the exception it may raise.
 
 This is why the NULL-owner fix mattered twice over. An artifact in an unowned project was
 readable through `GET /api/artifacts/{id}` for the same reason the project was. The test at
-`test_api.py:392-398` covers exactly that path.
+`test_api.py:578-584` covers exactly that path.
 
 ### `require_project_artifact` — the function that closes holes 1 and 5
 
@@ -295,9 +295,10 @@ denied on grounds of permission, the request was simply incoherent.
 
 ## 2. `backend/api/schemas.py`
 
-194 lines of Pydantic models. This file is the boundary where untrusted JSON stops being
-untrusted. Two of the holes are closed here, and a third — the SSRF — is deliberately
-*not* closed here, which is the more interesting fact and has its own section below.
+228 lines of Pydantic models. This file is the boundary where untrusted JSON stops being
+untrusted. Two of the holes are closed here — and hole 4, which used to be closed only
+halfway, is now closed completely — and a third, the SSRF, is deliberately *not* closed
+here, which is the more interesting fact and has its own section below.
 
 ### Header
 
@@ -359,17 +360,50 @@ class ProjectResponse(BaseModel):
 ```
 
 `schemas.py:25-32`. The response shape. It matters mostly as a projection: `create_project`
-at `projects.py:55` builds it field by field from the database row, so a column added to the
+at `projects.py:56` builds it field by field from the database row, so a column added to the
 table does not silently start appearing in API responses.
 
-### `IngestRequest` — hole 4, the YouTube filesystem read
+### `IngestRequest` — hole 4, the filesystem read, and the half that used to stay open
 
 ```python
 class IngestRequest(BaseModel):
+    """
+    Where an ingest job is to get its source.
+
+    The two references are different kinds of thing and never both: `source_ref`
+    is a URL the pipeline fetches, and `staged_key` names an upload already
+    sitting in the file store, which is where the upload endpoint puts one.
+    """
+
+    source_type: str
+    source_ref: Optional[str] = None
+    staged_key: Optional[str] = None
+    original_name: str = "Untitled"
+```
+
+`schemas.py:35-47`. Read that field list against the one it replaced, because the difference
+between them *is* the fix:
+
+```python
     source_type: str
     source_ref: str
     original_name: str = "Untitled"
+```
 
+There used to be one reference field and it meant two different things depending on
+`source_type`. For an upload it was the filesystem path of the temp file the API had just
+buffered. For YouTube it was the video URL. One field, two meanings, and only one of the two
+meanings was ever constrained. That overloading is what made hole 4 possible, and it is why
+half of hole 4 survived the fix that was supposed to close it.
+
+Now there are two fields and each means exactly one thing. `source_ref` is a URL the
+pipeline will fetch. `staged_key` is a key in the file store, minted by the upload endpoint,
+naming bytes that are already sitting on the shared data volume. Neither field can carry a
+path on the server's disk: a path is not an http(s) URL, and it is not a storage key either,
+because `UploadStaging` accepts only the exact three-segment shape it writes. There is no
+longer a field to put `/etc/passwd` in.
+
+```python
     @field_validator("source_type")
     @classmethod
     def known_source(cls, value: str) -> str:
@@ -378,78 +412,126 @@ class IngestRequest(BaseModel):
         return value
 ```
 
-`schemas.py:35-45`. `source_ref` means different things per type: for an upload it is the
-path of the temp file the API buffered; for YouTube it is the video URL. That overloading is
-what made the hole possible.
-
-Lines 40-45 check the type is one of the six known ones and produce an error message that
-lists them, so the frontend can show something useful rather than "invalid".
+`schemas.py:49-54`. Unchanged. The type must be one of the six known ones, and the error
+message lists them, so the frontend can show something useful rather than "invalid".
 
 ```python
     @model_validator(mode="after")
-    def youtube_ref_is_a_url(self) -> "IngestRequest":
+    def exactly_one_reference(self) -> "IngestRequest":
         """
-        Keep the downloader on the network.
+        A job that names both says nothing about which one it means.
 
-        Given a bare path yt-dlp will happily read a local file, which would turn
-        a YouTube ingest into an arbitrary file read.
-
-        This is a cheap early rejection, not the guard: it says nothing about
-        where the URL points, and an http(s) URL naming an internal address is
-        an SSRF. `YouTubeUrlGuard` in `backend/pipeline/ingestion.py` authorises
-        the host, immediately before the call that fetches it.
+        One that names neither has nothing to read, and would be accepted here
+        only to fail in a worker minutes later.
         """
-        if self.source_type == "youtube" and not self.source_ref.startswith(("http://", "https://")):
-            raise ValueError("source_ref must be an http(s) URL for a youtube source")
+        if bool(self.source_ref) == bool(self.staged_key):
+            raise ValueError(
+                "an ingest job names exactly one of source_ref, a URL to fetch, and "
+                "staged_key, an upload waiting in the file store"
+            )
         return self
 ```
 
-`schemas.py:47-62`. **This is hole 4**, and the docstring it now carries is the more
-important half of the story — see the SSRF section immediately below.
+`schemas.py:56-69`. New. Splitting one field into two creates a state the old model could not
+express: both set, or neither. `bool(a) == bool(b)` is true in exactly those two cases and
+false in the two legitimate ones, which is why one comparison covers both.
 
-What was wrong. A job with `source_type: "youtube"` reaches
-`IngestHandler._store` (`backend/handlers/ingest_handler.py:179`), which calls
+Both-set is the interesting half. A job carrying a `staged_key` *and* a `source_ref` would
+leave whichever branch of the handler ran first deciding what the source was, and the answer
+would depend on the order of two `if` statements rather than on anything the caller was told.
+Neither-set is the cheap half: it would be accepted here and then fail in a worker some
+minutes later, which is a worse error in a worse place.
+
+```python
+    @model_validator(mode="after")
+    def only_youtube_is_named_by_a_url(self) -> "IngestRequest":
+        """
+        Keep the downloader on the network and everything else in the store.
+
+        Given a bare path yt-dlp will happily read a local file, which would turn
+        a YouTube ingest into an arbitrary file read. This is a cheap early
+        rejection, not the guard: it says nothing about where the URL points, and
+        an http(s) URL naming an internal address is an SSRF. `YouTubeUrlGuard`
+        in `backend/pipeline/ingestion.py` authorises the host, immediately
+        before the call that fetches it.
+
+        No other source type may name a `source_ref` at all. It used to be a
+        filesystem path for those, which made any ingest job a read of any file
+        the server could open; an upload is named by the key it was staged under
+        instead, and that key is checked against the project the job belongs to.
+        """
+        if self.source_type == "youtube":
+            if not (self.source_ref or "").startswith(("http://", "https://")):
+                raise ValueError("source_ref must be an http(s) URL for a youtube source")
+        elif self.source_ref:
+            raise ValueError(
+                f"a {self.source_type} source is named by the staged_key of an upload, "
+                "not by a source_ref"
+            )
+        return self
+```
+
+`schemas.py:71-96`. **This is hole 4**, both halves of it, and the docstring it carries is
+the more important half of the story — see the SSRF section immediately below.
+
+What was wrong, and it was wrong in two places. A job with `source_type: "youtube"` reaches
+`IngestHandler._store` (`backend/handlers/ingest_handler.py:195-215`), which calls
 `self._ingestion.store_youtube(payload.source_ref, project_id)`, which at
 `backend/pipeline/ingestion.py:198` calls `downloader.extract_info(url, download=True)`.
 yt-dlp does not require a URL. Given a filesystem path it treats it as a local media file
-and reads it. So a request naming `source_type: "youtube"` and
-`source_ref: "/etc/passwd"` was an arbitrary local file read, and the extracted content
-would then be run through the pipeline and stored as an artifact the caller could read back.
+and reads it. So a request naming `source_type: "youtube"` and `source_ref: "/etc/passwd"`
+was an arbitrary local file read, and the extracted content would then be run through the
+pipeline and stored as an artifact the caller could read back.
+
+The second place is the one that stayed open. Lines 88-90 are the old check, and the old
+check is all there was: it constrained `youtube` and said nothing about `pdf`, `audio`,
+`video`, `pptx` or `md`. Those five went down the *upload* branch of `_store`, which read the
+path directly rather than handing it to yt-dlp, and read it just as happily. An ingest job
+posted to `POST /api/jobs` with `source_type: "md"` and `source_ref: "/etc/passwd"` was an
+arbitrary local file read with no downloader involved at all, and the resulting artifact was
+downloadable. That is what line 91's `elif` closes: **no source type except youtube may name
+a `source_ref` at all.**
 
 Why the fix is a `model_validator` and not a `field_validator`. A field validator sees one
 field at a time. The rule here is a relationship between two fields — the constraint on
-`source_ref` depends on the value of `source_type`. `mode="after"` means it runs once both
-fields have been parsed and coerced, so `self.source_type` and `self.source_ref` are both
+`source_ref` depends on the value of `source_type`. `mode="after"` means it runs once every
+field has been parsed and coerced, so `self.source_type` and `self.source_ref` are both
 populated.
 
-Line 60 is the whole check: for the YouTube type only, the reference must begin with
-`http://` or `https://`. `str.startswith` accepts a tuple, so this is one call.
+Note `(self.source_ref or "")` at line 89. `source_ref` is optional now, so it can be `None`,
+and `None.startswith` is an `AttributeError` rather than a validation failure — a 500 where a
+400 belongs. Coercing to the empty string first means a YouTube job with no reference fails
+the same way a YouTube job with a bad reference does.
 
 Where the check runs matters. It is on the Pydantic model, and the model is constructed in
 `create_job` at `jobs.py:53` inside a `try`, so a violation becomes a 400 before any row is
-written. The test at `test_api.py:464-478` asserts the 400 *and* asserts that no job row was
-created; the companion test at line 480 asserts a real YouTube URL still validates, which is
-the part people forget — a guard that also breaks the legitimate case is not a fix.
+written. The tests at `test_api.py:650-664` and `test_api.py:666-690` assert the 400 *and*
+assert that no job row was created — the second of those is parametrised over
+`sorted(SOURCE_TYPES - {"youtube"})`, so it is five tests, one per non-YouTube type, and a
+seventh source type added later gets covered without anyone editing the test. `test_api.py:692`
+covers the job that names nothing at all, and `test_api.py:723` asserts a real YouTube URL
+still validates, which is the part people forget — a guard that also breaks the legitimate
+case is not a fix.
 
-**Worth knowing, and this is the honest limitation for this hole.** The validator only
-constrains `source_type == "youtube"`. Every other source type still accepts an arbitrary
-string as `source_ref`, and the ingest handler at `ingest_handler.py:181` will read whatever
-path it names. An ingest job submitted directly to `POST /api/jobs` with, say,
-`source_type: "md"` and `source_ref: "/etc/passwd"` is still an arbitrary local file read.
+**And the check is made twice, on purpose.** `IngestHandler._staged_upload_path`
+(`ingest_handler.py:174-193`) refuses a non-YouTube job that carries no `staged_key`, and
+`UploadStaging._require_staged_by` (`uploads.py:79-92`) refuses a key that is not the shape
+this project's upload endpoint writes. The schema is the boundary check and the handler is
+the operation check, which is the same rule the SSRF section below states: validate at the
+boundary, authorise at the operation. A job row can be written by a route that forgets, or
+replayed from the queue, or constructed in a test; the handler is the one place every one of
+those converges.
 
-The upload route does not have this problem, because it never lets the client name a path at
-all: it writes a temp file and passes that path into `IngestRequest` itself
-(`projects.py:152` and `projects.py:171-189`). But the workspace page deliberately allows a
-typed path: `frontend/app/workspace/page.tsx:448` passes a free-text input straight into
-`runPipeline`, which posts it as `source_ref` at
-`frontend/app/workspace/hooks/useJobOrchestrator.ts:117`. That was a development convenience
-— point the pipeline at a file on disk without uploading it — and it is why the API still
-accepts a path.
-
-This is the first thing to close before any multi-user deployment. The shape of the fix is
-to stop accepting `source_ref` from clients at all: make upload the only way to introduce a
-file, and make YouTube the only source type whose reference is client-supplied. Say this
-plainly if asked what is still open. It is the largest genuinely-open item in the backend.
+**What this cost, and it is worth naming rather than hiding.** The old workspace page
+(`frontend/app/workspace/page.tsx:448`) lets a developer type a local path into a free-text
+box and posts it as `source_ref` at
+`frontend/app/workspace/hooks/useJobOrchestrator.ts:117`. That was the development
+convenience the hole existed for, and for the five non-YouTube types it now gets a 400. That
+page is the hackathon-era workspace; the real path is `/upload`, which posts multipart to the
+upload endpoint. Losing the convenience is the right trade — an arbitrary read of the
+server's disk, reachable by anyone who can reach the API, is not something to keep because a
+debug page was built on it — but the honest version of this story includes the fact that
+something did break.
 
 ### The SSRF, and why the guard is not in this file
 
@@ -498,7 +580,7 @@ all**. The pipeline did not know it was reading a secret; it read text, summaris
 filed it. Reading it back needed nothing more than `GET /api/artifacts/{id}`.
 
 **The failed fetches were useful too, which is the part people miss.** `GET /api/jobs/{id}`
-returns `error_message` on a failed job (`schemas.py:129`), and the three outcomes are
+returns `error_message` on a failed job (`schemas.py:163`), and the three outcomes are
 distinguishable: a connection refused fails fast with one message, a filtered port hangs
 until the job timeout, and anything that answers succeeds and produces an artifact. Refused,
 timed out and answered are three different observable states, which is precisely the
@@ -546,16 +628,19 @@ better error: a 400 naming the field, which the frontend can show next to the in
 than a job that fails asynchronously and surfaces as a red node on the canvas. And it still
 closes hole 4 — the bare filesystem path — at the earliest possible moment.
 
-The change to this file was therefore two things: nothing at all to the logic, and a
-docstring that says out loud what the check is *not*. That is deliberate. The dangerous
-version of this code is not the one without the check; it is the one where a reader sees a
-validator on a URL field and concludes the URL has been validated.
+The change to this file when the guard landed was therefore two things: nothing at all to the
+logic, and a docstring that says out loud what the check is *not*. That is deliberate. The
+dangerous version of this code is not the one without the check; it is the one where a reader
+sees a validator on a URL field and concludes the URL has been validated. The `elif` branch
+underneath it came later, with the staged-key change, and it is a different kind of thing: not
+a cheap early rejection but the removal of a capability, because after it there is no source
+type left whose reference is a path.
 
-Tests. The API-layer half is `test_api.py:464` and `:480` as above. The guard's own tests are
-`TestYouTubeIngestGuard` at `test_api.py:503-631`, and the two worth being able to name are
-`test_the_downloader_never_sees_a_refused_url` at `:578`, which replaces `yt_dlp.YoutubeDL`
+Tests. The API-layer half is `test_api.py:650` and `:723` as above. The guard's own tests are
+`TestYouTubeIngestGuard` at `test_api.py:786-935`, and the two worth being able to name are
+`test_the_downloader_never_sees_a_refused_url` at `:861`, which replaces `yt_dlp.YoutubeDL`
 with something that raises if it is ever constructed and so proves the guard runs *before*
-the fetch rather than after it, and `test_a_genuine_youtube_url_passes` at `:574`, which is
+the fetch rather than after it, and `test_a_genuine_youtube_url_passes` at `:857`, which is
 the "did not break the feature" half.
 
 ### `GenerateRequest`
@@ -568,8 +653,8 @@ class GenerateRequest(BaseModel):
     instructions: Optional[str] = Field(None, max_length=4000)
 ```
 
-`schemas.py:65-69`. Two source fields. `source_artifact_ids` is the real one; the singular
-`source_artifact_id` at line 68 is a shorthand that older frontend code sends —
+`schemas.py:99-103`. Two source fields. `source_artifact_ids` is the real one; the singular
+`source_artifact_id` at line 102 is a shorthand that older frontend code sends —
 `useJobOrchestrator.ts:139` still uses it. Rather than break that caller, the model accepts
 both and normalises.
 
@@ -582,9 +667,9 @@ both and normalises.
         return value
 ```
 
-`schemas.py:71-76`. The same pattern as `known_source`. `sorted()` in the message so the
+`schemas.py:105-110`. The same pattern as `known_source`. `sorted()` in the message so the
 list is stable and not in whatever order the frozenset iterates. The test at
-`test_api.py:118` asserts the message text reaches the client, because a 400 saying
+`test_api.py:218` asserts the message text reaches the client, because a 400 saying
 "validation failed" would have been useless to the frontend.
 
 ```python
@@ -599,11 +684,11 @@ list is stable and not in whatever order the frozenset iterates. The test at
         return self.source_artifact_ids or ([self.source_artifact_id] if self.source_artifact_id else [])
 ```
 
-`schemas.py:78-86`. Line 79 is a cross-field rule again: neither field is individually
+`schemas.py:112-120`. Line 113 is a cross-field rule again: neither field is individually
 required, but at least one must produce an id. Without it a generate job with no sources
 would be queued and fail deep in the handler at `generate_handler.py:52`.
 
-`sources()` at line 84 is the normalisation, and it is important for the security story: it
+`sources()` at line 118 is the normalisation, and it is important for the security story: it
 is the single definition of "which artifacts will this job read". `jobs.py:145` calls it to
 decide what to ownership-check, `jobs.py:155` calls it to decide what to store, and
 `_find_in_flight_duplicate` calls it at `jobs.py:175` to decide what counts as identical
@@ -622,11 +707,11 @@ class RefineRequest(BaseModel):
     target_type: Optional[str] = None
 ```
 
-`schemas.py:89-92`. One source, required. `instructions` is required and non-empty, because
+`schemas.py:123-126`. One source, required. `instructions` is required and non-empty, because
 a refine with no instruction is a regenerate and should go through the generate path.
 `target_type` is optional: omitted, the handler produces the same type as the source.
 
-Lines 94-99 validate `target_type` when present, with `value is not None` guarding the
+Lines 128-133 validate `target_type` when present, with `value is not None` guarding the
 membership test so that `None` passes through.
 
 ### `JobRequest`
@@ -638,11 +723,11 @@ class JobRequest(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
 ```
 
-`schemas.py:102-105`. The envelope. Note `payload` is an unvalidated dict here — deliberately.
+`schemas.py:136-139`. The envelope. Note `payload` is an unvalidated dict here — deliberately.
 The payload's real shape depends on `type`, and Pydantic discriminated unions for three
 variants would be more machinery than the two lines in `create_job` that do it explicitly
 (`jobs.py:52-55`). The envelope validates that `type` is one of the three known job kinds at
-lines 107-112; the route then picks the matching model out of `REQUEST_MODELS` and parses
+lines 141-146; the route then picks the matching model out of `REQUEST_MODELS` and parses
 the payload against it.
 
 ### `JobAccepted` and `JobStatus`
@@ -655,18 +740,26 @@ class JobAccepted(BaseModel):
     reused: bool = False
 ```
 
-`schemas.py:115-119`. What a 202 returns. `dispatch` tells the client how the work was
+`schemas.py:149-153`. What a 202 returns. `dispatch` tells the client how the work was
 handed off — `"local"`, `"celery"`, `"deferred"` or `"reused"` — which is what makes the
-Celery-or-in-process decision visible rather than magic. `reused` at line 119 is the
+Celery-or-in-process decision visible rather than magic. `reused` at line 153 is the
 idempotency signal: `true` means no new job was created and the id refers to one already in
 flight. The frontend needs that to avoid double-counting a generation.
 
-`JobStatus` at lines 122-133 is the read shape, including `attempts` and the three
+`JobStatus` at lines 156-167 is the read shape, including `attempts` and the three
 timestamps. Every field except the first four is optional, because a pending job has no
-`started_at` and no result. `error_message` at line 129 is the field that made a failed
+`started_at` and no result. `error_message` at line 163 is the field that made a failed
 SSRF probe informative, as described in the SSRF section above — it is the right field to
 expose for debugging a real ingest failure, and it was also the readout channel for a port
 scan while the host was unconstrained.
+
+`payload` at line 161 is the other field on this model that hands stored data straight back
+to the caller, and it is worth knowing that it is a disclosure surface at all. An ingest
+job's payload used to carry the absolute path of the temp file the API had buffered, so
+`GET /api/jobs/{id}` told anyone who asked where this server keeps things and under what
+name. It now carries a `staged_key`, which is scoped to the project and means nothing
+outside the store. `test_api.py:97` is the test for that, and it checks it through the HTTP
+endpoint rather than through the row, because the endpoint is the thing that discloses.
 
 ### `ArtifactUpdate` — hole 3, first half
 
@@ -675,7 +768,7 @@ class ArtifactUpdate(BaseModel):
     content: Optional[Dict[str, Any]] = None
 ```
 
-`schemas.py:136-137`. One field. This is the model side of hole 3, and on its own it does not
+`schemas.py:170-171`. One field. This is the model side of hole 3, and on its own it does not
 close anything — `Dict[str, Any]` still accepts a `binary` key with a `storage_path` inside
 it. The actual fix is in the route, at `artifacts.py:78-80`, and is explained there. What
 this model does contribute is that `content` is the *only* thing a caller can send. Type,
@@ -692,7 +785,7 @@ class DownloadLink(BaseModel):
     filename: str
 ```
 
-`schemas.py:140-144`. The download endpoint returns a description of a link rather than the
+`schemas.py:174-178`. The download endpoint returns a description of a link rather than the
 bytes. Explained under `artifacts.py`.
 
 ```python
@@ -708,7 +801,7 @@ class FlowRequest(BaseModel):
     edges: Optional[List[Dict[str, Any]]] = None
 ```
 
-`schemas.py:147-156`. Both optional and both defaulting to `None` rather than to an empty
+`schemas.py:181-190`. Both optional and both defaulting to `None` rather than to an empty
 list, and that distinction carries meaning: `None` means "I did not send a graph, use the
 saved one", whereas `[]` means "I am sending you an empty graph", which is an error. The
 route distinguishes them at `flows.py:28` with `if request.nodes is not None`. If the default
@@ -718,7 +811,7 @@ compile an empty canvas.
 The node dicts themselves are `Dict[str, Any]` because they are React Flow nodes and the
 compiler, not Pydantic, understands their shape.
 
-`FlowStepView` (159-163), `FlowPlanResponse` (166-170) and `FlowRunResponse` (173-181) are
+`FlowStepView` (193-197), `FlowPlanResponse` (200-204) and `FlowRunResponse` (207-215) are
 plain response shapes. `FlowPlanResponse` is the interesting one: it carries `valid: bool`
 and an optional `error`, so a graph that will not compile comes back as a 200 with
 `valid: false`. That is because an incomplete canvas is a normal editing state, not a client
@@ -741,7 +834,7 @@ class ChatResponse(BaseModel):
     target_type: Optional[str] = None
 ```
 
-`schemas.py:184-194`. `artifact_id` is optional because the assistant can be used with
+`schemas.py:218-228`. `artifact_id` is optional because the assistant can be used with
 nothing open. `action` defaults to `"answer"`, which is the safe default: if anything goes
 wrong the response says "I answered", not "I queued a regeneration". `job_id` is present
 only on the refine branch, and the frontend uses its presence to decide whether to start
@@ -751,7 +844,7 @@ watching for a new artifact.
 
 ## 3. `backend/api/routes/projects.py`
 
-221 lines. CRUD plus the file upload endpoint.
+236 lines. CRUD plus the file upload endpoint.
 
 ### Header
 
@@ -763,14 +856,14 @@ UPLOAD_CHUNK_BYTES = 1024 * 1024
 UPLOADABLE_SOURCE_TYPES = SOURCE_TYPES - {"youtube"}
 ```
 
-`projects.py:22-26`. The prefix means every path below is relative. `EMPTY_CANVAS` at line 24
+`projects.py:23-27`. The prefix means every path below is relative. `EMPTY_CANVAS` at line 25
 is the initial canvas written on project creation — a viewport at the origin at zoom 1 and no
 nodes. Writing it at creation rather than leaving the column NULL means the frontend never
 has to handle "no canvas yet" as a distinct case.
 
 `UPLOAD_CHUNK_BYTES` is 1 MB, the read size for streaming uploads.
 
-`UPLOADABLE_SOURCE_TYPES` at line 26 is new and is one of the three fixes in this batch. It
+`UPLOADABLE_SOURCE_TYPES` at line 27 is new and is one of the three fixes in this batch. It
 is `SOURCE_TYPES` minus `youtube`, written as a set difference rather than as a second
 literal list so that a source type added to `models/artifacts.py` becomes uploadable
 automatically and nobody has to remember to update two places. The reason it exists is under
@@ -788,7 +881,7 @@ def list_projects(
     return database.select("projects", [("user_id", f"eq.{user_id}")], order="updated_at.desc")
 ```
 
-`projects.py:29-35`. The filter tuples are PostgREST-style — `("user_id", "eq.local-user")` —
+`projects.py:30-36`. The filter tuples are PostgREST-style — `("user_id", "eq.local-user")` —
 and `Database._where` at `services/database.py:513` translates them into parameterised SQL.
 The `eq.` prefix is stripped and the remainder becomes a bound parameter, so this is not
 string interpolation into SQL despite how the f-string looks.
@@ -820,16 +913,16 @@ def create_project(...)
     return ProjectResponse(**{field: rows[0].get(field) for field in ProjectResponse.model_fields})
 ```
 
-`projects.py:38-55`. 201 because a resource is created. Line 48 is where ownership is
+`projects.py:39-56`. 201 because a resource is created. Line 49 is where ownership is
 established: the caller's resolved id is written into the row, which is the thing every
 later check compares against.
 
-Lines 51-52 handle an insert that returns nothing. `Database.insert` re-selects the row it
+Lines 52-53 handle an insert that returns nothing. `Database.insert` re-selects the row it
 just wrote (`database.py:244`), so an empty list means the write did not land. It should be
 impossible; it is a 500 rather than an `IndexError` so that the failure is a clean error
 response and a log line rather than a stack trace escaping into the generic handler.
 
-Line 55 is the projection mentioned earlier. `ProjectResponse.model_fields` is the declared
+Line 56 is the projection mentioned earlier. `ProjectResponse.model_fields` is the declared
 field names, and each is looked up with `.get`, so a column present in the row but absent
 from the model is dropped, and a field in the model absent from the row becomes `None`
 instead of raising.
@@ -842,7 +935,7 @@ def get_project(...)
     return require_project(project_id, user_id, database)
 ```
 
-`projects.py:58-65`. One line. The 404 and the 403 both come out of `require_project`. This
+`projects.py:59-66`. One line. The 404 and the 403 both come out of `require_project`. This
 is the endpoint that said yes to an unowned project before hole 2 was closed.
 
 ```python
@@ -860,20 +953,20 @@ def update_project(...)
     return rows[0]
 ```
 
-`projects.py:68-85`. Ownership first at line 76, then the change set.
+`projects.py:69-86`. Ownership first at line 77, then the change set.
 
-`exclude_none=True` at line 78 is what makes PATCH partial: fields the client did not send
+`exclude_none=True` at line 79 is what makes PATCH partial: fields the client did not send
 are `None` on the model and are dropped, so they are not written. The consequence, worth
 knowing, is that you cannot clear a description by sending `null` — it is indistinguishable
 from not sending the field. Clearing requires sending `""`.
 
-Lines 79-80 reject an empty change set with a 400 rather than performing a no-op update.
+Lines 80-81 reject an empty change set with a 400 rather than performing a no-op update.
 That is not pedantry: `Database.update` at `database.py:250-251` stamps `updated_at` on every
 `projects` write, so an empty PATCH would bump the modification time and reorder the sidebar
-for no reason. The test at `test_api.py:46` covers it.
+for no reason. The test at `test_api.py:52` covers it.
 
-Line 82 filters by id only. It does not re-assert ownership in the WHERE clause, because line
-76 already proved it and both statements run on the same connection in the same request.
+Line 83 filters by id only. It does not re-assert ownership in the WHERE clause, because line
+77 already proved it and both statements run on the same connection in the same request.
 
 This is the endpoint that stores `canvas_state` without validating the artifact ids inside
 it — the limitation described under `ProjectUpdate` above.
@@ -888,7 +981,7 @@ def delete_project(...)
     return {"status": "deleted", "id": project_id}
 ```
 
-`projects.py:88-99`. Ownership, delete, log, respond. The docstring says artifacts, edges and
+`projects.py:89-100`. Ownership, delete, log, respond. The docstring says artifacts, edges and
 jobs cascade, which is a schema property (`ON DELETE CASCADE` in `database.py`) rather than
 something this route does. Returning 200 with a body rather than 204 keeps every endpoint's
 response parseable as JSON, which the frontend's fetch wrapper assumes.
@@ -907,7 +1000,7 @@ def list_artifacts(...)
     }
 ```
 
-`projects.py:102-115`. Nodes and edges in one response, because the canvas needs both to
+`projects.py:103-116`. Nodes and edges in one response, because the canvas needs both to
 render and two round trips would let it paint nodes before it knows how they connect.
 Artifacts are ordered oldest-first so the graph reads in the order it was built.
 
@@ -922,27 +1015,32 @@ async def upload_source(
     ...
 ```
 
-`projects.py:118-125`. `async def` because reading an upload is I/O-bound and the function
+`projects.py:119-126`. `async def` because reading an upload is I/O-bound and the function
 awaits chunk reads. 202 rather than 201, because the response is a queued job, not a finished
 artifact.
 
-The docstring is worth reading, because it now carries the reason for the gate below:
+The docstring is worth reading, because it now carries the reason for the gate below *and*
+the reason the staging moved:
 
 ```python
     """
     Accept a file and queue it for ingestion.
 
-    The upload streams to a temp file rather than being read into memory, so a
-    large lecture recording does not become an equally large resident process.
+    The upload streams to disk rather than being read into memory, so a large
+    lecture recording does not become an equally large resident process, and it
+    is staged in the file store rather than in this process's temp directory:
+    the job may be run by a Celery worker in another container, and the data
+    volume the store sits on is the only thing that container shares with this
+    one.
 
     A `youtube` source is fetched from a URL by the ingest pipeline and is not
     something anybody uploads, so it is refused before a byte is read. Accepting
-    it queued a job whose `source_ref` was a path on this server's filesystem
-    and whose handler then took the download branch with it.
+    one queued a job that named a file on this server and then handed that file
+    to the downloader.
     """
 ```
 
-`projects.py:126-136`.
+`projects.py:127-141`.
 
 ```python
     require_project(project_id, user_id, database)
@@ -954,14 +1052,14 @@ The docstring is worth reading, because it now carries the reason for the gate b
         )
 ```
 
-`projects.py:137-143`. Ownership, then the source type check — and **the set it checks
+`projects.py:142-148`. Ownership, then the source type check — and **the set it checks
 against is the fix.**
 
 What was wrong. The line used to read `if source_type not in SOURCE_TYPES`, and
 `SOURCE_TYPES` contains `"youtube"`. So `source_type=youtube` on a multipart upload passed
 validation. The route then hand-wrote its job payload as a dictionary literal with
 `"source_ref": temp_path`, and that job went to `IngestHandler._store`
-(`ingest_handler.py:171-179`), which branches on the source type and takes the *download*
+(`ingest_handler.py:195-215`), which branches on the source type and takes the *download*
 branch for `youtube` — handing a path on this server's filesystem to `store_youtube` as
 though it were a URL.
 
@@ -981,7 +1079,7 @@ means the two lists cannot drift.
 
 The error message is built from the same set it checked, so the client is told what is
 actually allowed rather than being told a list that includes the thing just refused. The test
-at `test_api.py:633` asserts the 400, asserts no job row was written, and — the assertion
+at `test_api.py:916` asserts the 400, asserts no job row was written, and — the assertion
 worth noticing — asserts that the string `"youtube"` does **not** appear in the detail, which
 is what pins the message to the narrower set.
 
@@ -991,45 +1089,72 @@ able to make the server buffer 200 MB to disk before being told no, and neither 
 caller who named a type that was never going to be accepted.
 
 ```python
-    temp_path, size = await _buffer_upload(file)
+    staging = UploadStaging()
+    staged = await _stage_upload(staging, file, project_id)
 
     try:
         rows = database.insert("jobs", {
             "project_id": project_id,
             "type": "ingest",
             "status": "pending",
-            "payload": _ingest_payload(source_type, temp_path, file.filename),
+            "payload": _ingest_payload(source_type, staged.key, file.filename),
         })
         if not rows:
             raise HTTPException(status_code=500, detail="Could not queue the ingest job")
     except Exception:
-        os.unlink(temp_path)
+        staging.discard(staged.key, project_id)
         raise
 ```
 
-`projects.py:145-158`. Line 145 streams the upload to disk (see `_buffer_upload` below).
-Line 152 used to be an inline dictionary literal spelling out `source_type`, `source_ref`
-and `original_name` by hand; it is now a call to `_ingest_payload`, which builds the payload
-through `IngestRequest`. That change is explained in its own subsection below, because it is
-the structural half of the fix rather than the gate.
+`projects.py:150-164`. Lines 150-151 stream the upload onto the shared data volume (see
+`_stage_upload` below) and come back with a `StagedUpload` — a key and a byte count, not a
+path. Line 158 used to be an inline dictionary literal spelling out `source_type`,
+`source_ref` and `original_name` by hand; it is now a call to `_ingest_payload`, which builds
+the payload through `IngestRequest`. That change is explained in its own subsection below,
+because it is the structural half of the fix rather than the gate.
 
-The security property is unchanged and still worth stating: `source_ref` is set
-**server-side** to the path the server just wrote. The client never names a path through this
-route, which is why the upload endpoint is not affected by the arbitrary-path limitation on
-`POST /api/jobs`.
+**What the payload carries is the interesting part, and it changed.** It used to be
+`"source_ref": temp_path` — an absolute path in this process's temp directory. That was safe
+in the sense that the client never chose it; the server wrote it. It was not safe in two
+other senses, and both of them are why this code looks the way it does now.
 
-The `try/except` at 147-158 exists because the temp file is now an orphan if the job row
-cannot be written. Without the `os.unlink` at line 157, every failed insert would leave a
-file in the system temp directory that nothing would ever clean up — the deletion is
-otherwise the ingest handler's job (`ingest_handler.py:212-232`) and the ingest handler only
-runs if the row exists. `raise` with no argument re-raises the original exception, so the
-error the client sees is the real one.
+The first is that it did not work. Under `docker-compose.celery.yml` the API and the workers
+are separate containers, and separate containers have separate `/tmp`. The path the API wrote
+named nothing at all in the worker, so every single upload failed there with
 
-Note that the `except` now also catches a rejection from `_ingest_payload`: if the shared
-model refuses the payload for any reason, the temp file is unlinked on the way out rather
-than being left behind. Putting the payload construction inside the `try` rather than before
-it is what buys that, and it is why the call sits on line 152 instead of a line or two
-higher.
+```
+Job dbbd5329-... (ingest) failed: No readable file at /tmp/tmplvqcq44o.md.
+```
+
+Upload was completely broken in the distributed configuration — the configuration the whole
+architecture story is about — and it worked in the single-container configuration only
+because there the worker pool runs inside the API process and shares its temp directory by
+accident. The bug had been there the entire life of the project and no test caught it,
+because every test ran in one process. It was found the first time anybody built the images
+and ran the distributed shape for real.
+
+The second is that `GET /api/jobs/{id}` hands the payload straight back to the caller
+(`schemas.py:161`), so the absolute path of a file on the server was a response body. That is
+disclosure, not access, but it is the sort of disclosure that tells an attacker the temp
+directory, the naming scheme and the fact that the file is still there.
+
+A storage key fixes both at once. It resolves to the same bytes in every process that can
+reach the data volume — which under the Celery overlay is the API container and both worker
+containers, because `docker-compose.celery.yml` mounts `beedata:/data` into all of them — and
+it means nothing outside the store, so quoting it back to the caller discloses nothing.
+`test_api.py:97` asserts exactly that, through the HTTP endpoint rather than the row.
+
+The `try/except` at 153-164 exists because a staged upload is now an orphan if the job row
+cannot be written. Without the `discard` at line 163, every failed insert would leave a file
+on the data volume that nothing would ever clean up — releasing it is otherwise the ingest
+handler's job (`ingest_handler.py:245-262`) and the ingest handler only runs if the row
+exists. `raise` with no argument re-raises the original exception, so the error the client
+sees is the real one.
+
+Note that the `except` also catches a rejection from `_ingest_payload`: if the shared model
+refuses the payload for any reason, the staged copy is released on the way out rather than
+being left behind. Putting the payload construction inside the `try` rather than before it is
+what buys that, and it is why the call sits on line 158 instead of a line or two higher.
 
 ```python
     job_id = rows[0]["id"]
@@ -1038,15 +1163,20 @@ higher.
     return {
         "job_id": job_id,
         "filename": file.filename,
-        "size_bytes": size,
+        "size_bytes": staged.size_bytes,
         "dispatch": enqueue(job_id),
     }
 ```
 
-`projects.py:160-168`. `publish` puts a `job.created` event on the bus so any open WebSocket
+`projects.py:166-174`. `publish` puts a `job.created` event on the bus so any open WebSocket
 for this project renders the new job immediately, without the client having to refetch.
 
-`enqueue(job_id)` at line 167 happens **after** the row is committed. That ordering is the
+`size_bytes` at line 172 comes off the `StagedUpload` rather than off a counter in the route,
+which means the number the client is told is the size of the object that is actually in the
+store — `UploadStaging.stage` reads it back with `size_of` after the copy — rather than the
+number of bytes the route thought it wrote.
+
+`enqueue(job_id)` at line 173 happens **after** the row is committed. That ordering is the
 whole reliability story for job dispatch, and it is stated in `dispatcher.py:41-42`: the row
 is the source of truth, the enqueue is a notification. In Celery mode a broker failure leaves
 the job pending and a later sweep picks it up; in local mode the enqueue is a no-op because
@@ -1056,7 +1186,7 @@ could receive a job id for a row that does not exist yet.
 ### `_ingest_payload` — sharing the model instead of duplicating the rules
 
 ```python
-def _ingest_payload(source_type: str, source_ref: str, filename: Optional[str]) -> Dict[str, Any]:
+def _ingest_payload(source_type: str, staged_key: str, filename: Optional[str]) -> Dict[str, Any]:
     """
     Build the job payload through the model the other ingest door already uses.
 
@@ -1064,21 +1194,35 @@ def _ingest_payload(source_type: str, source_ref: str, filename: Optional[str]) 
     `IngestRequest`: the rules about what a source may be lived in that model,
     and an upload never went through it. Sharing the model makes the invariant
     structural rather than something two routes have to remember separately.
+
+    The dump drops what is unset, so the stored payload names the staged key and
+    nothing else. `GET /api/jobs` hands that payload back to the caller, and a
+    payload that also carried a filesystem path would be disclosing one.
     """
     try:
         request = IngestRequest(
             source_type=source_type,
-            source_ref=source_ref,
+            staged_key=staged_key,
             original_name=filename or "Untitled",
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=f"Invalid ingest payload: {error}") from error
 
-    return request.model_dump()
+    return request.model_dump(exclude_none=True)
 ```
 
-`projects.py:171-189`. Nineteen lines that produce exactly the same dictionary the literal
-used to produce. The value is entirely in *how* it produces it.
+`projects.py:177-199`. Twenty-three lines that produce the dictionary the literal used to
+produce, minus the field that was the problem. The value is mostly in *how* it produces it.
+
+Three things changed here with the staging move. The second parameter is a `staged_key`
+rather than a `source_ref`, so this route can no longer put a path into a job payload even
+by accident. The model is constructed with `staged_key=`, which means it goes through
+`exactly_one_reference` and `only_youtube_is_named_by_a_url` like any other ingest request —
+this route now satisfies the same two rules the JSON door does, rather than being trusted
+because it is server-side. And the dump is `exclude_none=True`, which is what keeps
+`"source_ref": null` out of the stored payload; the field exists on the model, it is simply
+never set on this path, and a payload that carried the key `source_ref` at all would make a
+reader of `GET /api/jobs` wonder what used to be in it.
 
 **The problem this solves.** There are two ways to create an ingest job: `POST /api/jobs`,
 which parses its payload through `IngestRequest` (`jobs.py:53`), and this upload route, which
@@ -1109,35 +1253,40 @@ broke, and `from error` keeps the chain for the log.
 says the payload is. If a field is added to `IngestRequest` tomorrow, it appears in the
 upload path's payload without an edit here. That is the invariant the docstring calls
 "structural": the two doors cannot drift, because there is only one definition of the shape.
+`staged_key` is the proof of it — the field was added to the model and this route picked it
+up by passing it, with no second definition of the payload shape to keep in step.
 
-**Worth knowing.** The gate on line 139 and this function overlap — a `youtube` upload is
+**Worth knowing.** The gate on line 144 and this function overlap — a `youtube` upload is
 refused before it ever reaches here. That is not redundancy for its own sake. The gate exists
 to produce a good, specific error at the boundary before a 200 MB file is buffered to disk;
 the model exists so that every rule is enforced regardless of which door was used. Belt and
 braces is the right posture here precisely because the failure being guarded against is "a
 second door forgot a rule", and one more door is always possible.
 
-### `_buffer_upload`
+### `_stage_upload` — the function that used to be `_buffer_upload`
 
 ```python
-async def _buffer_upload(file: UploadFile) -> tuple[str, int]:
+async def _stage_upload(
+    staging: UploadStaging,
+    file: UploadFile,
+    project_id: str,
+) -> StagedUpload:
     """
-    Stream an upload to disk, enforcing the size limit as it goes.
+    Stream an upload onto the shared data volume, enforcing the limit as it goes.
 
-    The buffered copy is handed to the ingest job as its `source_ref` and is
-    deleted by `IngestHandler` once that job no longer needs it.
+    The bytes go through a temporary file so the request never holds the whole
+    upload in memory, and that file belongs to this process alone: it is copied
+    into the store, which every process that could run the ingest job can read,
+    and dropped when the block closes, on the way out of a rejection as much as
+    on success.
     """
     limit = get_settings().upload_max_mb * 1024 * 1024
-    suffix = os.path.splitext(file.filename or "")[1]
     written = 0
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as buffered:
-        path = buffered.name
+    with tempfile.NamedTemporaryFile(suffix=Path(file.filename or "").suffix) as buffered:
         while chunk := await file.read(UPLOAD_CHUNK_BYTES):
             written += len(chunk)
             if written > limit:
-                buffered.close()
-                os.unlink(path)
                 raise HTTPException(
                     status_code=413,
                     detail=f"File exceeds the {get_settings().upload_max_mb} MB limit",
@@ -1145,43 +1294,209 @@ async def _buffer_upload(file: UploadFile) -> tuple[str, int]:
             buffered.write(chunk)
 ```
 
-`projects.py:192-214`. The point of this function is that a 200 MB lecture recording never
-exists in memory. `await file.read(1 MB)` in a loop, write each chunk to disk, and the
-process holds one megabyte at a time regardless of file size.
+`projects.py:202-227`. The point of this function is unchanged and is still the first thing to
+say about it: a 200 MB lecture recording never exists in memory. `await file.read(1 MB)` in a
+loop, write each chunk to disk, and the process holds one megabyte at a time regardless of
+file size.
 
-`delete=False` at line 203 is necessary: the file must survive the `with` block, because its
-path is handed to a background job that may run in a different process. Deletion becomes
-somebody else's responsibility — `IngestHandler._discard_staged_upload` at
-`ingest_handler.py:213`, which checks the path is a real temp file with the temp prefix in
-the temp directory before unlinking, precisely so that a caller-supplied `source_ref` pointing
-at something real cannot be deleted by a finished job.
+**What changed is `delete=`, and it is a one-word diff carrying the whole fix.** It used to be
+`tempfile.NamedTemporaryFile(delete=False, ...)`, and the comment underneath it in the old
+version of this document explained why: "the file must survive the `with` block, because its
+path is handed to a background job that may run in a different process". That sentence
+contains its own refutation. If the job may run in a different process, a path is exactly the
+wrong thing to hand it, because a path is only meaningful inside one filesystem namespace.
+Under the Celery overlay the worker is a different *container*, its `/tmp` is its own, and the
+path resolved to nothing.
 
-The `suffix` at line 200 preserves the original extension, because the extraction pipeline
-dispatches on it.
+So `delete=True` — the default — is back, and the temp file is now what it always should have
+been: a private buffer belonging to this request, existing so that the request does not have
+to hold the upload in memory, and gone when the block closes. The copy that outlives the
+request goes into the file store instead, on the volume every process shares.
 
-Line 207 checks the limit **as it goes**, not after. Checking `Content-Length` up front would
+Three `os.unlink` calls disappeared with it. The old version unlinked on the oversize path, on
+the empty path, and in the caller's `except`; the `with` block now does all three, because
+closing it deletes the file however control leaves. `os` is no longer imported by this module
+at all, which is the small, checkable sign that the route stopped doing filesystem
+bookkeeping.
+
+`Path(file.filename or "").suffix` at line 219 preserves the original extension, because the
+extraction pipeline dispatches on it. It replaced `os.path.splitext(...)[1]`, which is the
+same thing said less directly.
+
+Line 222 checks the limit **as it goes**, not after. Checking `Content-Length` up front would
 trust a header; checking after the write would mean the disk is already full. Checking the
-running total means the write is abandoned the moment it crosses the line. Lines 208-209 close
-and unlink before raising, so a rejected upload leaves nothing behind. 413 is the correct
-status. The test at `test_api.py:89` sets the limit to 1 MB and posts 2 MB.
+running total means the write is abandoned the moment it crosses the line, and the raise no
+longer needs to clean up after itself. 413 is the correct status. The test at
+`test_api.py:141` sets the limit to 1 MB and posts 2 MB.
 
-The same `upload_max_mb` setting now also caps a YouTube download, as `max_filesize` on the
+The same `upload_max_mb` setting also caps a YouTube download, as `max_filesize` on the
 yt-dlp options (`pipeline/ingestion.py:193`), so both ways into the file store are bounded by
-one number rather than one of them being unbounded. `test_api.py:603` asserts that the
+one number rather than one of them being unbounded. `test_api.py:886` asserts that the
 configured megabytes reach the downloader's options.
 
 ```python
-    if written == 0:
-        os.unlink(path)
-        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+        if written == 0:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty")
 
-    logger.info("Buffered %s (%d bytes)", file.filename, written)
-    return path, written
+        buffered.flush()
+        staged = staging.stage(buffered.name, project_id, file.filename)
+
+    logger.info("Staged %s (%d bytes) as %s", file.filename, written, staged.key)
+    return staged
 ```
 
-`projects.py:216-221`. An empty upload is a 400 rather than a job that fails ten seconds later
+`projects.py:229-236`. An empty upload is a 400 rather than a job that fails ten seconds later
 with "no text extracted". Failing at the boundary is cheaper for the user and cheaper for the
 worker pool.
+
+`buffered.flush()` at line 232 is not decoration. `NamedTemporaryFile` is buffered, so the
+last chunk may still be in Python's buffer rather than on disk, and `stage` copies by path
+using `shutil.copyfile` — it does not go through this file object. Without the flush the
+stored object can be short by up to one buffer, silently, on exactly the uploads whose length
+does not land on a buffer boundary.
+
+Note where line 233 sits: **inside** the `with`. The copy into the store has to happen while
+the temp file still exists, and the temp file now stops existing at the end of the block. That
+is the ordering the whole function is arranged around — buffer, flush, copy, and only then let
+the buffer go.
+
+### The staging module: `backend/services/uploads.py`
+
+This is not an API file, so it has no section of its own in this document, but it has exactly
+two callers — the upload route above and `IngestHandler` — and the route cannot be understood
+without it. 92 lines.
+
+```python
+class UploadStaging:
+    """
+    Holds an accepted upload in the file store until its ingest job reads it.
+
+    The process that accepts an upload and the process that runs the ingest are
+    the same one only while the worker pool lives inside the API. Dispatch the
+    job to Celery and they are separate containers whose one shared surface is
+    the data volume the file store sits on, so an upload staged in the API's
+    temp directory names a file the worker cannot open and a job that can never
+    run. Staging goes through the store instead, and what the job carries is a
+    storage key, which resolves to the same bytes in every one of those
+    processes.
+
+    A key is also safe to hand back to a caller and to accept from one: it names
+    a slot inside one project's staging folder rather than a location on the
+    server's filesystem, and every lookup is checked against the project asking.
+    """
+
+    FOLDER = "staged"
+
+    def __init__(self, store: Optional[FileStore] = None) -> None:
+        self._store = store or get_file_store()
+```
+
+`uploads.py:28-49`. The class docstring is the bug report, and its second paragraph is the
+security argument. Everything else in the module follows from those two.
+
+The two callers are worth naming, because they are the two ends of the same object's life.
+The route calls `stage`, and `discard` if the job row cannot be written. The handler calls
+`path_for` when it starts and `discard` when it has succeeded. Nothing else in the codebase
+touches staging at all.
+
+The constructor is the same dependency-inversion shape every collaborator in this backend
+uses: take the store as an argument, fall back to the module singleton. Production passes
+nothing; a test passes a `FileStore` rooted in `tmp_path`.
+
+```python
+    def stage(self, source_path: str, project_id: str, filename: Optional[str] = None) -> StagedUpload:
+        """Take a received upload into the store under a key naming its project."""
+        key = f"{project_id}/{self.FOLDER}/{uuid.uuid4()}{Path(filename or '').suffix}"
+        self._store.put(source_path, key)
+        return StagedUpload(key=key, size_bytes=self._store.size_of(key))
+```
+
+`uploads.py:51-55`. Three segments, always: the project id, the literal `staged`, and a fresh
+uuid carrying the original extension. The project id is first because that is what makes the
+key checkable later — the folder a key names is the evidence of who staged it, so the check in
+`_require_staged_by` needs no database lookup to do its job. The uuid is what stops two
+uploads of `lecture.md` into one project from overwriting each other. The extension is kept
+because the extraction pipeline dispatches on it.
+
+`size_bytes` is read back out of the store with `size_of` rather than being passed in, so the
+number the route returns to the client describes the object that actually exists.
+
+```python
+    def path_for(self, key: str, project_id: str) -> Path:
+        self._require_staged_by(key, project_id)
+        if not self._store.exists(key):
+            raise StagingError(
+                f"No staged upload at {key}. A staged upload is released once its ingest "
+                "succeeds, so a job that already finished cannot be run again; upload again."
+            )
+        return self._store.open_path(key)
+
+    def discard(self, key: str, project_id: str) -> None:
+        """Release a staged upload once something durable has been made of it."""
+        self._require_staged_by(key, project_id)
+        self._store.delete(key)
+        logger.info("Released the staged upload %s", key)
+```
+
+`uploads.py:57-77`. Two lookups, and **both of them start with the same check.** That is the
+point of the class: there is no way to reach a staged file without going past
+`_require_staged_by`, because the two methods that touch the store both call it on their first
+line.
+
+The absent-file message on lines 67-70 is worth its length. It is the error an operator will
+actually meet, and the reason is not obvious: the slot is released the moment its ingest
+succeeds, so re-running a job that already finished finds nothing there. A bare "object not
+found" would send someone looking for a storage bug.
+
+`exists` and `delete` on `FileStore` had no callers anywhere in the codebase before this
+module existed. They were written when the store was, and nothing used them; these two methods
+are the first thing that ever did.
+
+```python
+    @classmethod
+    def _require_staged_by(cls, key: str, project_id: str) -> None:
+        """
+        Refuse a key that is not one this project staged.
+
+        The key travels in the job payload, so wherever a caller can queue a job
+        it is a caller-supplied string. Only the exact shape `stage` writes is
+        accepted, which is what keeps a job from reading, or deleting, an
+        export, another project's source, or anything reached by climbing out of
+        the folder.
+        """
+        parts = PurePosixPath(key).parts
+        if len(parts) != 3 or parts[:2] != (project_id, cls.FOLDER) or ".." in parts:
+            raise StagingError(f"'{key}' is not an upload staged by project {project_id}")
+```
+
+`uploads.py:79-92`. Fourteen lines, and this is the security half of the module.
+
+**Why it exists at all**, which is the part to be able to say: the key is stored in the job
+payload, and a job payload is a caller-supplied dictionary at `POST /api/jobs`. So the moment
+an upload is named by a key rather than a path, the key becomes a value an attacker chooses,
+exactly like `source_ref` was. Replacing one caller-controlled string with another and
+declaring the problem solved would have been the same mistake in a new coat.
+
+The check is an allow-list on *shape*, not a deny-list on content. Three segments exactly, the
+first being the project the job belongs to, the second being the literal `staged`. Everything
+else fails: `{other_project}/staged/x` fails on the first segment,
+`{project}/sources/lecture.md` fails on the second, `{project}/staged/a/b` fails on the count,
+and `/etc/passwd` — whose `parts` are `('/', 'etc', 'passwd')`, so it passes the count —
+fails on the first two. The `".." in parts` test is belt and braces —
+`FileStore.resolve` already refuses to leave the store root — but the two guards protect
+different things, and the one closer to the operation is the one that knows a staging slot
+from an export.
+
+The two positive consequences worth naming: a job can never read another project's staged
+upload, and `discard` can never delete anything that is not a staging slot. The second matters
+more than it looks. Leaking a staged file costs disk; deleting a stored source costs the
+project an artifact it can never get back, and `discard` is the only `delete` call anywhere in
+the ingest path.
+
+`test_seams.py:410` is the test for that shape check — it puts a real source in the store,
+tries to `discard` it both by its own key and through `{project}/staged/../sources/lecture.md`,
+and asserts the source is still there afterwards. `test_seams.py:376` is the cross-project
+half.
 
 ---
 
@@ -1279,7 +1594,7 @@ in the project you are writing into.
 Note the position of these lines. They run after payload validation — you cannot check ids you
 have not parsed — and before the duplicate search and before the insert. An unauthorised source
 produces 403 (or 404 for a nonexistent id) with no row written at all. The three tests at
-`test_api.py:285`, `:298` and `:310` each assert the status code *and* that
+`test_api.py:444`, `:457` and `:497` each assert the status code *and* that
 `database.select("jobs", ...)` is empty afterwards, because "refused but queued anyway" would be
 a subtler version of the same bug.
 
@@ -1382,7 +1697,7 @@ def get_job(...)
 `require_artifact`. The projection at line 119 is the same defensive pattern as
 `create_project` — build the response field by field from the declared model fields.
 
-The test at `test_api.py:152` creates a job in a foreign project and asserts 403.
+The test at `test_api.py:294` creates a job in a foreign project and asserts 403.
 
 ```python
 @router.post("/{job_id}/cancel")
@@ -1403,7 +1718,7 @@ def cancel_job(...)
 `jobs.py:122-139`. `Database.cancel_job` (`database.py:374`) returns a boolean: it only
 transitions a job that has not finished. Line 135 turns `False` into a 409 Conflict, which is the
 right code — the request was well-formed and the caller was authorised, but the resource is in a
-state that does not permit it. The test at `test_api.py:159` cancels a completed job and asserts
+state that does not permit it. The test at `test_api.py:301` cancels a completed job and asserts
 409.
 
 The message reports `job['status']` from the row read at line 129, so under a race it could name
@@ -1485,7 +1800,7 @@ mode than a slow regeneration, because there is nothing to report.
 `jobs.py:172-173`. The second rule, and the cheaper one, so it comes first. Any request carrying
 instructions is steered, and two differently-steered requests over the same source are different
 work. Rather than compare instruction strings, the code declines to deduplicate at all when
-instructions are present. The test at `test_api.py:139` sends "harder" and then "easier" over the
+instructions are present. The test at `test_api.py:281` sends "harder" and then "easier" over the
 same source and asserts two distinct job ids.
 
 ```python
@@ -1665,11 +1980,11 @@ the key may legitimately be absent from both sides.
 `"edited_by_user": True` at line 77 is written unconditionally, and it is not decorative — the
 regeneration paths read it to decide whether overwriting an artifact would destroy manual work.
 
-Two tests cover this, and they cover both directions. `test_api.py:415` creates an artifact with a
+Two tests cover this, and they cover both directions. `test_api.py:601` creates an artifact with a
 real export plus a second file in the store, PATCHes with `binary.storage_path` pointing at the
 second file, and asserts three things: the response still names the original key, the stored row
 still names the original key, and — the one that actually matters — following the download link
-returns the original bytes. `test_api.py:446` covers the attach case: an artifact with no export,
+returns the original bytes. `test_api.py:632` covers the attach case: an artifact with no export,
 a PATCH that tries to add one, and an assertion that `binary` is absent from the response and that
 `/download` still 404s.
 
@@ -1859,7 +2174,7 @@ matters: signing them separately, or signing only the key, would let a holder ex
 editing the `expires` parameter. Because they are signed as one string, changing either invalidates
 the signature.
 
-The test at `test_api.py:719` tampers with the signature and asserts 403.
+The test at `test_api.py:1002` tampers with the signature and asserts 403.
 
 **And the thing this whole scheme rests on, which is worth raising here unprompted.** Every
 property above — the expiry inside the signature, the constant-time comparison, the confined
@@ -1890,7 +2205,7 @@ the consequence would have landed.
 
 `files.py:35-47`. `open_path` resolves the key against the store root and refuses anything that
 escapes it (`files.py:75-84`), so a signed link to `../../etc/passwd` would fail here even if
-someone had somehow obtained a signature for it. `test_api.py:729` covers the traversal case at the
+someone had somehow obtained a signature for it. `test_api.py:1012` covers the traversal case at the
 store level.
 
 `filename*=UTF-8''...` is the RFC 5987 encoded form, which is how you put a non-ASCII filename in a
@@ -2023,7 +2338,7 @@ implementation, two entry points.
 
 Lines 53-57 catch the `HTTPException` and re-raise it with the node id prefixed onto the detail,
 preserving the original status code. Without that, the client gets "Access denied" with no way to
-know which of forty nodes caused it. The test at `test_api.py:353` asserts `"s1"` appears in the
+know which of forty nodes caused it. The test at `test_api.py:540` asserts `"s1"` appears in the
 detail.
 
 The docstring's last sentence is the design decision: the whole request fails rather than the
@@ -2031,8 +2346,8 @@ offending node being skipped. Dropping the node would leave a flow that ran, rep
 quietly produced output from fewer inputs than the user connected. A refusal is legible; a silently
 degraded result is not.
 
-Three tests cover the three doors. `test_api.py:337` is the request body. `test_api.py:357` saves a
-poisoned canvas and runs with an empty body. `test_api.py:369` covers validate, which compiles the
+Three tests cover the three doors. `test_api.py:524` is the request body. `test_api.py:544` saves a
+poisoned canvas and runs with an empty body. `test_api.py:556` covers validate, which compiles the
 same graph and must not report a foreign-seeded flow as runnable. Each of the first two asserts that
 no `jobs` row and no `flow_runs` row was created.
 
@@ -2068,7 +2383,7 @@ def validate_flow(...)
 ```
 
 `flows.py:60-90`. A dry run. It compiles and reports, and creates nothing — the test at
-`test_api.py:183` asserts the jobs table is still empty afterwards.
+`test_api.py:325` asserts the jobs table is still empty afterwards.
 
 Note the asymmetry in how the two failure kinds are reported. A compile failure at lines 73-74 is a
 **200 with `valid: false`**. A foreign seed at line 76 is a **403 exception**. That is intentional
@@ -2108,7 +2423,7 @@ def run_flow(...)
 `flows.py:93-113`. Same first four steps as validate, then execution.
 
 Here a compile failure **is** an error — 422, at line 107 — because running an uncompilable graph is
-a client mistake, not an editing state. The test at `test_api.py:212` posts an empty graph and
+a client mistake, not an editing state. The test at `test_api.py:354` posts an empty graph and
 asserts 422.
 
 Line 109 is the security check, standing immediately in front of line 110, which is the only line in
@@ -2127,7 +2442,7 @@ cannot differ. But it is exactly the kind of thing an interviewer notices, and t
 the alternative — passing the plan in — would let a caller of the engine supply a plan that had
 never been validated.
 
-The response returns the run's `node_states`, which is what the test at `test_api.py:201` inspects
+The response returns the run's `node_states`, which is what the test at `test_api.py:343` inspects
 to prove wave semantics: with a source feeding two generators and one of those feeding a third, `g1`
 and `g2` are `running` and `g3` is still `pending`.
 
@@ -2631,7 +2946,7 @@ first and closing after would mean an attacker could hold open sockets against t
 as it took to check.
 
 The mapping at line 45 turns a 403 into 4403 and anything else — in practice the 404 from
-`require_project` — into 4401. The test at `test_api.py:253` connects to a foreign project and
+`require_project` — into 4401. The test at `test_api.py:412` connects to a foreign project and
 asserts close code 4403.
 
 ### The three tasks
@@ -2876,7 +3191,8 @@ checked; ownership of the sources was not, and handlers have no user id to check
 - Fix: `backend/api/routes/jobs.py:57-58` — the loop calling `require_project_artifact` on every id
   returned by `_source_ids`.
 - Supporting: `jobs.py:142-148` (`_source_ids`) and `backend/api/deps.py:70-87`.
-- Tests: `backend/tests/test_api.py:285` (generate), `:298` (refine), `:310` (nonexistent id). Each
+- Tests: `backend/tests/test_api.py:444` (generate), `:457` (refine), `:469` (a project of the caller's
+  own), `:497` (nonexistent id). Each
   asserts no job row was written.
 
 **2. A NULL owner satisfied every ownership check.**
@@ -2885,7 +3201,7 @@ circuited to allowed. Read returned it; `list_projects` did not, because `WHERE 
 matches NULL.
 
 - Fix: `backend/api/deps.py:48` — `if project.get("user_id") != user_id`.
-- Tests: `test_api.py:379` (project), `:392` (its artifacts).
+- Tests: `test_api.py:566` (project), `:578` (its artifacts).
 
 **3. `update_artifact` merged client content wholesale.**
 A caller could PATCH `content.binary.storage_path` to any key in the file store, then call
@@ -2895,18 +3211,33 @@ A caller could PATCH `content.binary.storage_path` to any key in the file store,
 - Fix: `backend/api/routes/artifacts.py:78-80` — `merged.pop("binary", None)` followed by restoring
   the stored `binary` if there was one. The export block is renderer-owned and unreachable from the
   API.
-- Tests: `test_api.py:415` (cannot repoint an existing export; follows the link and checks the
-  bytes), `:446` (cannot attach one where there was none).
+- Tests: `test_api.py:601` (cannot repoint an existing export; follows the link and checks the
+  bytes), `:632` (cannot attach one where there was none).
 
-**4. A YouTube source carrying a filesystem path was an arbitrary file read.**
-`source_type: "youtube"` routes to `yt_dlp.extract_info` at `backend/pipeline/ingestion.py:198`,
-which reads local files given a path.
+**4. An ingest source carrying a filesystem path was an arbitrary file read.**
+Two halves, and they were closed a long way apart. The YouTube half: `source_type: "youtube"`
+routes to `yt_dlp.extract_info` at `backend/pipeline/ingestion.py:198`, which reads local files
+given a path. The other half, which survived the first fix: `pdf`, `audio`, `video`, `pptx` and `md`
+went down the upload branch of `IngestHandler._store`, which read the named path directly — no
+downloader involved, the same arbitrary read, and no check on it at all.
 
-- Fix: `backend/api/schemas.py:47-62` — the `youtube_ref_is_a_url` model validator, whose test at
-  line 60 requires an `http://` or `https://` prefix.
-- Tests: `test_api.py:464` (a path is refused, no job written), `:480` (a real URL still validates).
-- Incomplete on its own: it constrains the scheme and not the host, which is hole 6.
-- Still open: every non-YouTube source type accepts an arbitrary path. See the limitations below.
+- Fix, YouTube half: `backend/api/schemas.py:88-90` — the scheme test inside
+  `only_youtube_is_named_by_a_url`, requiring an `http://` or `https://` prefix.
+- Fix, the other half: `backend/api/schemas.py:91-95` — the `elif`, which refuses a `source_ref`
+  on any non-YouTube source type outright. Those types are named by `staged_key` now, a storage key
+  the upload endpoint minted, and `UploadStaging._require_staged_by` (`uploads.py:79-92`) accepts
+  only the three-segment shape it writes. There is no field left that can hold a path.
+- Second line of defence: `IngestHandler._staged_upload_path` (`ingest_handler.py:174-193`) refuses
+  a non-YouTube job with no `staged_key`, at the point of use rather than at the door.
+- Tests: `test_api.py:650` (a YouTube path is refused, no job written), `test_api.py:666`
+  (parametrised over `sorted(SOURCE_TYPES - {"youtube"})`, so all five other types), `:692` (a job
+  naming neither), `:723` (a real YouTube URL still validates), and `test_seams.py:394` (the handler
+  refuses one even if a row somehow exists).
+- Still incomplete on the scheme alone: it constrains the scheme and not the host, which is hole 6.
+- What it cost: the hackathon workspace page posted a typed local path as `source_ref` for every
+  source type, and for the five non-YouTube ones that now gets a 400. The real upload path is
+  `/upload`, which is multipart. The convenience was the reason the hole stayed open; it was not a
+  good enough reason.
 
 **5. `/flow/run` reached the same handler through a different door.**
 Canvas nodes arrive in the request body, `FlowCompiler` lifts artifact ids out of them into
@@ -2918,7 +3249,7 @@ and running with an empty body falls back to it.
 
 - Fix: `backend/api/routes/flows.py:35-58` (`_require_owned_seeds`), called at `flows.py:76`
   (validate) and `flows.py:109` (run) — immediately before `FlowEngine.start` at `flows.py:110`.
-- Tests: `test_api.py:337` (request body), `:357` (saved canvas), `:369` (validate).
+- Tests: `test_api.py:524` (request body), `:544` (saved canvas), `:556` (validate).
 
 This is the one to tell as a story rather than a fact, because it is about process. Hole 1 was fixed
 and tested. Then the question was asked — does anything else reach that handler by another route? —
@@ -2941,10 +3272,10 @@ working internal port scanner driven through a public API.
   `store_youtube` at `ingestion.py:184` — the first statement in the function, before yt-dlp is
   constructed. Suffix-matched host allow-list, then every resolved address checked against the
   non-public ranges, one bad answer being enough to refuse.
-- API-layer half: `backend/api/schemas.py:47-62` keeps its scheme check as a cheap early rejection,
+- API-layer half: `backend/api/schemas.py:71-96` keeps its scheme check as a cheap early rejection,
   and its docstring now says explicitly that it is **not** the host guard.
-- Tests: `test_api.py:503-631` (`TestYouTubeIngestGuard`), notably `:578`, which proves the guard
-  runs before yt-dlp is constructed rather than after it has already fetched, and `:574`, which
+- Tests: `test_api.py:786-935` (`TestYouTubeIngestGuard`), notably `:861`, which proves the guard
+  runs before yt-dlp is constructed rather than after it has already fetched, and `:857`, which
   proves a genuine YouTube URL still works.
 
 Tell this one alongside hole 5, because it is the same lesson a second time and that is what makes
@@ -2962,10 +3293,25 @@ that there is none, in one function, which is the seam to replace.
 `source_type not in SOURCE_TYPES`, and `SOURCE_TYPES` contains `"youtube"`, so a multipart upload
 declaring `source_type=youtube` queued a job whose `source_ref` was a filesystem path and whose
 handler took the download branch with it. Two fixes: `UPLOADABLE_SOURCE_TYPES` at
-`backend/api/routes/projects.py:26` with the gate at `projects.py:139-143`, and `_ingest_payload` at
-`projects.py:171-189`, which builds the payload through `IngestRequest` so the two ingest doors
-share one definition instead of duplicating it. Test: `test_api.py:633`, which asserts the 400, that
+`backend/api/routes/projects.py:27` with the gate at `projects.py:144-148`, and `_ingest_payload` at
+`projects.py:177-199`, which builds the payload through `IngestRequest` so the two ingest doors
+share one definition instead of duplicating it. Test: `test_api.py:916`, which asserts the 400, that
 no job row was written, and that `"youtube"` no longer appears in the list of allowed types.
+
+**Also: upload was broken in the distributed configuration, which is not a security hole but is the
+worst bug in this list.** The route staged the upload in the operating system temp directory and put
+that absolute path into the job payload. Under `docker-compose.celery.yml` the API and the workers
+are separate containers with separate `/tmp`, so the worker could not open the file and *every*
+upload failed with `No readable file at /tmp/tmplvqcq44o.md`. It worked in the single-container
+shape only because there the worker pool runs inside the API process. Fixed by staging into the file
+store, which sits on the `beedata` volume mounted into every container: `backend/services/uploads.py`
+(`UploadStaging`), called from `_stage_upload` at `projects.py:202-236` and read back by
+`IngestHandler._staged_upload_path` at `ingest_handler.py:174-193`. The payload carries a storage key
+now, which also means `GET /api/jobs/{id}` stopped disclosing a server path. Tests:
+`test_seams.py:432-518` (`TestCrossProcessIngest`), which destroys and replaces the accepting
+process's temp directory, drops the module singletons, builds the handler only afterwards and then
+runs the job through `JobExecutor().run_job` — the same entry point `tasks.py:44` uses — and
+`test_api.py:97`, which asserts the payload discloses no host path through the HTTP endpoint.
 
 **Also: the link-signing key was published in this repository.** `signing_secret` defaulted to
 `beeprepared-dev-secret` in `backend/core/config.py`, and `.env.example` and `docker-compose.yml`
@@ -2973,7 +3319,7 @@ shipped `change-me-in-production`. The signed-link scheme in `files.py` is other
 of it is worth nothing against a known key: anyone could mint a valid link for any object in the
 store with no session. Fixed in `backend/core/config.py` (no default, `PUBLISHED_SECRETS`, and a
 minted-and-persisted `LocalSigningSecret`) and enforced by `require_unforgeable_links` at
-`backend/main.py:41-56`, called first in lifespan. Tests: `test_api.py:673`, `:680`, `:685`. Walked
+`backend/main.py:41-56`, called first in lifespan. Tests: `test_api.py:957`, `:963`, `:968`. Walked
 through in document 01; it belongs in this list because `api/routes/files.py` is where it would have
 been exploited.
 
@@ -2992,19 +3338,25 @@ become live on the same commit.
 
 Be careful to scope that claim correctly, because it does not cover everything. The SSRF was not an
 ownership bug and did not need a second user: it reached the network the server sits on, from a
-single-user install, through a caller's own project. The same is true of the published signing key,
-which needed no session at all, and of the arbitrary file read in hole 4. "There is only one user"
-defuses the cross-tenant holes and defuses nothing else, and saying so is the difference between an
-honest summary and a convenient one.
+single-user install, through a caller's own project. The same was true of the published signing key,
+which needed no session at all, and of the arbitrary file read in hole 4 while it was open. "There is
+only one user" defuses the cross-tenant holes and defuses nothing else, and saying so is the
+difference between an honest summary and a convenient one.
 
-**Ingest still accepts a path.** `POST /api/jobs` with `type: "ingest"` and a non-YouTube
-`source_type` accepts an arbitrary `source_ref`, and `IngestHandler._store`
-(`handlers/ingest_handler.py:181`) will read whatever local file it names. The upload route is safe
-because it never lets the client name a path — it writes a temp file and passes that path into
-`IngestRequest` itself (`projects.py:152`, `projects.py:171-189`) — but the workspace page
-deliberately allows a typed path (`frontend/app/workspace/page.tsx:448`), which is why the API still
-accepts one. This is the first thing to close before any multi-user deployment, and the fix is to
-stop accepting `source_ref` from clients for anything but YouTube.
+**Ingest no longer accepts a path — this used to be the largest open item and it is closed.** It is
+listed here because the previous version of this document said, at some length, that it was the first
+thing to close before any multi-user deployment, and anyone who read that deserves the correction
+rather than a silent deletion. `POST /api/jobs` with `type: "ingest"` and a non-YouTube
+`source_type` used to accept an arbitrary `source_ref`, which `IngestHandler._store` then read,
+extracted and committed as a downloadable artifact. Two changes closed it. `IngestRequest` now
+refuses a `source_ref` on any source type but `youtube` (`schemas.py:91-95`), and an upload is named
+by the `staged_key` it was staged under instead — a storage key whose shape and whose owning project
+are both checked (`uploads.py:79-92`). `IngestHandler._staged_upload_path`
+(`ingest_handler.py:174-193`) refuses it a second time at the point of use, because a job row can be
+written by a route that forgets or replayed from the queue. Five parametrised tests at
+`test_api.py:666` cover every non-YouTube source type.
+
+What is genuinely left of that item is the YouTube door, and it is the next paragraph.
 
 **The SSRF guard is a host allow-list, not a full SSRF defence.** `YouTubeUrlGuard` resolves the
 hostname and checks the addresses, then yt-dlp resolves it again and connects. Between those two
@@ -3018,6 +3370,24 @@ the allow-list at all, so an attacker needs control of DNS for a `youtube.com` s
 redirect out of YouTube's own infrastructure — a much higher bar than pointing a field at an IP
 address, which was the actual bug. Name this yourself. It is the natural follow-up question, and
 having the answer ready is worth more than the guard being perfect.
+
+**A job that exhausts its attempts leaves its staged upload behind.** Releasing the staged copy used
+to be in a `finally`, which meant a *retryable* ingest failure deleted the only copy of what the
+caller had uploaded, so the retry the runner queued failed for a second and unrelated reason and a
+transient failure became permanent. Releasing now happens on the success path only
+(`ingest_handler.py:245-262`), and the cost of that is one file per permanently-failed ingest sitting
+in `{project}/staged/` with nothing referencing it. That is the cheaper of the two, but it is
+unbounded, and the fix is a sweep for staging slots older than the job timeout, or a release when
+`fail_job` records a terminal failure rather than a retryable one.
+
+There is a narrower window in the same place, worth knowing about if someone reads the ordering
+closely. The release happens inside `handler.run`, and `JobExecutor.execute` calls `commit_bundle`
+*after* that (`job_runner.py:135-138`). So a failure between the release and the commit — in
+practice, a failing `commit_bundle` — leaves a job that will be retried with nothing staged to read.
+It is narrow because a commit failure classifies permanent, so it is usually not retried at all, and
+because the durable source copy is already in the store by then. It is still the honest answer to
+"is the retry hole completely closed", and the answer is "for every failure in the pipeline, yes;
+for a failure in the commit, no".
 
 **`PATCH /projects/{id}` does not validate the canvas.** `canvas_state` is stored verbatim, so a
 canvas can be saved naming an artifact that does not exist or that the caller cannot read. It is not
