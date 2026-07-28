@@ -45,6 +45,24 @@ class TruncatedResponse(PermanentFailure):
     """The model ran out of output budget mid-document."""
 
 
+class TransientFailure(LLMError, ConnectionError):
+    """
+    Every attempt failed on a fault a later attempt could still survive.
+
+    Only retryable faults reach this class: `PermanentFailure` leaves the send
+    loop untouched, so anything that exhausts the retries is by construction a
+    failure to complete the exchange with OpenRouter at all.
+
+    The base classes are the payload. `backend.services.job_runner.is_transient`
+    classifies by exception type first and only then falls back to matching the
+    message, and the message is worthless here: `str(httpx.ConnectTimeout(""))`
+    is empty, and a refused connection reads "[Errno 61] Connection refused",
+    which no transient phrase covers. Timeouts and refusals are the two most
+    common real failures, so a wrapper that kept only the text would have every
+    job give up on the very errors retrying exists for.
+    """
+
+
 class OpenRouterProvider(LLMProvider):
     """Talks to OpenRouter's OpenAI-compatible endpoint."""
 
@@ -176,11 +194,13 @@ class OpenRouterProvider(LLMProvider):
                         delay = self._backoff(attempt)
                         logger.warning(
                             "OpenRouter attempt %d/%d failed (%s); retrying in %.1fs",
-                            attempt + 1, self._max_retries, error, delay,
+                            attempt + 1, self._max_retries, self._describe(error), delay,
                         )
                         await asyncio.sleep(delay)
 
-        raise LLMError(f"OpenRouter failed after {self._max_retries} attempts: {last_error}")
+        raise TransientFailure(
+            f"OpenRouter failed after {self._max_retries} attempts: {self._describe(last_error)}"
+        ) from last_error
 
     def _limiter(self) -> asyncio.Semaphore:
         """
@@ -226,6 +246,20 @@ class OpenRouterProvider(LLMProvider):
                 "Raise LLM_MAX_OUTPUT_TOKENS or request a smaller artifact."
             )
         return content
+
+    @staticmethod
+    def _describe(error: Optional[BaseException]) -> str:
+        """
+        Name a failure for the operator reading the job's error column.
+
+        Several httpx transport errors stringify to nothing at all, so the class
+        name has to stand in or the record says only how many attempts were made.
+        """
+        if error is None:
+            return "no attempt was made"
+        detail = str(error)
+        name = type(error).__name__
+        return f"{name}: {detail}" if detail else name
 
     @staticmethod
     def _backoff(attempt: int) -> float:
