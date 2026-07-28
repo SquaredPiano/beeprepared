@@ -135,6 +135,21 @@ class TestValidation:
         with pytest.raises(FlowValidationError, match="empty"):
             FlowCompiler().compile([], [])
 
+    def test_a_canvas_past_the_node_limit_is_rejected(self):
+        """
+        The canvas is request data, so its size is the caller's to choose.
+
+        Compilation walks every node and every edge and the run that follows
+        queues a job per generator, so an unbounded graph is an unbounded amount
+        of work bought with one request.
+        """
+        from backend.services.flow.plan import MAX_NODES
+
+        oversized = [source_node(f"s{index}", "a1") for index in range(MAX_NODES + 1)]
+
+        with pytest.raises(FlowValidationError, match=f"limited to {MAX_NODES} nodes"):
+            FlowCompiler().compile(oversized, [])
+
 
 class TestScheduling:
     def test_only_the_first_wave_is_dispatched_initially(self, database, project, knowledge_core):
@@ -256,7 +271,16 @@ class TestScheduling:
         assert run["result"]["completed"] == 1
 
     def test_advance_is_idempotent(self, database, project, knowledge_core):
-        """A duplicate completion notification must not run a step twice."""
+        """
+        A second sequential advance finds no pending step and dispatches nothing.
+
+        This is the `status != "pending"` guard and only that: the two calls run
+        one after the other on one thread, so an engine with no transaction
+        around the read-then-write passes it. The concurrent case, where two
+        advances interleave inside that window, is
+        `TestFlowConcurrency::test_concurrent_completions_queue_the_next_step_once`
+        in backend/tests/test_pipeline.py.
+        """
         dispatched: list[str] = []
         engine = FlowEngine(database)
         engine.start(

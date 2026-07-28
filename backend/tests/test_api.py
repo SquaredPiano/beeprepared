@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
+
+from backend.models.artifacts import GENERATED_TYPES, SOURCE_TYPES
 
 
 def create_project(client, name="API Project") -> dict:
@@ -13,17 +16,43 @@ def create_project(client, name="API Project") -> dict:
     return response.json()
 
 
+@pytest.fixture
+def idle_client(monkeypatch):
+    """
+    A client whose lifespan starts no workers.
+
+    The pool drains the queue in the background, so anything asserted about a
+    freshly queued job races it: the row's status, and for an upload the staged
+    file the ingest handler deletes as its last act. Turning the pool off makes
+    the precondition a fact rather than a question of scheduling.
+    """
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+    from backend.services import job_runner
+
+    async def start_nothing(pool) -> None:
+        return None
+
+    monkeypatch.setattr(job_runner.WorkerPool, "start", start_nothing)
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
 class TestMeta:
     def test_health_reports_what_it_is_wired_to(self, client):
+        """Every fixture forces CELERY_ENABLED=false, so there is one right answer."""
         body = client.get("/health").json()
         assert body["status"] == "healthy"
         assert body["model"] == "offline"
-        assert body["jobs"] in {"local", "celery"}
+        assert body["jobs"] == "local"
 
     def test_capabilities_lists_every_artifact_type(self, client):
+        """The canvas builds its palette from this, so a short list is a missing feature."""
         body = client.get("/api/capabilities").json()
-        assert "mindmap" in body["artifact_types"]
-        assert "cheatsheet" in body["artifact_types"]
+        assert set(body["artifact_types"]) == set(GENERATED_TYPES)
+        assert set(body["source_types"]) == set(SOURCE_TYPES)
         assert body["features"]["flows"] is True
 
 
@@ -58,15 +87,36 @@ class TestProjects:
 
 
 class TestUploads:
-    def test_upload_queues_an_ingest_job(self, client):
-        project = create_project(client)
-        response = client.post(
+    def test_upload_queues_an_ingest_job(self, idle_client, database):
+        """
+        202 is a promise about a row, so the row is what has to be right.
+
+        The queued job is the only description of the upload that outlives the
+        request: its source type, the name the file arrived under, and a
+        `source_ref` naming the staged bytes the ingest handler will read.
+
+        Nothing runs that handler here, so the staged copy it would have deleted
+        is this test's to remove.
+        """
+        project = create_project(idle_client)
+        uploaded = b"# Lecture\n\nConsensus is hard." * 20
+
+        response = idle_client.post(
             f"/api/projects/{project['id']}/upload",
-            files={"file": ("lecture.md", io.BytesIO(b"# Lecture\n\nConsensus is hard." * 20), "text/markdown")},
+            files={"file": ("lecture.md", io.BytesIO(uploaded), "text/markdown")},
             data={"source_type": "md"},
         )
         assert response.status_code == 202, response.text
-        assert response.json()["job_id"]
+
+        job = database.get_job(response.json()["job_id"])
+        assert job["type"] == "ingest"
+        assert job["status"] == "pending"
+        assert job["payload"]["source_type"] == "md"
+        assert job["payload"]["original_name"] == "lecture.md"
+
+        staged = Path(job["payload"]["source_ref"])
+        assert staged.read_bytes() == uploaded
+        staged.unlink()
 
     def test_unknown_source_type_is_rejected(self, client):
         project = create_project(client)
@@ -102,18 +152,66 @@ class TestUploads:
 
 
 class TestJobs:
-    def test_create_and_read_a_generate_job(self, client, database, knowledge_core, project):
-        response = client.post("/api/jobs", json={
-            "project_id": project["id"],
-            "type": "generate",
-            "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
+    def test_create_and_read_a_generate_job(self, idle_client, database, knowledge_core, project):
+        """
+        The read is the stored row, not a fixed shape.
+
+        The browser polls this endpoint to decide whether a node is still
+        spinning and what it was asked to make, so the id, the project, the
+        live status and the payload all have to come back off the row.
+        """
+        payload = {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]}
+
+        response = idle_client.post("/api/jobs", json={
+            "project_id": project["id"], "type": "generate", "payload": payload,
         })
         assert response.status_code == 202, response.text
         job_id = response.json()["job_id"]
 
-        status = client.get(f"/api/jobs/{job_id}")
+        status = idle_client.get(f"/api/jobs/{job_id}")
         assert status.status_code == 200
-        assert status.json()["type"] == "generate"
+
+        body = status.json()
+        assert body["id"] == job_id
+        assert body["project_id"] == project["id"]
+        assert body["type"] == "generate"
+        assert body["status"] == "pending"
+        assert body["payload"] == payload
+
+        database.claim_job(job_id)
+        assert idle_client.get(f"/api/jobs/{job_id}").json()["status"] == "running"
+
+    def test_a_generate_request_naming_no_source_is_refused(self, client, database, project):
+        """Generation reads from the graph, so a request naming nothing is not work."""
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"], "type": "generate", "payload": {"target_type": "quiz"},
+        })
+
+        assert response.status_code == 400, response.text
+        assert "at least one artifact" in response.json()["detail"]
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_an_unknown_ingest_source_type_is_refused(self, client, database, project):
+        """
+        The upload route has its own check; this door reaches the model instead.
+
+        `POST /api/jobs` builds an `IngestRequest` from the payload and never
+        looks at the source type itself, so the only thing standing between a
+        made-up type and a queued job is the validator on the model.
+        """
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "ingest",
+            "payload": {
+                "source_type": "executable",
+                "source_ref": "/tmp/lecture.exe",
+                "original_name": "lecture.exe",
+            },
+        })
+
+        assert response.status_code == 400, response.text
+        assert "source_type must be one of" in response.json()["detail"]
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
 
     def test_invalid_target_type_is_a_400_with_a_useful_message(self, client, project, knowledge_core):
         response = client.post("/api/jobs", json={
@@ -124,17 +222,59 @@ class TestJobs:
         assert response.status_code == 400
         assert "target_type must be one of" in response.json()["detail"]
 
-    def test_identical_in_flight_requests_are_deduplicated(self, client, project, knowledge_core):
+    def test_identical_in_flight_requests_are_deduplicated(
+        self, idle_client, database, project, knowledge_core
+    ):
+        """
+        The second request must join the first rather than queue a second run.
+
+        The precondition is that the first job is still in flight, and with a
+        live worker pool draining the queue that is a matter of timing: the run
+        this asserts about can finish between the two posts. `idle_client`
+        starts no workers, so the first job is pending because nothing can
+        claim it, not because nothing happened to.
+        """
         payload = {
             "project_id": project["id"],
             "type": "generate",
             "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
         }
-        first = client.post("/api/jobs", json=payload).json()
-        second = client.post("/api/jobs", json=payload).json()
+        first = idle_client.post("/api/jobs", json=payload).json()
+        assert database.get_job(first["job_id"])["status"] == "pending"
+
+        second = idle_client.post("/api/jobs", json=payload).json()
 
         assert second["reused"] is True
         assert second["job_id"] == first["job_id"]
+        assert len(database.select("jobs", [("project_id", f"eq.{project['id']}")])) == 1
+
+    def test_a_completed_job_is_never_handed_back_to_a_later_request(
+        self, idle_client, database, project, knowledge_core
+    ):
+        """
+        Regenerate is a request for new work, not a lookup of the old result.
+
+        Counting finished jobs as duplicates made the button look broken: the
+        API answered with the previous artifact's job, nothing ran, and the
+        canvas never changed.
+        """
+        finished = database.insert("jobs", {
+            "project_id": project["id"],
+            "type": "generate",
+            "status": "completed",
+            "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
+        })[0]
+
+        response = idle_client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "generate",
+            "payload": {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]},
+        })
+
+        assert response.status_code == 202, response.text
+        assert response.json()["reused"] is False
+        assert response.json()["job_id"] != finished["id"]
+        assert len(database.select("jobs", [("project_id", f"eq.{project['id']}")])) == 2
 
     def test_steered_requests_are_never_deduplicated(self, client, project, knowledge_core):
         """Different instructions are different work, even for the same source."""
@@ -225,13 +365,30 @@ class TestFlows:
 
 class TestWebSocket:
     def test_snapshot_is_sent_on_connect(self, client, project, database):
-        database.insert("jobs", {
+        """
+        Both halves of the state a canvas joining mid-run has to redraw.
+
+        A client that reconnects gets no replay of the events it missed, so a
+        flow left out of the snapshot renders as a canvas with nothing running
+        on it while the run is still going.
+        """
+        job = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "running", "payload": {},
-        })
+        })[0]
+        flow_run = database.insert("flow_runs", {
+            "project_id": project["id"],
+            "status": "running",
+            "plan": {"steps": [], "seed_artifacts": {}},
+            "node_states": {"g1": {"status": "running"}},
+        })[0]
+
         with client.websocket_connect(f"/ws/projects/{project['id']}?token=mock-token") as socket:
             frame = socket.receive_json()
+
             assert frame["type"] == "snapshot"
-            assert len(frame["data"]["jobs"]) == 1
+            assert [entry["id"] for entry in frame["data"]["jobs"]] == [job["id"]]
+            assert [entry["id"] for entry in frame["data"]["flow_runs"]] == [flow_run["id"]]
+            assert frame["data"]["flow_runs"][0]["node_states"] == {"g1": {"status": "running"}}
 
     def test_events_reach_a_connected_client(self, client, project):
         from backend.services.events import publish
@@ -305,6 +462,34 @@ class TestSecurity:
         })
 
         assert response.status_code == 403, response.text
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_a_source_in_another_project_of_the_callers_own_is_refused(self, client, database, project):
+        """
+        Owning both ends is not permission to wire them together.
+
+        Provenance edges are filed under a single project, so a job in one
+        project reading a parent that lives in another would commit an edge
+        pointing at an artifact this canvas cannot show.
+        """
+        from backend.api.deps import LOCAL_USER_ID
+        from backend.tests.conftest import SAMPLE_CORE
+
+        elsewhere = database.insert("projects", {"name": "Also mine", "user_id": LOCAL_USER_ID})[0]
+        core = database.insert("artifacts", {
+            "project_id": elsewhere["id"],
+            "type": "knowledge_core",
+            "content": {"kind": "core", "core": SAMPLE_CORE},
+        })[0]
+
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "generate",
+            "payload": {"target_type": "quiz", "source_artifact_ids": [core["id"]]},
+        })
+
+        assert response.status_code == 400, response.text
+        assert "different project" in response.json()["detail"]
         assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
 
     def test_a_source_that_does_not_exist_is_refused_before_the_job_is_queued(
@@ -385,7 +570,6 @@ class TestSecurity:
         """
         orphan = database.insert("projects", {"name": "Unowned", "user_id": None})[0]
 
-        assert orphan["user_id"] is None
         assert client.get(f"/api/projects/{orphan['id']}").status_code == 403
         assert orphan["id"] not in [p["id"] for p in client.get("/api/projects").json()]
 
@@ -477,8 +661,28 @@ class TestSecurity:
         assert "http(s) URL" in response.json()["detail"]
         assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
 
+    @pytest.mark.parametrize("source_ref", [
+        "file:///etc/passwd",
+        "//evil.com/lecture",
+        "ftp://evil.com/lecture.mp4",
+        "../../etc/passwd",
+    ])
+    def test_a_youtube_ref_that_is_not_an_http_url_is_refused(self, source_ref):
+        """
+        Everything that is not an http(s) URL, not only the absolute path.
+
+        A scheme yt-dlp does not fetch over the network it reads locally, and a
+        relative path is a local read with the leading slash filed off.
+        """
+        from pydantic import ValidationError
+
+        from backend.api.schemas import IngestRequest
+
+        with pytest.raises(ValidationError, match=r"http\(s\) URL"):
+            IngestRequest(source_type="youtube", source_ref=source_ref, original_name="lecture")
+
     def test_a_youtube_url_still_validates(self):
-        """The guard rejects paths without also rejecting the legitimate case."""
+        """The guard rejects those without also rejecting the legitimate case."""
         from backend.api.schemas import IngestRequest
 
         request = IngestRequest(
@@ -487,7 +691,261 @@ class TestSecurity:
             original_name="lecture",
         )
 
-        assert request.source_ref.startswith("https://")
+        assert request.source_ref == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+class TestArtifactEditing:
+    def test_an_edit_merges_into_the_stored_content_rather_than_replacing_it(
+        self, client, database, project
+    ):
+        """
+        The editor sends the field it changed, not the whole record.
+
+        Everything the pipeline wrote and the editor never shows has to survive
+        an edit that names none of it: what kind of content this is, the
+        instructions it was steered with, and the revision it was refined from.
+        A replacing write loses the lot on the first keystroke saved.
+        """
+        artifact = database.insert("artifacts", {
+            "project_id": project["id"],
+            "type": "quiz",
+            "content": {
+                "kind": "generated",
+                "target_type": "quiz",
+                "instructions": "focus only on quorums",
+                "refined_from": "11111111-1111-1111-1111-111111111111",
+                "data": {"title": "Quorums", "questions": []},
+            },
+        })[0]
+
+        response = client.patch(f"/api/artifacts/{artifact['id']}", json={
+            "content": {"data": {"title": "Quorums, revised", "questions": []}},
+        })
+
+        assert response.status_code == 200, response.text
+
+        content = response.json()["content"]
+        assert content["data"]["title"] == "Quorums, revised"
+        assert content["kind"] == "generated"
+        assert content["target_type"] == "quiz"
+        assert content["instructions"] == "focus only on quorums"
+        assert content["refined_from"] == "11111111-1111-1111-1111-111111111111"
+        assert content["edited_by_user"] is True
+        assert database.get_artifact(artifact["id"])["content"] == content
+
+
+class StubResolver:
+    """Answers with fixed addresses, so a guard test never touches the network."""
+
+    def __init__(self, *answers: str) -> None:
+        self._answers = answers
+
+    def addresses(self, host: str) -> list[str]:
+        return list(self._answers)
+
+
+class TestYouTubeIngestGuard:
+    """
+    The check that stops a `youtube` source fetching something that is not one.
+
+    `source_type: "youtube"` only ever named the field. yt-dlp handed anything
+    it did not recognise to its generic extractor, downloaded the response
+    whatever it was, and the pipeline stored it, read text out of it and
+    committed it as an artifact the caller owns and can read back: a
+    full-response SSRF reaching cloud instance metadata, localhost and this
+    API's own routes.
+    """
+
+    @staticmethod
+    def guard(*answers: str):
+        from backend.pipeline.ingestion import YouTubeUrlGuard
+
+        return YouTubeUrlGuard(resolver=StubResolver(*answers) if answers else None)
+
+    @pytest.mark.parametrize("url", [
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/admin",
+        "http://[fd00::1]/admin",
+    ])
+    def test_an_internal_address_is_refused(self, url):
+        """The proof: the address the exploit reached for is not a YouTube host."""
+        from backend.pipeline.ingestion import UnsafeSourceError
+
+        with pytest.raises(UnsafeSourceError):
+            self.guard().check(url)
+
+    @pytest.mark.parametrize("url", [
+        "http://localhost:8000/api/projects",
+        "http://127.0.0.1/latest/meta-data/",
+    ])
+    def test_a_loopback_url_is_refused(self, url):
+        from backend.pipeline.ingestion import UnsafeSourceError
+
+        with pytest.raises(UnsafeSourceError):
+            self.guard().check(url)
+
+    @pytest.mark.parametrize("url", [
+        "https://youtube.com.evil.tld/watch?v=1",
+        "https://notyoutube.com/watch?v=1",
+        "https://evil.tld/youtube.com",
+        "https://youtu.be.evil.tld/1",
+    ])
+    def test_a_host_that_only_looks_like_youtube_is_refused(self, url):
+        """A suffix match, never a substring one."""
+        from backend.pipeline.ingestion import UnsafeSourceError
+
+        with pytest.raises(UnsafeSourceError, match="not a YouTube host"):
+            self.guard().check(url)
+
+    def test_a_youtube_host_resolving_inward_is_refused(self):
+        """An allowed name is not an allowed destination."""
+        from backend.pipeline.ingestion import UnsafeSourceError
+
+        with pytest.raises(UnsafeSourceError, match="not on the public internet"):
+            self.guard("10.0.0.5").check("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    def test_one_internal_answer_among_several_is_enough_to_refuse(self):
+        from backend.pipeline.ingestion import UnsafeSourceError
+
+        with pytest.raises(UnsafeSourceError, match="not on the public internet"):
+            self.guard("142.250.72.14", "127.0.0.1").check("https://youtu.be/dQw4w9WgXcQ")
+
+    @pytest.mark.parametrize("url", [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+    ])
+    def test_a_genuine_youtube_url_passes(self, url):
+        """The guard closes the hole without closing the feature."""
+        assert self.guard("142.250.72.14").check(url) is None
+
+    def test_the_downloader_never_sees_a_refused_url(self, monkeypatch):
+        """The guard runs before yt-dlp is constructed, not after it has fetched."""
+        from backend.pipeline import ingestion
+
+        def refuse_to_be_built(*args, **kwargs):
+            raise AssertionError("yt-dlp was handed a URL the guard refused")
+
+        monkeypatch.setattr(ingestion.yt_dlp, "YoutubeDL", refuse_to_be_built)
+
+        with pytest.raises(ingestion.UnsafeSourceError):
+            ingestion.IngestionService().store_youtube(
+                "http://169.254.169.254/latest/meta-data/iam/security-credentials/admin",
+                "00000000-0000-0000-0000-000000000000",
+            )
+
+    def test_a_refusal_is_a_permanent_failure(self):
+        """A refused fetch must not be replayed until the attempt limit."""
+        from backend.pipeline.ingestion import UnsafeSourceError
+        from backend.services.job_runner import is_transient
+
+        with pytest.raises(UnsafeSourceError) as caught:
+            self.guard().check("http://169.254.169.254/latest/meta-data/")
+
+        assert is_transient(caught.value) is False
+
+    def test_a_download_is_capped_at_the_upload_limit(self, monkeypatch):
+        """The upload cap covers both ways into the file store, not just one."""
+        from backend.core.config import get_settings
+        from backend.pipeline import ingestion
+
+        options: dict = {}
+
+        class CapturingDownloader:
+            def __init__(self, given):
+                options.update(given)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *unused):
+                return False
+
+            def extract_info(self, url, download=True):
+                raise RuntimeError("the download stops here")
+
+        monkeypatch.setenv("MAX_FILE_SIZE_MB", "7")
+        get_settings.cache_clear()
+        monkeypatch.setattr(ingestion.yt_dlp, "YoutubeDL", CapturingDownloader)
+
+        service = ingestion.IngestionService(guard=self.guard("142.250.72.14"))
+        with pytest.raises(ingestion.IngestionError):
+            service.store_youtube("https://youtu.be/dQw4w9WgXcQ", "a-project")
+
+        assert options["max_filesize"] == 7 * 1024 * 1024
+
+    def test_an_upload_declaring_a_youtube_source_is_refused(self, client, database):
+        """
+        An upload is a file, so it can never be the source type that is a URL.
+
+        The route checked membership of `SOURCE_TYPES`, which contains
+        "youtube", then wrote the payload by hand: the job it queued named a
+        path in this server's temp directory as a URL to download.
+        """
+        project = create_project(client)
+
+        response = client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("lecture.md", io.BytesIO(b"# Lecture" * 20), "text/markdown")},
+            data={"source_type": "youtube"},
+        )
+
+        assert response.status_code == 400, response.text
+        assert "youtube" not in response.json()["detail"]
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+
+class TestStartupGuard:
+    """
+    What the API refuses to start with.
+
+    A download link is unforgeable only while its HMAC key is private, and this
+    repository publishes two candidate keys: the old default in `config.py` and
+    `change-me-in-production` in `.env.example` and `docker-compose.yml`. With
+    one of those in place anybody who has read the project can mint a valid link
+    for any object in the store with no session at all.
+    """
+
+    @staticmethod
+    def settings_with(secret: str):
+        import dataclasses
+
+        from backend.core.config import get_settings
+
+        return dataclasses.replace(get_settings(), signing_secret=secret)
+
+    @pytest.mark.parametrize("secret", ["", "beeprepared-dev-secret", "change-me-in-production"])
+    def test_a_published_signing_secret_refuses_to_boot(self, secret):
+        from backend.main import require_unforgeable_links
+
+        with pytest.raises(RuntimeError, match="SIGNING_SECRET"):
+            require_unforgeable_links(self.settings_with(secret))
+
+    def test_a_private_signing_secret_boots(self):
+        from backend.main import require_unforgeable_links
+
+        assert require_unforgeable_links(self.settings_with("a-private-random-value")) is None
+
+    def test_a_published_default_is_replaced_by_a_minted_one(self, monkeypatch, tmp_path):
+        """
+        A fresh clone and `docker compose up` both still work.
+
+        `.env.example` and the compose file supply `change-me-in-production`, so
+        refusing it outright would break the documented way to start the stack.
+        The key is minted instead, and persisted so links survive a restart.
+        """
+        monkeypatch.setenv("SIGNING_SECRET", "change-me-in-production")
+        monkeypatch.setenv("BEE_DATA_DIR", str(tmp_path / "fresh"))
+
+        from backend.core.config import PUBLISHED_SECRETS, get_settings
+
+        get_settings.cache_clear()
+        minted = get_settings().signing_secret
+
+        assert minted and minted not in PUBLISHED_SECRETS
+
+        get_settings.cache_clear()
+        assert get_settings().signing_secret == minted
 
 
 class TestFileServing:
