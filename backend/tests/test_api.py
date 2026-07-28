@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,30 +15,6 @@ def create_project(client, name="API Project") -> dict:
     response = client.post("/api/projects", json={"name": name})
     assert response.status_code == 201, response.text
     return response.json()
-
-
-@pytest.fixture
-def idle_client(monkeypatch):
-    """
-    A client whose lifespan starts no workers.
-
-    The pool drains the queue in the background, so anything asserted about a
-    freshly queued job races it: the row's status, and for an upload the staged
-    file the ingest handler deletes as its last act. Turning the pool off makes
-    the precondition a fact rather than a question of scheduling.
-    """
-    from fastapi.testclient import TestClient
-
-    from backend.main import app
-    from backend.services import job_runner
-
-    async def start_nothing(pool) -> None:
-        return None
-
-    monkeypatch.setattr(job_runner.WorkerPool, "start", start_nothing)
-
-    with TestClient(app) as test_client:
-        yield test_client
 
 
 class TestMeta:
@@ -92,12 +69,12 @@ class TestUploads:
         202 is a promise about a row, so the row is what has to be right.
 
         The queued job is the only description of the upload that outlives the
-        request: its source type, the name the file arrived under, and a
-        `source_ref` naming the staged bytes the ingest handler will read.
-
-        Nothing runs that handler here, so the staged copy it would have deleted
-        is this test's to remove.
+        request: its source type, the name the file arrived under, and the
+        `staged_key` naming the bytes in the file store that the ingest handler
+        will read.
         """
+        from backend.services.files import get_file_store
+
         project = create_project(idle_client)
         uploaded = b"# Lecture\n\nConsensus is hard." * 20
 
@@ -114,9 +91,34 @@ class TestUploads:
         assert job["payload"]["source_type"] == "md"
         assert job["payload"]["original_name"] == "lecture.md"
 
-        staged = Path(job["payload"]["source_ref"])
+        staged = get_file_store().open_path(job["payload"]["staged_key"])
         assert staged.read_bytes() == uploaded
-        staged.unlink()
+
+    def test_the_queued_payload_discloses_no_server_filesystem_path(self, idle_client):
+        """
+        The payload is handed back by `GET /api/jobs`, so it is public to the caller.
+
+        It used to carry the absolute path of the temp file the API buffered,
+        which told anyone who asked where this server keeps things and under what
+        name. A storage key is scoped to the project and means nothing outside
+        the store.
+        """
+        project = create_project(idle_client)
+
+        response = idle_client.post(
+            f"/api/projects/{project['id']}/upload",
+            files={"file": ("lecture.md", io.BytesIO(b"# Lecture" * 20), "text/markdown")},
+            data={"source_type": "md"},
+        )
+        assert response.status_code == 202, response.text
+
+        payload = idle_client.get(f"/api/jobs/{response.json()['job_id']}").json()["payload"]
+        staged_key = payload["staged_key"]
+
+        assert "source_ref" not in payload
+        assert staged_key.startswith(f"{project['id']}/staged/")
+        assert not Path(staged_key).is_absolute()
+        assert tempfile.gettempdir() not in staged_key
 
     def test_unknown_source_type_is_rejected(self, client):
         project = create_project(client)
@@ -424,7 +426,7 @@ class TestSecurity:
     Each of these covers a hole that was open once: a job reading someone else's
     artifact, a canvas seeding a flow with one, a project with no owner passing
     every ownership check, an edit repointing an export at another stored file,
-    and a YouTube ingest pointed at the local filesystem.
+    and an ingest job pointed at the local filesystem.
     """
 
     @staticmethod
@@ -660,6 +662,43 @@ class TestSecurity:
         assert response.status_code == 400, response.text
         assert "http(s) URL" in response.json()["detail"]
         assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    @pytest.mark.parametrize("source_type", sorted(SOURCE_TYPES - {"youtube"}))
+    def test_an_uploadable_source_pointing_at_the_filesystem_is_refused(
+        self, client, database, project, source_type
+    ):
+        """
+        The other half of the same hole, and the half that stayed open longer.
+
+        Constraining only `youtube` left every other type free to name a path,
+        which the handler read, extracted and committed as an artifact the caller
+        could download. An upload is named by the key it was staged under, so
+        there is no longer a field to put a path in.
+        """
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "ingest",
+            "payload": {
+                "source_type": source_type,
+                "source_ref": "/etc/passwd",
+                "original_name": "passwd",
+            },
+        })
+
+        assert response.status_code == 400, response.text
+        assert "staged_key" in response.json()["detail"]
+        assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
+
+    def test_an_ingest_job_naming_no_source_at_all_is_refused(self, client, project):
+        """A job with nothing to read is not work, and would fail in a worker instead."""
+        response = client.post("/api/jobs", json={
+            "project_id": project["id"],
+            "type": "ingest",
+            "payload": {"source_type": "md", "original_name": "lecture.md"},
+        })
+
+        assert response.status_code == 400, response.text
+        assert "exactly one" in response.json()["detail"]
 
     @pytest.mark.parametrize("source_ref", [
         "file:///etc/passwd",

@@ -34,10 +34,19 @@ TERMINAL_STATUSES = frozenset({
 
 
 class IngestPayload(BaseModel):
-    """Turn a raw source file into a knowledge core."""
+    """
+    Turn a raw source file into a knowledge core.
+
+    A source arrives one of two ways and the field it is under says which:
+    `source_ref` is a URL to fetch, `staged_key` names an upload already in the
+    file store. Naming an upload by a storage key rather than by a path is what
+    lets the process that accepted it and the process that ingests it be
+    different containers, sharing only the volume the store lives on.
+    """
 
     source_type: str
-    source_ref: str
+    source_ref: Optional[str] = None
+    staged_key: Optional[str] = None
     original_name: str = "Untitled"
 
 

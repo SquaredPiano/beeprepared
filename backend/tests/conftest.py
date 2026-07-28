@@ -112,3 +112,27 @@ def client():
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def idle_client(monkeypatch):
+    """
+    A client whose lifespan starts no workers.
+
+    The pool drains the queue in the background, so anything asserted about a
+    freshly queued job races it: the row's status, and for an upload the staged
+    copy the ingest handler releases as its last act. Turning the pool off makes
+    the precondition a fact rather than a question of scheduling.
+    """
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+    from backend.services import job_runner
+
+    async def start_nothing(pool) -> None:
+        return None
+
+    monkeypatch.setattr(job_runner.WorkerPool, "start", start_nothing)
+
+    with TestClient(app) as test_client:
+        yield test_client

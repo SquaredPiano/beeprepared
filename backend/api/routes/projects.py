@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -16,6 +16,7 @@ from backend.models.artifacts import SOURCE_TYPES
 from backend.services.database import Database
 from backend.services.dispatcher import enqueue
 from backend.services.events import JOB_CREATED, publish
+from backend.services.uploads import StagedUpload, UploadStaging
 
 logger = logging.getLogger(__name__)
 
@@ -126,13 +127,17 @@ async def upload_source(
     """
     Accept a file and queue it for ingestion.
 
-    The upload streams to a temp file rather than being read into memory, so a
-    large lecture recording does not become an equally large resident process.
+    The upload streams to disk rather than being read into memory, so a large
+    lecture recording does not become an equally large resident process, and it
+    is staged in the file store rather than in this process's temp directory:
+    the job may be run by a Celery worker in another container, and the data
+    volume the store sits on is the only thing that container shares with this
+    one.
 
     A `youtube` source is fetched from a URL by the ingest pipeline and is not
     something anybody uploads, so it is refused before a byte is read. Accepting
-    it queued a job whose `source_ref` was a path on this server's filesystem
-    and whose handler then took the download branch with it.
+    one queued a job that named a file on this server and then handed that file
+    to the downloader.
     """
     require_project(project_id, user_id, database)
 
@@ -142,19 +147,20 @@ async def upload_source(
             detail=f"source_type must be one of: {', '.join(sorted(UPLOADABLE_SOURCE_TYPES))}",
         )
 
-    temp_path, size = await _buffer_upload(file)
+    staging = UploadStaging()
+    staged = await _stage_upload(staging, file, project_id)
 
     try:
         rows = database.insert("jobs", {
             "project_id": project_id,
             "type": "ingest",
             "status": "pending",
-            "payload": _ingest_payload(source_type, temp_path, file.filename),
+            "payload": _ingest_payload(source_type, staged.key, file.filename),
         })
         if not rows:
             raise HTTPException(status_code=500, detail="Could not queue the ingest job")
     except Exception:
-        os.unlink(temp_path)
+        staging.discard(staged.key, project_id)
         raise
 
     job_id = rows[0]["id"]
@@ -163,12 +169,12 @@ async def upload_source(
     return {
         "job_id": job_id,
         "filename": file.filename,
-        "size_bytes": size,
+        "size_bytes": staged.size_bytes,
         "dispatch": enqueue(job_id),
     }
 
 
-def _ingest_payload(source_type: str, source_ref: str, filename: Optional[str]) -> Dict[str, Any]:
+def _ingest_payload(source_type: str, staged_key: str, filename: Optional[str]) -> Dict[str, Any]:
     """
     Build the job payload through the model the other ingest door already uses.
 
@@ -176,46 +182,55 @@ def _ingest_payload(source_type: str, source_ref: str, filename: Optional[str]) 
     `IngestRequest`: the rules about what a source may be lived in that model,
     and an upload never went through it. Sharing the model makes the invariant
     structural rather than something two routes have to remember separately.
+
+    The dump drops what is unset, so the stored payload names the staged key and
+    nothing else. `GET /api/jobs` hands that payload back to the caller, and a
+    payload that also carried a filesystem path would be disclosing one.
     """
     try:
         request = IngestRequest(
             source_type=source_type,
-            source_ref=source_ref,
+            staged_key=staged_key,
             original_name=filename or "Untitled",
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=f"Invalid ingest payload: {error}") from error
 
-    return request.model_dump()
+    return request.model_dump(exclude_none=True)
 
 
-async def _buffer_upload(file: UploadFile) -> tuple[str, int]:
+async def _stage_upload(
+    staging: UploadStaging,
+    file: UploadFile,
+    project_id: str,
+) -> StagedUpload:
     """
-    Stream an upload to disk, enforcing the size limit as it goes.
+    Stream an upload onto the shared data volume, enforcing the limit as it goes.
 
-    The buffered copy is handed to the ingest job as its `source_ref` and is
-    deleted by `IngestHandler` once that job no longer needs it.
+    The bytes go through a temporary file so the request never holds the whole
+    upload in memory, and that file belongs to this process alone: it is copied
+    into the store, which every process that could run the ingest job can read,
+    and dropped when the block closes, on the way out of a rejection as much as
+    on success.
     """
     limit = get_settings().upload_max_mb * 1024 * 1024
-    suffix = os.path.splitext(file.filename or "")[1]
     written = 0
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as buffered:
-        path = buffered.name
+    with tempfile.NamedTemporaryFile(suffix=Path(file.filename or "").suffix) as buffered:
         while chunk := await file.read(UPLOAD_CHUNK_BYTES):
             written += len(chunk)
             if written > limit:
-                buffered.close()
-                os.unlink(path)
                 raise HTTPException(
                     status_code=413,
                     detail=f"File exceeds the {get_settings().upload_max_mb} MB limit",
                 )
             buffered.write(chunk)
 
-    if written == 0:
-        os.unlink(path)
-        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+        if written == 0:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty")
 
-    logger.info("Buffered %s (%d bytes)", file.filename, written)
-    return path, written
+        buffered.flush()
+        staged = staging.stage(buffered.name, project_id, file.filename)
+
+    logger.info("Staged %s (%d bytes) as %s", file.filename, written, staged.key)
+    return staged

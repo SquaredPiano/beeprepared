@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import shutil
 import tempfile
 from contextlib import aclosing
 from pathlib import Path
@@ -291,18 +293,22 @@ class StubKnowledge:
 
 class TestStagedUploads:
     """
-    The upload endpoint buffers to disk and ingest is the last reader.
+    The upload endpoint stages into the file store and ingest is the last reader.
 
-    Without this every ingested lecture leaves a full-size duplicate in the
-    system temp directory for as long as the machine stays up.
+    The store is on the data volume every process shares, which is what makes
+    the job runnable by a worker that did not accept the upload. Releasing the
+    slot once the job has succeeded is what keeps every ingested lecture from
+    leaving a full-size duplicate behind for as long as the machine stays up.
     """
 
     @staticmethod
-    def staged(suffix: str = ".md") -> Path:
-        handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        handle.write(b"# Lecture\n\nConsensus is hard.")
-        handle.close()
-        return Path(handle.name)
+    def stage(project_id: str, tmp_path: Path, suffix: str = ".md") -> str:
+        """Stage bytes the way the upload endpoint does and return the key."""
+        from backend.services.uploads import UploadStaging
+
+        received = tmp_path / f"received{suffix}"
+        received.write_bytes(b"# Lecture\n\nConsensus is hard.")
+        return UploadStaging().stage(str(received), project_id, received.name).key
 
     @staticmethod
     def handler(core: KnowledgeCore, extraction: Optional[StubExtraction] = None):
@@ -316,45 +322,200 @@ class TestStagedUploads:
         )
 
     @staticmethod
-    def job(database, project, source_ref: str):
+    def job(database, project, payload: dict):
         from backend.models.jobs import JobModel
 
         row = database.insert("jobs", {
             "project_id": project["id"],
             "type": "ingest",
             "status": "pending",
-            "payload": {"source_type": "md", "source_ref": source_ref, "original_name": "lecture.md"},
+            "payload": {"source_type": "md", "original_name": "lecture.md", **payload},
         })[0]
         return JobModel(**{**row, "status": "running"})
 
-    @pytest.mark.asyncio
-    async def test_a_successful_ingest_removes_the_staged_upload(self, database, project, core):
-        upload = self.staged()
+    @staticmethod
+    def staged_keys(project) -> List[str]:
+        from backend.services.files import get_file_store
 
-        bundle = await self.handler(core).run(self.job(database, project, str(upload)))
+        folder = get_file_store().root / project["id"] / "staged"
+        return sorted(path.name for path in folder.iterdir()) if folder.exists() else []
+
+    @pytest.mark.asyncio
+    async def test_a_successful_ingest_releases_the_staged_upload(
+        self, database, project, core, tmp_path
+    ):
+        key = self.stage(project["id"], tmp_path)
+
+        bundle = await self.handler(core).run(self.job(database, project, {"staged_key": key}))
 
         assert bundle.result["status"] == "success"
-        assert not upload.exists()
+        assert self.staged_keys(project) == []
 
     @pytest.mark.asyncio
-    async def test_a_failed_ingest_removes_the_staged_upload(self, database, project, core):
-        upload = self.staged()
+    async def test_a_failed_ingest_keeps_the_staged_upload_for_the_retry(
+        self, database, project, core, tmp_path
+    ):
+        """
+        A retryable failure must not cost the caller their file.
+
+        Releasing the slot in a `finally` made every retry fail for a second,
+        unrelated reason: the attempt the runner requeued found nothing left to
+        read. The staged copy is the only copy of what was uploaded until the
+        source is stored, and the run that eventually succeeds is the one that
+        releases it.
+        """
+        key = self.stage(project["id"], tmp_path)
         handler = self.handler(core, StubExtraction(error=RuntimeError("unreadable")))
 
         with pytest.raises(RuntimeError, match="unreadable"):
-            await handler.run(self.job(database, project, str(upload)))
+            await handler.run(self.job(database, project, {"staged_key": key}))
 
-        assert not upload.exists()
+        assert self.staged_keys(project) == [Path(key).name]
 
     @pytest.mark.asyncio
-    async def test_a_callers_own_file_is_never_deleted(self, database, project, core, tmp_path):
-        """Only what the upload endpoint staged is ours to delete."""
+    async def test_another_projects_staged_upload_is_not_readable(
+        self, database, project, core, tmp_path
+    ):
+        """A key is quoted back by the payload, so it is a caller's string to choose."""
+        from backend.api.deps import LOCAL_USER_ID
+        from backend.services.uploads import StagingError
+
+        elsewhere = database.insert("projects", {
+            "name": "Another Project", "description": "fixture", "user_id": LOCAL_USER_ID,
+        })[0]
+        theirs = self.stage(elsewhere["id"], tmp_path)
+
+        with pytest.raises(StagingError, match="not an upload staged by"):
+            await self.handler(core).run(self.job(database, project, {"staged_key": theirs}))
+
+        assert self.staged_keys(elsewhere) == [Path(theirs).name]
+
+    @pytest.mark.asyncio
+    async def test_a_filesystem_path_is_not_a_source(self, database, project, core, tmp_path):
+        """
+        An uploaded source is named by a key, and nothing else names a file.
+
+        A payload naming a path used to be read, extracted and committed as an
+        artifact the caller could download, which made any ingest job an
+        arbitrary read of the server's disk.
+        """
         theirs = tmp_path / "my-lecture.md"
         theirs.write_text("# Lecture\n\nConsensus is hard.")
 
-        await self.handler(core).run(self.job(database, project, str(theirs)))
+        with pytest.raises(ValueError, match="must carry the staged_key"):
+            await self.handler(core).run(self.job(database, project, {"source_ref": str(theirs)}))
 
         assert theirs.exists()
+
+    def test_only_a_staged_upload_can_be_released(self, project, tmp_path):
+        """
+        The one delete in the ingest path refuses everything but a staging slot.
+
+        Leaking a staged file costs disk; deleting a stored source costs the
+        project its artifact, so the shape of the key is checked before the
+        store is touched at all.
+        """
+        from backend.services.files import get_file_store
+        from backend.services.uploads import StagingError, UploadStaging
+
+        store = get_file_store()
+        source_key = f"{project['id']}/sources/lecture.md"
+        store.put_bytes(b"# Lecture", source_key)
+
+        for key in (source_key, f"{project['id']}/staged/../sources/lecture.md"):
+            with pytest.raises(StagingError, match="not an upload staged by"):
+                UploadStaging().discard(key, project["id"])
+
+        assert store.exists(source_key)
+
+
+class TestCrossProcessIngest:
+    """
+    The process that accepts an upload is not the process that ingests it.
+
+    Dispatch to Celery and the API and the workers are separate containers that
+    share one thing: the data volume. A job whose payload named a path in the
+    API's temp directory could not be run there at all, and every upload failed
+    with `No readable file at /tmp/...` from a worker looking in its own empty
+    one. These tests refuse to let that come back by never letting the executing
+    side inherit anything: the accepting side's temp directory is destroyed and
+    replaced before the job runs, and the singletons are dropped so the store,
+    the database and the settings are resolved again from configuration, with
+    the handler built only afterwards. What survives the split is the data
+    volume, because in the deployment that is what is mounted into both.
+    """
+
+    @staticmethod
+    def upload(client, project_id: str, body: bytes) -> str:
+        response = client.post(
+            f"/api/projects/{project_id}/upload",
+            files={"file": ("lecture.md", io.BytesIO(body), "text/markdown")},
+            data={"source_type": "md"},
+        )
+        assert response.status_code == 202, response.text
+        return response.json()["job_id"]
+
+    @pytest.mark.asyncio
+    async def test_a_worker_sharing_only_the_data_volume_can_run_an_upload(
+        self, idle_client, core, monkeypatch, tmp_path
+    ):
+        from backend.core.config import get_settings
+        from backend.handlers.ingest_handler import IngestHandler
+        from backend.models.jobs import JobType
+        from backend.services import database as database_module
+        from backend.services import files
+        from backend.services.database import get_database
+        from backend.services.job_runner import JobExecutor
+
+        accepting_tmp = tmp_path / "api-tmp"
+        accepting_tmp.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(accepting_tmp))
+
+        project = idle_client.post("/api/projects", json={"name": "Split"}).json()
+        job_id = self.upload(idle_client, project["id"], b"# Lecture\n\n" + b"consensus " * 40)
+
+        executing_tmp = tmp_path / "worker-tmp"
+        executing_tmp.mkdir()
+        shutil.rmtree(accepting_tmp)
+        monkeypatch.setattr(tempfile, "tempdir", str(executing_tmp))
+        get_settings.cache_clear()
+        files.reset_file_store()
+        database_module.reset_database()
+
+        worker_handler = IngestHandler(cleaner=StubCleaner(), knowledge=StubKnowledge(core))
+        monkeypatch.setitem(JobExecutor.HANDLERS, JobType.INGEST.value, lambda: worker_handler)
+
+        assert await JobExecutor().run_job(job_id) is True
+
+        worker_database = get_database()
+        assert worker_database.get_job(job_id)["status"] == "completed"
+
+        stored = worker_database.select("artifacts", [("project_id", f"eq.{project['id']}")])
+        assert {artifact["type"] for artifact in stored} == {"md", "knowledge_core"}
+
+        source = next(artifact for artifact in stored if artifact["type"] == "md")
+        assert files.get_file_store().exists(source["content"]["storage_key"])
+
+    @pytest.mark.asyncio
+    async def test_the_worker_never_reads_the_accepting_process_temp_directory(
+        self, idle_client, monkeypatch, tmp_path
+    ):
+        """
+        Whatever the API buffered through is gone by the time the job is queued.
+
+        The staged copy the worker reads has to be the one in the store, so the
+        temp file the request streamed through must not outlive the request: a
+        second reader of it is a second thing to clean up and a path that would
+        work in tests and fail in a container.
+        """
+        buffering = tmp_path / "api-tmp"
+        buffering.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(buffering))
+
+        project = idle_client.post("/api/projects", json={"name": "No leftovers"}).json()
+        self.upload(idle_client, project["id"], b"# Lecture\n\n" + b"consensus " * 40)
+
+        assert list(buffering.iterdir()) == []
 
 
 class TestEventBusIsolation:

@@ -33,8 +33,17 @@ class ProjectResponse(BaseModel):
 
 
 class IngestRequest(BaseModel):
+    """
+    Where an ingest job is to get its source.
+
+    The two references are different kinds of thing and never both: `source_ref`
+    is a URL the pipeline fetches, and `staged_key` names an upload already
+    sitting in the file store, which is where the upload endpoint puts one.
+    """
+
     source_type: str
-    source_ref: str
+    source_ref: Optional[str] = None
+    staged_key: Optional[str] = None
     original_name: str = "Untitled"
 
     @field_validator("source_type")
@@ -45,20 +54,45 @@ class IngestRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def youtube_ref_is_a_url(self) -> "IngestRequest":
+    def exactly_one_reference(self) -> "IngestRequest":
         """
-        Keep the downloader on the network.
+        A job that names both says nothing about which one it means.
+
+        One that names neither has nothing to read, and would be accepted here
+        only to fail in a worker minutes later.
+        """
+        if bool(self.source_ref) == bool(self.staged_key):
+            raise ValueError(
+                "an ingest job names exactly one of source_ref, a URL to fetch, and "
+                "staged_key, an upload waiting in the file store"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def only_youtube_is_named_by_a_url(self) -> "IngestRequest":
+        """
+        Keep the downloader on the network and everything else in the store.
 
         Given a bare path yt-dlp will happily read a local file, which would turn
-        a YouTube ingest into an arbitrary file read.
+        a YouTube ingest into an arbitrary file read. This is a cheap early
+        rejection, not the guard: it says nothing about where the URL points, and
+        an http(s) URL naming an internal address is an SSRF. `YouTubeUrlGuard`
+        in `backend/pipeline/ingestion.py` authorises the host, immediately
+        before the call that fetches it.
 
-        This is a cheap early rejection, not the guard: it says nothing about
-        where the URL points, and an http(s) URL naming an internal address is
-        an SSRF. `YouTubeUrlGuard` in `backend/pipeline/ingestion.py` authorises
-        the host, immediately before the call that fetches it.
+        No other source type may name a `source_ref` at all. It used to be a
+        filesystem path for those, which made any ingest job a read of any file
+        the server could open; an upload is named by the key it was staged under
+        instead, and that key is checked against the project the job belongs to.
         """
-        if self.source_type == "youtube" and not self.source_ref.startswith(("http://", "https://")):
-            raise ValueError("source_ref must be an http(s) URL for a youtube source")
+        if self.source_type == "youtube":
+            if not (self.source_ref or "").startswith(("http://", "https://")):
+                raise ValueError("source_ref must be an http(s) URL for a youtube source")
+        elif self.source_ref:
+            raise ValueError(
+                f"a {self.source_type} source is named by the staged_key of an upload, "
+                "not by a source_ref"
+            )
         return self
 
 
