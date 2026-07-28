@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import secrets
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -10,7 +12,11 @@ from typing import List
 
 from backend.env import load_environment
 
+logger = logging.getLogger(__name__)
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+PUBLISHED_SECRETS = frozenset({"beeprepared-dev-secret", "change-me-in-production"})
 
 
 def _text(name: str, default: str = "") -> str:
@@ -34,9 +40,85 @@ def _list(name: str, default: List[str]) -> List[str]:
     return [item.strip() for item in raw.split(",") if item.strip()] if raw else list(default)
 
 
+class LocalSigningSecret:
+    """
+    A per-installation HMAC key for a deployment that never configured one.
+
+    A download link is unforgeable only while its key is private, and this
+    repository published two: `beeprepared-dev-secret` as this module's default
+    and `change-me-in-production` in `.env.example` and `docker-compose.yml`.
+    Against either, anyone who has read the project can mint a valid link for
+    any object in the store with no session at all, so neither is used and
+    there is no default value here any more.
+
+    Refusing to run a fresh clone would be worse than the hole it closes, so the
+    first process that needs a key mints one and persists it next to the data it
+    protects. Later processes, including the Celery workers sharing that volume,
+    read the same file, which is what keeps outstanding links valid across a
+    restart. Creation is exclusive, so two processes starting together cannot
+    each install a different key.
+    """
+
+    FILENAME = "signing_secret.key"
+    RANDOM_BYTES = 32
+
+    def __init__(self, data_dir: Path) -> None:
+        self._path = data_dir / self.FILENAME
+
+    def read_or_create(self) -> str:
+        """The persisted key for this installation, minting it on first use."""
+        return self._read() or self._create()
+
+    def _read(self) -> str:
+        try:
+            return self._path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    def _create(self) -> str:
+        minted = secrets.token_hex(self.RANDOM_BYTES)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            descriptor = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            return self._read() or minted
+
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(minted)
+
+        logger.info("Minted a private signing key at %s", self._path)
+        return minted
+
+
+def _signing_secret(data_dir: Path) -> str:
+    """
+    The key download links are signed with, never a value published in the repo.
+
+    A configured value is honoured unless it is one of those published values,
+    which is the same as having configured nothing at all.
+    """
+    configured = _text("SIGNING_SECRET")
+    if configured and configured not in PUBLISHED_SECRETS:
+        return configured
+
+    logger.warning(
+        "SIGNING_SECRET is unset or still a published default; signing links with the "
+        "private key kept under %s instead. Set SIGNING_SECRET to a private random "
+        "value to share links across installations.",
+        data_dir,
+    )
+    return LocalSigningSecret(data_dir).read_or_create()
+
+
 @dataclass(frozen=True)
 class Settings:
-    """Everything the backend needs to run, with a working default for each."""
+    """
+    Everything the backend needs to run, with a working default for each.
+
+    `signing_secret` is the exception: it has no default because a published one
+    is a forgeable one. `get_settings` resolves it to a private value.
+    """
 
     openrouter_api_key: str = ""
     openrouter_model: str = "google/gemini-2.5-flash"
@@ -47,7 +129,7 @@ class Settings:
     llm_max_retries: int = 3
 
     data_dir: Path = field(default_factory=lambda: BACKEND_DIR / ".storage")
-    signing_secret: str = "beeprepared-dev-secret"
+    signing_secret: str = ""
 
     redis_url: str = ""
     celery_enabled: bool = True
@@ -79,7 +161,9 @@ def get_settings() -> Settings:
     """Build the settings snapshot for this process, once."""
     load_environment()
 
-    data_dir = _text("BEE_DATA_DIR") or _text("BEE_STORAGE_DIR") or str(BACKEND_DIR / ".storage")
+    data_dir = Path(
+        _text("BEE_DATA_DIR") or _text("BEE_STORAGE_DIR") or str(BACKEND_DIR / ".storage")
+    ).expanduser()
 
     return Settings(
         openrouter_api_key=_text("OPENROUTER_API_KEY"),
@@ -89,8 +173,8 @@ def get_settings() -> Settings:
         llm_max_output_tokens=_number("LLM_MAX_OUTPUT_TOKENS", 16384),
         llm_timeout_seconds=_number("LLM_TIMEOUT_SECONDS", 180),
         llm_max_retries=_number("LLM_MAX_RETRIES", 3),
-        data_dir=Path(data_dir).expanduser(),
-        signing_secret=_text("SIGNING_SECRET", "beeprepared-dev-secret"),
+        data_dir=data_dir,
+        signing_secret=_signing_secret(data_dir),
         redis_url=_text("REDIS_URL"),
         celery_enabled=_flag("CELERY_ENABLED", True),
         worker_concurrency=_number("WORKER_CONCURRENCY", 4),

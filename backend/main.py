@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api.routes import artifacts, chat, files, flows, jobs, projects, ws
-from backend.core.config import get_settings
+from backend.core.config import PUBLISHED_SECRETS, Settings, get_settings
 from backend.llm.factory import get_provider
 from backend.models.artifacts import GENERATED_TYPES, SOURCE_TYPES
 from backend.services import events
@@ -38,9 +38,29 @@ REQUEST_ID_HEADER = "X-Request-ID"
 settings = get_settings()
 
 
+def require_unforgeable_links(settings: Settings) -> None:
+    """
+    Refuse to serve with a signing key that anyone can read out of the repository.
+
+    Every property the signed-link scheme relies on is worth nothing if the key
+    is public: a stranger with no session could mint a valid, unexpired link for
+    any object in the store. `get_settings` mints a private key when none is
+    configured, so this should never fire; it is the enforcement point that says
+    so out loud, and it still catches a `Settings` assembled by hand.
+    """
+    if not settings.signing_secret or settings.signing_secret in PUBLISHED_SECRETS:
+        raise RuntimeError(
+            "SIGNING_SECRET is unset or still one of the defaults published in this "
+            "repository. Download links signed with it can be forged for any stored "
+            "object. Set SIGNING_SECRET to a private random value and restart."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Resolve every dependency once, then start workers if nothing else will."""
+    require_unforgeable_links(get_settings())
+
     bus = events.get_event_bus()
     if isinstance(bus, events.InProcessEventBus):
         bus.bind_loop(asyncio.get_running_loop())
