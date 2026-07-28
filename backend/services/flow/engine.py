@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from backend.services.database import Database, get_database
 from backend.services.events import (
@@ -22,6 +22,31 @@ Dispatch = Callable[[str], Any]
 
 READY_STATUSES = frozenset({"ready", "completed"})
 FINISHED_STATUSES = frozenset({"completed", "failed", "skipped"})
+
+
+class EventOutbox:
+    """
+    Holds flow events until the transaction that produced them has committed.
+
+    Publishing from inside an open transaction announces a node the database
+    has not stored yet: if the commit fails, or anything in the block raises,
+    the write rolls back but the browser keeps the green node it was already
+    shown. Delivery is also a blocking network round trip on the Redis bus, and
+    waiting on it while holding the write lock stalls every other writer.
+    """
+
+    def __init__(self) -> None:
+        self._pending: List[Tuple[str, str, Dict[str, Any]]] = []
+
+    def record(self, project_id: str, event_type: str, data: Dict[str, Any]) -> None:
+        """Note an event to publish once the row it describes exists."""
+        self._pending.append((project_id, event_type, data))
+
+    def flush(self) -> None:
+        """Publish what was recorded, in the order it happened."""
+        for project_id, event_type, data in self._pending:
+            publish(project_id, event_type, data)
+        self._pending.clear()
 
 
 class FlowEngine:
@@ -84,15 +109,20 @@ class FlowEngine:
         Idempotent: reading a step's state, creating its job row and marking it
         running happen inside one transaction, so a repeated or concurrent
         completion notification cannot start the same step twice.
+
+        Events, dispatch and the row handed back to the caller all wait for the
+        commit, so nobody is told about progress the database rolled back.
         """
+        outbox = EventOutbox()
+
         with self._database.transaction():
-            queued = self._schedule(flow_run_id)
-            run = self.get(flow_run_id) or {}
+            queued = self._schedule(flow_run_id, outbox)
 
+        outbox.flush()
         self._hand_off(queued, dispatch)
-        return run
+        return self.get(flow_run_id) or {}
 
-    def _schedule(self, flow_run_id: str) -> List[str]:
+    def _schedule(self, flow_run_id: str, outbox: EventOutbox) -> List[str]:
         """Queue the ready steps and return their job ids. Caller holds the transaction."""
         run = self.get(flow_run_id)
         if not run or run["status"] != "running":
@@ -118,7 +148,7 @@ class FlowEngine:
                     "error": reason,
                 }
                 self._skip_downstream(step.node_id, plan, states)
-                publish(project_id, FLOW_NODE, {
+                outbox.record(project_id, FLOW_NODE, {
                     "flow_run_id": flow_run_id,
                     "node_id": step.node_id,
                     "status": "failed",
@@ -133,7 +163,7 @@ class FlowEngine:
                 "job_id": job["id"],
                 "source_artifact_ids": sources,
             }
-            publish(project_id, FLOW_NODE, {
+            outbox.record(project_id, FLOW_NODE, {
                 "flow_run_id": flow_run_id,
                 "node_id": step.node_id,
                 "status": "running",
@@ -141,7 +171,7 @@ class FlowEngine:
             })
             queued.append(job["id"])
 
-        self._save(flow_run_id, project_id, plan, states)
+        self._save(flow_run_id, project_id, plan, states, outbox)
         return queued
 
     @staticmethod
@@ -168,7 +198,12 @@ class FlowEngine:
         follows share one transaction. Two parents of a fan-in step finishing at
         once would otherwise each overwrite the other's completion, and the step
         below them would wait on a parent the row no longer remembers.
+
+        Events, dispatch and the row handed back to the caller all wait for the
+        commit, so nobody is told about progress the database rolled back.
         """
+        outbox = EventOutbox()
+
         with self._database.transaction():
             run = self.get(flow_run_id)
             if not run:
@@ -188,7 +223,7 @@ class FlowEngine:
                     "artifact_id": artifact_id,
                 }
 
-            publish(project_id, FLOW_NODE, {
+            outbox.record(project_id, FLOW_NODE, {
                 "flow_run_id": flow_run_id,
                 "node_id": node_id,
                 "status": states[node_id]["status"],
@@ -199,11 +234,11 @@ class FlowEngine:
             self._database.update(
                 "flow_runs", [("id", f"eq.{flow_run_id}")], {"node_states": states}
             )
-            queued = self._schedule(flow_run_id)
-            outcome = self.get(flow_run_id) or {}
+            queued = self._schedule(flow_run_id, outbox)
 
+        outbox.flush()
         self._hand_off(queued, dispatch)
-        return outcome
+        return self.get(flow_run_id) or {}
 
     def get(self, flow_run_id: str) -> Optional[Dict[str, Any]]:
         rows = self._database.select("flow_runs", [("id", f"eq.{flow_run_id}")])
@@ -270,6 +305,7 @@ class FlowEngine:
         project_id: str,
         plan: FlowPlan,
         states: Dict[str, Dict[str, Any]],
+        outbox: EventOutbox,
     ) -> None:
         update: Dict[str, Any] = {"node_states": states}
         statuses = [states.get(step.node_id, {}).get("status") for step in plan.steps]
@@ -286,8 +322,8 @@ class FlowEngine:
             update["completed_at"] = datetime.now(timezone.utc).isoformat()
             update["result"] = tally
 
-            publish(project_id, FLOW_FAILED if failed else FLOW_COMPLETED,
-                    {"flow_run_id": flow_run_id, **tally})
+            outbox.record(project_id, FLOW_FAILED if failed else FLOW_COMPLETED,
+                          {"flow_run_id": flow_run_id, **tally})
             logger.info("Flow run %s finished: %s", flow_run_id, tally)
 
         self._database.update("flow_runs", [("id", f"eq.{flow_run_id}")], update)

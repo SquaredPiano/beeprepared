@@ -162,6 +162,10 @@ class Database:
         Rollback is on `BaseException`, not `Exception`: a cancellation or an
         interrupt that escaped with the transaction still open would leave the
         connection unusable for every later write on this thread.
+
+        The `COMMIT` is inside the `try` for the same reason. A commit can fail
+        on its own - a full disk, an I/O error, a busy timeout expiring - and
+        would otherwise leave the transaction open behind it.
         """
         with self._write_lock:
             connection = self._connection
@@ -172,10 +176,27 @@ class Database:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 yield connection
+                connection.execute("COMMIT")
             except BaseException:
-                connection.execute("ROLLBACK")
+                self._abandon(connection)
                 raise
-            connection.execute("COMMIT")
+
+    @staticmethod
+    def _abandon(connection: sqlite3.Connection) -> None:
+        """
+        Return a failed transaction's connection to autocommit.
+
+        Best effort by design: this runs while another error is on its way to
+        the caller, and that error is the one worth seeing. SQLite closes the
+        transaction itself for some failures, so there may be nothing to undo.
+        """
+        if not connection.in_transaction:
+            return
+
+        try:
+            connection.execute("ROLLBACK")
+        except sqlite3.Error:
+            logger.exception("Rollback failed; this connection may be unusable")
 
     @contextmanager
     def transaction(self):
