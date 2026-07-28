@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
@@ -23,17 +24,32 @@ class JobHandler(ABC):
     runner commits it in a single transaction, so a handler that fails partway
     through cannot leave a half-written graph behind.
 
-    Progress is reported through an injected callback rather than published
-    directly, which keeps the event transport out of the handler and lets a test
-    assert on the sequence of stages.
+    Progress is reported through a callback carried by the handler rather than
+    published directly, which keeps the event transport out of the handler and
+    lets a test assert on the sequence of stages. The callback is per job and
+    the instance is not: a handler is built once and shared by every worker, so
+    it is attached by `with_progress` on a copy and never written to the shared
+    instance.
     """
 
     progress: ProgressReporter = staticmethod(_ignore)
 
     def with_progress(self, reporter: Optional[ProgressReporter]) -> "JobHandler":
-        """Attach a progress reporter and return self for chaining."""
-        self.progress = reporter or _ignore
-        return self
+        """
+        Return a copy of this handler that reports to `reporter`.
+
+        Assigning the reporter here would write to an instance several jobs are
+        running on at once: the job that attached last would own the callback,
+        and every job still in flight would report into that job's project under
+        that job's id.
+
+        The copy is shallow on purpose: the collaborators opened in `__init__`
+        are what make construction expensive and they stay shared. Only the
+        reporter differs per job, and no handler keeps any other per-job state.
+        """
+        attached = copy.copy(self)
+        attached.progress = reporter or _ignore
+        return attached
 
     def report(self, stage: str, percent: int) -> None:
         """

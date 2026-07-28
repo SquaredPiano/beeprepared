@@ -17,6 +17,7 @@ from backend.handlers.ingest_handler import IngestHandler
 from backend.handlers.refine_handler import RefineHandler
 from backend.models.jobs import JobModel, JobType
 from backend.services.database import Database, get_database
+from backend.services.dispatcher import enqueue
 from backend.services.events import (
     ARTIFACT_CREATED,
     JOB_COMPLETED,
@@ -26,6 +27,7 @@ from backend.services.events import (
     publish,
 )
 from backend.services.flow import FlowEngine
+from backend.services.flow.engine import Dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +88,25 @@ class JobExecutor:
         JobType.REFINE.value: RefineHandler,
     }
 
-    def __init__(self, database: Optional[Database] = None) -> None:
+    def __init__(
+        self,
+        database: Optional[Database] = None,
+        dispatch: Optional[Dispatch] = None,
+    ) -> None:
         self._database = database or get_database()
         self._flow = FlowEngine(self._database)
+        self._dispatch = dispatch or enqueue
         self._handlers: Dict[str, JobHandler] = {}
 
     def handler_for(self, job_type: str) -> JobHandler:
-        """Build one handler per type and reuse it; construction opens clients."""
+        """
+        Build one handler per type and reuse it; construction opens clients.
+
+        The instance returned is shared by every job this executor runs, and one
+        executor serves the whole worker pool. Callers get a handler to read, not
+        one to write to: anything per job comes from `with_progress`, which
+        copies rather than mutates.
+        """
         if job_type not in self._handlers:
             build = self.HANDLERS.get(job_type)
             if build is None:
@@ -174,6 +188,7 @@ class JobExecutor:
 
         if outcome == "pending":
             logger.info("Job %s requeued for another attempt", job.id)
+            self._redispatch(job.id)
             return
 
         if outcome not in {"failed", "missing"}:
@@ -187,6 +202,24 @@ class JobExecutor:
         })
         self._notify_flow(job, error=message)
 
+    def _redispatch(self, job_id: Any) -> None:
+        """
+        Hand a requeued job back to the workers.
+
+        `fail_job` has already committed the row as `pending`, which is the order
+        every dispatch in this codebase follows. Without this the retry waits for
+        whatever sweeps the queue next, and under Celery that is only the
+        periodic drain: take the beat schedule away and the job never runs again.
+
+        A dispatcher that raises is logged rather than propagated, because this
+        runs inside the handler for a job that has already failed and `execute`
+        promises not to raise.
+        """
+        try:
+            self._dispatch(str(job_id))
+        except Exception as dispatch_error:
+            logger.error("Could not re-dispatch job %s: %s", job_id, dispatch_error)
+
     def _notify_flow(
         self,
         job: JobModel,
@@ -198,14 +231,12 @@ class JobExecutor:
             return
 
         try:
-            from backend.services.dispatcher import enqueue
-
             self._flow.on_job_finished(
                 job.flow_run_id,
                 job.flow_node_id,
                 artifact_id=str(artifact_id) if artifact_id else None,
                 error=error,
-                dispatch=enqueue,
+                dispatch=self._dispatch,
             )
         except Exception as flow_error:
             logger.error("Could not advance flow run %s: %s", job.flow_run_id, flow_error)
