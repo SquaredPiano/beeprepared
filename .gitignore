@@ -45,3 +45,6 @@ frontend/eg/
 
 # Session handoff, not part of the project
 HANDOFF.md
+
+# Working notes, not part of the project
+docs/
