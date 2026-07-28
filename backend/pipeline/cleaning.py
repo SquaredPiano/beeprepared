@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 4_000
 
+TRANSCRIBED_SOURCE_TYPES = frozenset({"audio", "video", "youtube"})
+
 REPAIR_PROMPT = """
 You are an expert editor working on a lecture transcript.
 
@@ -30,9 +32,14 @@ TRANSCRIPT_NOISE = (
 )
 
 FILLERS = re.compile(r"\b(um|uh|ah|er|hmm)\b", re.IGNORECASE)
-SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([.,!?;:])")
 REPEATED_PERIODS = re.compile(r"\.{2,}")
 WHITESPACE = re.compile(r"\s+")
+
+INVISIBLE_CHARACTERS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u00ad\u200b\ufeff]")
+HORIZONTAL_WHITESPACE = re.compile(r"[^\S\n]+")
+LINE_PADDING = re.compile(r" ?\n ?")
+BLANK_LINES = re.compile(r"\n{3,}")
+SPACE_BEFORE_PUNCTUATION = re.compile(r"[^\S\n]+([.,!?;:])")
 
 MARKDOWN_MARKS = (
     (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),
@@ -45,25 +52,78 @@ MARKDOWN_MARKS = (
 
 class TextCleaner:
     """
-    Cleans text in two passes.
+    Cleans text with the rules the source it came from can survive.
 
-    Rules strip the mechanical noise that regular expressions handle well, then
-    a model repairs grammar across chunks that are processed concurrently.
+    Transcribed speech is prose and nothing else, so it can afford the
+    destructive rules: parentheses and brackets there hold `(laughs)` and
+    `[inaudible]`, line breaks hold nothing, and a model pass is worth its risk
+    because transcription really does produce broken grammar.
+
+    A document is not prose alone. Parentheses and brackets carry meaning
+    (`f(x)`, `[0,1]`, `O(n log n)`, bracketed citations), a colon follows words
+    like `NOTE` and numbers like `3:14`, and the page and slide markers the
+    readers insert are structure the material is navigated by. Documents
+    therefore get whitespace normalisation and nothing that can delete a
+    character the author typed.
+
+    `clean` is the conservative path and holds the plain name on purpose: a
+    caller that does not know which kind of source it is holding must not be
+    able to destroy notation by accident, so the transcript rules have to be
+    asked for by name.
     """
 
     def __init__(self, provider: Optional[LLMProvider] = None) -> None:
         self._provider = provider or get_provider()
 
-    async def clean(self, text: str, *, use_model: bool = True) -> str:
-        """Return the cleaned form of `text`."""
-        cleaned = self.strip_noise(text)
+    async def clean(self, text: str) -> str:
+        """
+        Return the cleaned form of text that was read out of a document.
+
+        Awaitable but modelless, and deliberately so. The repair pass rewrites
+        prose and rejoins its chunks as one line, which would flatten the page
+        markers and let a model reword mathematics it was never asked to touch.
+        A typed document has no transcription errors to repair, so the whole
+        risk would buy nothing.
+        """
+        return self.strip_document_noise(text)
+
+    async def clean_transcript(self, text: str, *, use_model: bool = True) -> str:
+        """Return the cleaned form of text that came out of transcription."""
+        cleaned = self.strip_transcript_noise(text)
         if use_model and cleaned:
             cleaned = await self._repair(cleaned)
         return cleaned
 
     @staticmethod
-    def strip_noise(text: str) -> str:
-        """Remove timestamps, speaker labels, asides and filler words."""
+    def strip_document_noise(text: str) -> str:
+        """
+        Normalise whitespace and drop characters that carry no text at all.
+
+        Everything a reader emitted deliberately survives: notation, brackets,
+        punctuation and the `--- Page N ---` and `--- Slide N ---` markers,
+        which is why line breaks are preserved rather than collapsed. Only
+        extraction artefacts go: form feeds, soft hyphens, zero-width spaces,
+        ragged spacing and the run of blank lines a page break leaves behind.
+        """
+        if not text:
+            return ""
+
+        text = INVISIBLE_CHARACTERS.sub("", text)
+        text = HORIZONTAL_WHITESPACE.sub(" ", text)
+        text = LINE_PADDING.sub("\n", text)
+        text = SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)
+        return BLANK_LINES.sub("\n\n", text).strip()
+
+    @staticmethod
+    def strip_transcript_noise(text: str) -> str:
+        """
+        Delete every parenthesised and bracketed span, plus timestamps, shouted
+        speaker labels and fillers, then flatten the layout.
+
+        Safe only on transcribed speech. The same four rules that remove
+        `(laughs)`, `[inaudible]`, `SPEAKER:` and `12:34` will remove `f(x)`,
+        `[0,1]`, `NOTE:` and `3:14`, so a document must never reach them.
+        """
         if not text:
             return ""
 
@@ -71,9 +131,9 @@ class TextCleaner:
             text = pattern.sub("", text)
 
         text = FILLERS.sub("", text)
+        text = WHITESPACE.sub(" ", text)
         text = SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)
-        text = REPEATED_PERIODS.sub(".", text)
-        return WHITESPACE.sub(" ", text).strip()
+        return REPEATED_PERIODS.sub(".", text).strip()
 
     async def _repair(self, text: str) -> str:
         """

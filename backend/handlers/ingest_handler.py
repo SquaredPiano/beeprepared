@@ -12,7 +12,7 @@ from backend.handlers.base import JobHandler
 from backend.models.artifacts import SOURCE_TYPES
 from backend.models.graph import ArtifactPayload, JobBundle
 from backend.models.jobs import IngestPayload, JobModel
-from backend.pipeline.cleaning import TextCleaner
+from backend.pipeline.cleaning import TRANSCRIBED_SOURCE_TYPES, TextCleaner
 from backend.pipeline.extraction import ExtractionService
 from backend.pipeline.ingestion import IngestionService, StoredSource
 from backend.pipeline.knowledge import KnowledgeCore, KnowledgeExtractor
@@ -155,7 +155,7 @@ class IngestHandler(JobHandler):
                 )
 
             self.report("cleaning text", 50)
-            cleaned = await self._cleaner.clean(extracted.text)
+            cleaned = await self._clean(extracted.text, payload.source_type)
 
             self.report("building knowledge core", 70)
             core = await self._knowledge.extract(cleaned)
@@ -187,6 +187,22 @@ class IngestHandler(JobHandler):
         return self._ingestion.store_upload(
             payload.source_ref, project_id, payload.original_name, payload.source_type
         )
+
+    async def _clean(self, text: str, source_type: str) -> str:
+        """
+        Send the text to the only cleaning rules its source can survive.
+
+        The transcript rules delete every parenthesised and bracketed span,
+        which is what `(laughs)` and `[inaudible]` deserve and what `f(x)`,
+        `[0,1]`, `O(n log n)` and a bracketed citation do not. Running them over
+        a document failed silently: no error, no warning, just a knowledge core
+        and every artifact under it built on mangled text. Anything not known to
+        have been transcribed is treated as a document, so a source type added
+        later is conservative until someone decides otherwise.
+        """
+        if source_type in TRANSCRIBED_SOURCE_TYPES:
+            return await self._cleaner.clean_transcript(text)
+        return await self._cleaner.clean(text)
 
     async def _read(self, source: StoredSource, original_path: str):
         if original_path and Path(original_path).exists():
