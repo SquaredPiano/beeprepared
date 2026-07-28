@@ -108,7 +108,7 @@ function BeeCanvasInner() {
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
 
   const handleEvent = useCallback((event: ProjectEvent) => {
-    const { applyFlowState, setNodeStatus } = useCanvasStore.getState();
+    const { applyFlowState, setNodeStatus, finishFlowRun } = useCanvasStore.getState();
 
     switch (event.type) {
       case "snapshot": {
@@ -159,6 +159,7 @@ function BeeCanvasInner() {
         break;
 
       case "flow.completed":
+        finishFlowRun();
         void refreshArtifacts();
         toast.success("Flow complete", {
           description: `${event.data.completed} step${event.data.completed === 1 ? "" : "s"} finished.`,
@@ -166,6 +167,7 @@ function BeeCanvasInner() {
         break;
 
       case "flow.failed":
+        finishFlowRun();
         toast.error("Flow finished with errors", {
           description: `${event.data.completed} succeeded, ${event.data.failed} failed, ${event.data.skipped} skipped.`,
         });

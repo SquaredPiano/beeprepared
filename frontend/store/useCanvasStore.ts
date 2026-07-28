@@ -120,6 +120,7 @@ interface CanvasState {
   runFlow: () => Promise<void>;
   validateFlow: () => Promise<FlowPlan | null>;
   applyFlowState: (nodeStates: Record<string, FlowNodeState>) => void;
+  finishFlowRun: () => void;
   setNodeStatus: (nodeId: string, patch: Record<string, unknown>) => void;
 
   loadProject: (id: string) => Promise<void>;
@@ -393,7 +394,21 @@ export const useCanvasStore = create<CanvasState>()(
 
         const terminal = ["completed", "failed", "skipped", "ready"];
         const done = Object.values(nodeStates).every((s) => terminal.includes(s.status));
-        if (done) set({ isRunning: false });
+        if (done) get().finishFlowRun();
+      },
+
+      /**
+       * Release the Run button once the server says the run reached a terminal
+       * state.
+       *
+       * `applyFlowState` only sees the whole node-state map, which arrives on
+       * the initial run response and on a socket snapshot. The incremental
+       * `flow.node` events never carry it, so a run that finishes purely over
+       * the event stream would leave `isRunning` true and the button spinning
+       * until a reconnect.
+       */
+      finishFlowRun: () => {
+        set({ isRunning: false, activeFlowRunId: null });
       },
 
       loadProject: async (id: string) => {
