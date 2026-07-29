@@ -1,4 +1,16 @@
-"""The abstraction boundaries, exercised through fakes rather than the real thing."""
+"""
+The abstraction boundaries, exercised by handing the real code a fake collaborator.
+
+Every test in here builds a production class, passes it a stand-in through its
+constructor, and runs the production code unmodified. Nothing is patched into
+place to make that work: there's no `unittest.mock` in this file or anywhere else
+in the suite. The few things monkeypatch does touch are the ones with no
+constructor to inject through, namely the module-level `publish`, the `HANDLERS`
+registry, and the process temp directory.
+
+That's the argument this file exists to make. Dependency injection nobody ever
+passes anything to is just a longer parameter list.
+"""
 
 from __future__ import annotations
 
@@ -101,9 +113,10 @@ class TestProviderSubstitution:
         """
         Every type the API advertises, not a sample of them.
 
-        A missing key is meant to degrade the results and nothing else, so a
-        type the offline provider has no fixture for is a type that breaks
-        outright on a machine with no model configured.
+        Running without a key is supposed to cost you quality and nothing else.
+        If the offline provider has no fixture for one of these types, that type
+        fails outright on any machine with no model configured, which is what a
+        fresh clone of this repository is.
         """
         from backend.llm.offline import OfflineProvider
         from backend.models.artifacts import GENERATED_TYPES
@@ -115,7 +128,7 @@ class TestProviderSubstitution:
 
 
 class TestGenerationContract:
-    """A generator rejects output that parses but would not help anyone."""
+    """A generator turns down output that parses but wouldn't help anybody."""
 
     @pytest.mark.asyncio
     async def test_too_few_questions_is_rejected(self, core):
@@ -154,12 +167,12 @@ class TestGenerationContract:
     @pytest.mark.asyncio
     async def test_an_exam_built_from_too_few_questions_is_rejected(self, core):
         """
-        A batch that fails is dropped, so a thin exam is the quiet failure mode.
+        A failed batch is dropped, so the quiet failure here is a thin exam.
 
-        Nothing raises when two of the three batches go missing: the exam is
-        assembled from whatever came back and commits as a finished artifact.
-        The floor is what turns three questions into an error instead of a
-        final exam somebody sits.
+        When two of the three batches go missing, nothing raises. The exam gets
+        assembled out of whatever did come back and commits as a finished
+        artifact. The floor on the question count is what turns three questions
+        into an error, and not into a final exam somebody sits.
         """
         from backend.models.artifacts import ExamSpec
         from backend.services.generators import (
@@ -268,12 +281,12 @@ class StubExtraction:
 
 class StubCleaner:
     """
-    Stands in for TextCleaner without touching a provider.
+    Stands in for `TextCleaner` without going near a provider.
 
-    It mirrors both entry points deliberately. A stub that only implements the
-    one method its current callers happen to use will keep passing after the
-    real class grows a second, and the drift is invisible until a test that
-    needs the other method is written.
+    Both entry points are here on purpose. A stub that implements only the method
+    its callers happen to use today keeps passing after the real class grows a
+    second one, and nobody finds out until somebody writes the test that needs
+    the other method.
     """
 
     async def clean(self, text: str) -> str:
@@ -293,12 +306,12 @@ class StubKnowledge:
 
 class TestStagedUploads:
     """
-    The upload endpoint stages into the file store and ingest is the last reader.
+    The upload endpoint stages into the file store, and ingest is the last reader.
 
-    The store is on the data volume every process shares, which is what makes
-    the job runnable by a worker that did not accept the upload. Releasing the
-    slot once the job has succeeded is what keeps every ingested lecture from
-    leaving a full-size duplicate behind for as long as the machine stays up.
+    The store lives on the data volume every process shares, so a worker that
+    never saw the request can still run the job. We release the staged copy once
+    the job has succeeded, because otherwise every lecture anybody ingests leaves
+    a full-size duplicate on that volume for as long as the machine stays up.
     """
 
     @staticmethod
@@ -358,11 +371,11 @@ class TestStagedUploads:
         """
         A retryable failure must not cost the caller their file.
 
-        Releasing the slot in a `finally` made every retry fail for a second,
-        unrelated reason: the attempt the runner requeued found nothing left to
-        read. The staged copy is the only copy of what was uploaded until the
-        source is stored, and the run that eventually succeeds is the one that
-        releases it.
+        We used to release the slot in a `finally`, and that made every retry
+        fail for a second, unrelated reason: the attempt the runner requeued
+        found nothing left to read. Until the source is stored, the staged copy
+        is the only copy of what was uploaded, so the run that finally succeeds
+        is the one that releases it.
         """
         key = self.stage(project["id"], tmp_path)
         handler = self.handler(core, StubExtraction(error=RuntimeError("unreadable")))
@@ -376,7 +389,7 @@ class TestStagedUploads:
     async def test_another_projects_staged_upload_is_not_readable(
         self, database, project, core, tmp_path
     ):
-        """A key is quoted back by the payload, so it is a caller's string to choose."""
+        """The key comes back in the job payload, so it's a string the caller picks."""
         from backend.api.deps import LOCAL_USER_ID
         from backend.services.uploads import StagingError
 
@@ -395,9 +408,9 @@ class TestStagedUploads:
         """
         An uploaded source is named by a key, and nothing else names a file.
 
-        A payload naming a path used to be read, extracted and committed as an
-        artifact the caller could download, which made any ingest job an
-        arbitrary read of the server's disk.
+        Give the old payload a path and the handler read it, extracted the text
+        and committed it as an artifact the caller could download. That made any
+        ingest job an arbitrary read of the server's disk.
         """
         theirs = tmp_path / "my-lecture.md"
         theirs.write_text("# Lecture\n\nConsensus is hard.")
@@ -409,11 +422,11 @@ class TestStagedUploads:
 
     def test_only_a_staged_upload_can_be_released(self, project, tmp_path):
         """
-        The one delete in the ingest path refuses everything but a staging slot.
+        The one delete in the ingest path refuses anything but a staging slot.
 
-        Leaking a staged file costs disk; deleting a stored source costs the
-        project its artifact, so the shape of the key is checked before the
-        store is touched at all.
+        Leaking a staged file costs us some disk. Deleting a stored source costs
+        the project the artifact built on it, and there's no second copy. So we
+        check the shape of the key before touching the store at all.
         """
         from backend.services.files import get_file_store
         from backend.services.uploads import StagingError, UploadStaging
@@ -433,16 +446,19 @@ class TestCrossProcessIngest:
     """
     The process that accepts an upload is not the process that ingests it.
 
-    Dispatch to Celery and the API and the workers are separate containers that
-    share one thing: the data volume. A job whose payload named a path in the
-    API's temp directory could not be run there at all, and every upload failed
-    with `No readable file at /tmp/...` from a worker looking in its own empty
-    one. These tests refuse to let that come back by never letting the executing
-    side inherit anything: the accepting side's temp directory is destroyed and
-    replaced before the job runs, and the singletons are dropped so the store,
-    the database and the settings are resolved again from configuration, with
-    the handler built only afterwards. What survives the split is the data
-    volume, because in the deployment that is what is mounted into both.
+    Dispatch to Celery and the API and the workers become separate containers.
+    They share exactly one thing, the data volume. Upload used to be impossible
+    in that configuration: the job payload named a path in the API container's
+    temp directory, the worker went looking for it in its own empty one, and
+    every upload failed with `No readable file at /tmp/...`. No test caught it,
+    because every test ran in a single process.
+
+    So these tests let the executing side inherit nothing. Before the job runs we
+    destroy the accepting side's temp directory and put a fresh one in its place,
+    then drop the module singletons so the store, the database and the settings
+    are all resolved again from configuration, and only then build the handler.
+    The data volume is the one thing left standing, because that is what the
+    deployment mounts into both containers.
     """
 
     @staticmethod
@@ -503,10 +519,9 @@ class TestCrossProcessIngest:
         """
         Whatever the API buffered through is gone by the time the job is queued.
 
-        The staged copy the worker reads has to be the one in the store, so the
-        temp file the request streamed through must not outlive the request: a
-        second reader of it is a second thing to clean up and a path that would
-        work in tests and fail in a container.
+        The copy the worker reads has to be the one in the store. If the temp file
+        the request streamed through outlived the request, we'd have a second
+        thing to clean up and a path that works in tests and fails in a container.
         """
         buffering = tmp_path / "api-tmp"
         buffering.mkdir()
@@ -520,12 +535,12 @@ class TestCrossProcessIngest:
 
 class TestEventBusIsolation:
     """
-    A subscriber is subscribed to one project, not to the bus.
+    A subscriber is subscribed to one project, not to the whole bus.
 
     Every open canvas holds a socket, and the bus is the only thing keeping one
-    workspace's job progress, artifact names and chat replies out of another's.
-    Delivery is by project id, so widening the lookup leaks everything at once
-    and looks like nothing at all in a single-project test.
+    workspace's job progress, artifact names and chat replies away from another's.
+    Delivery goes by project id. Widen that lookup and everything leaks at once,
+    and a test with one project in it would still pass.
     """
 
     @staticmethod
@@ -558,7 +573,7 @@ class TestEventBusIsolation:
 
 
 class TestFileStoreContract:
-    """Signed links are the credential, so the signature has to be load-bearing."""
+    """A signed link is the whole credential, so the signature has to be real."""
 
     def test_a_link_survives_a_round_trip(self, tmp_path):
         from backend.services.files import FileStore
@@ -604,10 +619,11 @@ def claimed_job(database, project_id: str, job_type: str = "generate") -> JobMod
 
 class Rendezvous:
     """
-    Holds every arrival until all of them are in.
+    Holds each arrival until all of them are in.
 
-    Lives in its own object because a handler is copied per job: a counter kept
-    on the handler would be copied too, and the runs would never meet.
+    It's a separate object because the runner copies a handler per job. A counter
+    kept on the handler would be copied along with it, so each run would count to
+    one on its own and the two would never meet.
     """
 
     def __init__(self, expected: int) -> None:
@@ -626,9 +642,9 @@ class PausingHandler(JobHandler):
     """
     Reports one stage, waits for every concurrent run, then reports another.
 
-    The wait builds the interleaving rather than hoping for it: both jobs are
-    inside `run` with their reporters attached before either publishes its
-    second stage.
+    The wait is what builds the interleaving, so we aren't hoping for it. Both
+    jobs are inside `run` with their reporters attached before either one
+    publishes its second stage.
     """
 
     def __init__(self, rendezvous: Rendezvous) -> None:
@@ -655,8 +671,9 @@ class RecordingDispatcher:
     """
     Stands in for the real dispatcher and remembers the row's status at hand-off.
 
-    The status is what proves the ordering rule: a job dispatched before its
-    requeue is committed would be claimed by a worker that still sees `running`.
+    That status is the proof of the ordering rule. Dispatch a job before its
+    requeue is committed and the worker sent after it still sees `running`, so
+    `claim_job` hands it nothing and the retry never happens.
     """
 
     def __init__(self, database) -> None:
@@ -672,11 +689,11 @@ class RecordingDispatcher:
 
 class TestProgressAttribution:
     """
-    One handler serves every worker, so a reporter must not be attached by mutation.
+    One handler serves every worker, so attaching a reporter must not mutate it.
 
-    A mutated reporter is not a lost event: the job that attached last owns the
-    callback, so a job still in flight publishes its progress into somebody
-    else's project under somebody else's job id.
+    Mutating it doesn't lose an event, which would at least be easy to spot. The
+    job that attached last owns the callback, so a job still in flight publishes
+    its progress into somebody else's project under somebody else's job id.
     """
 
     @staticmethod
@@ -745,11 +762,11 @@ class TestProgressAttribution:
 
 class TestRetryDispatch:
     """
-    A requeued job only runs again if somebody is told it is queued.
+    A requeued job only runs again if somebody is told it's queued.
 
-    The local pool polls and would find it eventually; Celery workers only ever
-    run what they are sent, so without this the retry waits on the periodic
-    drain and, without that, forever.
+    The local pool polls, so it would find the job eventually. A Celery worker
+    only ever runs what it is sent, so without the dispatch the retry waits for
+    the periodic drain, and where there is no drain it waits forever.
     """
 
     @pytest.mark.asyncio

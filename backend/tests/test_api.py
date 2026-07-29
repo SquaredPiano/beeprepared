@@ -19,14 +19,14 @@ def create_project(client, name="API Project") -> dict:
 
 class TestMeta:
     def test_health_reports_what_it_is_wired_to(self, client):
-        """Every fixture forces CELERY_ENABLED=false, so there is one right answer."""
+        """The autouse fixture sets CELERY_ENABLED=false, so there's one right answer."""
         body = client.get("/health").json()
         assert body["status"] == "healthy"
         assert body["model"] == "offline"
         assert body["jobs"] == "local"
 
     def test_capabilities_lists_every_artifact_type(self, client):
-        """The canvas builds its palette from this, so a short list is a missing feature."""
+        """The canvas builds its palette from this, so a short list is a lost feature."""
         body = client.get("/api/capabilities").json()
         assert set(body["artifact_types"]) == set(GENERATED_TYPES)
         assert set(body["source_types"]) == set(SOURCE_TYPES)
@@ -66,12 +66,12 @@ class TestProjects:
 class TestUploads:
     def test_upload_queues_an_ingest_job(self, idle_client, database):
         """
-        202 is a promise about a row, so the row is what has to be right.
+        A 202 is a promise about a row, so the row is what has to be right.
 
-        The queued job is the only description of the upload that outlives the
-        request: its source type, the name the file arrived under, and the
-        `staged_key` naming the bytes in the file store that the ingest handler
-        will read.
+        Once the request is over, that queued job is the only description of the
+        upload we have left. It carries the source type, the name the file arrived
+        under, and the `staged_key` that tells the ingest handler which bytes in
+        the file store to read.
         """
         from backend.services.files import get_file_store
 
@@ -96,12 +96,12 @@ class TestUploads:
 
     def test_the_queued_payload_discloses_no_server_filesystem_path(self, idle_client):
         """
-        The payload is handed back by `GET /api/jobs`, so it is public to the caller.
+        `GET /api/jobs` hands the payload straight back, so the caller sees all of it.
 
-        It used to carry the absolute path of the temp file the API buffered,
-        which told anyone who asked where this server keeps things and under what
-        name. A storage key is scoped to the project and means nothing outside
-        the store.
+        It used to carry the absolute path of the temp file the API buffered
+        through, which told anybody who asked where this server keeps things and
+        under what name. A storage key is scoped to the project and means nothing
+        outside the store.
         """
         project = create_project(idle_client)
 
@@ -156,11 +156,12 @@ class TestUploads:
 class TestJobs:
     def test_create_and_read_a_generate_job(self, idle_client, database, knowledge_core, project):
         """
-        The read is the stored row, not a fixed shape.
+        What comes back is the stored row, not a fixed shape.
 
-        The browser polls this endpoint to decide whether a node is still
-        spinning and what it was asked to make, so the id, the project, the
-        live status and the payload all have to come back off the row.
+        The browser polls this endpoint to work out whether a node is still
+        spinning and what it was asked to make. So the id, the project, the live
+        status and the payload all have to be read off the row. An endpoint that
+        always answered "pending" would satisfy a weaker version of this test.
         """
         payload = {"target_type": "quiz", "source_artifact_ids": [knowledge_core["id"]]}
 
@@ -195,11 +196,11 @@ class TestJobs:
 
     def test_an_unknown_ingest_source_type_is_refused(self, client, database, project):
         """
-        The upload route has its own check; this door reaches the model instead.
+        The upload route has its own check, and this door reaches the model.
 
-        `POST /api/jobs` builds an `IngestRequest` from the payload and never
-        looks at the source type itself, so the only thing standing between a
-        made-up type and a queued job is the validator on the model.
+        `POST /api/jobs` builds an `IngestRequest` out of the payload and never
+        looks at the source type itself. The validator on the model is the only
+        thing standing between a made-up type and a queued job.
         """
         response = client.post("/api/jobs", json={
             "project_id": project["id"],
@@ -228,13 +229,13 @@ class TestJobs:
         self, idle_client, database, project, knowledge_core
     ):
         """
-        The second request must join the first rather than queue a second run.
+        The second request should join the first, not queue a second run.
 
-        The precondition is that the first job is still in flight, and with a
-        live worker pool draining the queue that is a matter of timing: the run
-        this asserts about can finish between the two posts. `idle_client`
-        starts no workers, so the first job is pending because nothing can
-        claim it, not because nothing happened to.
+        This only means anything while the first job is still in flight, and with
+        a live worker pool draining the queue that comes down to timing, because
+        the run being asserted about can finish between the two posts.
+        `idle_client` starts no workers, so the first job is pending because
+        nothing can claim it, not because nothing got round to it.
         """
         payload = {
             "project_id": project["id"],
@@ -254,11 +255,11 @@ class TestJobs:
         self, idle_client, database, project, knowledge_core
     ):
         """
-        Regenerate is a request for new work, not a lookup of the old result.
+        Regenerate asks for new work, not a lookup of the old result.
 
-        Counting finished jobs as duplicates made the button look broken: the
-        API answered with the previous artifact's job, nothing ran, and the
-        canvas never changed.
+        Counting finished jobs as duplicates made the button look broken. The API
+        answered with the previous artifact's job, nothing ran, and the canvas
+        never changed.
         """
         finished = database.insert("jobs", {
             "project_id": project["id"],
@@ -370,9 +371,9 @@ class TestWebSocket:
         """
         Both halves of the state a canvas joining mid-run has to redraw.
 
-        A client that reconnects gets no replay of the events it missed, so a
-        flow left out of the snapshot renders as a canvas with nothing running
-        on it while the run is still going.
+        Nothing replays the events a client missed while it was away. Leave flows
+        out of the snapshot and the canvas comes back with nothing running on it,
+        while the run carries on underneath.
         """
         job = database.insert("jobs", {
             "project_id": project["id"], "type": "generate", "status": "running", "payload": {},
@@ -421,12 +422,14 @@ class TestWebSocket:
 
 class TestSecurity:
     """
-    The checks that stop a caller reaching state they do not own.
+    The checks that stop a caller reaching state they don't own.
 
-    Each of these covers a hole that was open once: a job reading someone else's
+    Every one of these was a real hole once, and they have the same shape: an id
+    or a path arrives from the caller and reaches a privileged operation with
+    nobody asking who owns it. The five here are a job reading somebody else's
     artifact, a canvas seeding a flow with one, a project with no owner passing
-    every ownership check, an edit repointing an export at another stored file,
-    and an ingest job pointed at the local filesystem.
+    every ownership check, an edit repointing an export at another file in the
+    store, and an ingest job pointed at the local filesystem.
     """
 
     @staticmethod
@@ -470,9 +473,9 @@ class TestSecurity:
         """
         Owning both ends is not permission to wire them together.
 
-        Provenance edges are filed under a single project, so a job in one
-        project reading a parent that lives in another would commit an edge
-        pointing at an artifact this canvas cannot show.
+        A provenance edge is filed under one project. If a job here could read a
+        parent living in another project, we'd commit an edge pointing at an
+        artifact this canvas can't show.
         """
         from backend.api.deps import LOCAL_USER_ID
         from backend.tests.conftest import SAMPLE_CORE
@@ -525,10 +528,10 @@ class TestSecurity:
         """
         The canvas is request data, so a seed id is a read the API has to authorise.
 
-        Jobs check their sources, but the flow route reached the same handler by
-        another door: nodes came from the body, the compiler lifted their
-        artifact ids into the plan, and the engine wrote them straight into a
-        generate job's sources.
+        Fixing the jobs endpoint didn't fix this, because the flow route reaches
+        the same handler through another door. The nodes arrive in the request
+        body, the compiler lifts their artifact ids into the plan, and the engine
+        writes them straight into a generate job's sources.
         """
         stolen = self.foreign_artifact(database)
 
@@ -542,7 +545,7 @@ class TestSecurity:
         assert database.select("flow_runs", [("project_id", f"eq.{project['id']}")]) == []
 
     def test_a_saved_canvas_cannot_smuggle_a_foreign_seed_into_a_run(self, client, database, project):
-        """Running with no body uses the stored canvas, which is equally caller-written."""
+        """With no body the run uses the stored canvas, and `PATCH` writes that too."""
         stolen = self.foreign_artifact(database)
         database.update("projects", [("id", f"eq.{project['id']}")], {
             "canvas_state": {"viewport": {}, **self.seeded_graph(stolen["id"])},
@@ -567,8 +570,10 @@ class TestSecurity:
         """
         A NULL owner used to satisfy every caller's ownership check.
 
-        Read said yes while list said no, because the listing filters on the
-        caller's id and a NULL never matches it.
+        The check read `if owner and owner != user_id`, so an absent owner skipped
+        it altogether. Read said yes and the listing said no, since the listing
+        filters on the caller's id and NULL never matches. Two answers disagreeing
+        like that is how a hole this simple survives a review.
         """
         orphan = database.insert("projects", {"name": "Unowned", "user_id": None})[0]
 
@@ -602,8 +607,8 @@ class TestSecurity:
         """
         The export block names a storage key, so writing it is writing a capability.
 
-        It is renderer-owned: an accepted rewrite would have the download
-        endpoint sign a link to whatever key the caller named.
+        That block belongs to the renderer. Accept a rewrite of it and the
+        download endpoint will sign a valid link to whatever key the caller named.
         """
         from backend.services.files import get_file_store
 
@@ -648,7 +653,7 @@ class TestSecurity:
         assert client.get(f"/api/artifacts/{artifact['id']}/download").status_code == 404
 
     def test_a_youtube_source_pointing_at_the_filesystem_is_refused(self, client, database, project):
-        """Given a bare path yt-dlp reads the local file, so the path never reaches it."""
+        """Hand yt-dlp a bare path and it reads the local file, so it never gets one."""
         response = client.post("/api/jobs", json={
             "project_id": project["id"],
             "type": "ingest",
@@ -670,10 +675,10 @@ class TestSecurity:
         """
         The other half of the same hole, and the half that stayed open longer.
 
-        Constraining only `youtube` left every other type free to name a path,
-        which the handler read, extracted and committed as an artifact the caller
-        could download. An upload is named by the key it was staged under, so
-        there is no longer a field to put a path in.
+        Constraining `youtube` alone left every other type free to name a path.
+        The handler read it, extracted the text and committed it as an artifact
+        the caller could download. An upload is named now by the key it was staged
+        under, so there's no field left to put a path in.
         """
         response = client.post("/api/jobs", json={
             "project_id": project["id"],
@@ -690,7 +695,7 @@ class TestSecurity:
         assert database.select("jobs", [("project_id", f"eq.{project['id']}")]) == []
 
     def test_an_ingest_job_naming_no_source_at_all_is_refused(self, client, project):
-        """A job with nothing to read is not work, and would fail in a worker instead."""
+        """A job with nothing to read isn't work, and it would fail inside a worker."""
         response = client.post("/api/jobs", json={
             "project_id": project["id"],
             "type": "ingest",
@@ -708,10 +713,11 @@ class TestSecurity:
     ])
     def test_a_youtube_ref_that_is_not_an_http_url_is_refused(self, source_ref):
         """
-        Everything that is not an http(s) URL, not only the absolute path.
+        Everything that isn't an http(s) URL, not just the absolute path.
 
-        A scheme yt-dlp does not fetch over the network it reads locally, and a
-        relative path is a local read with the leading slash filed off.
+        Any scheme yt-dlp won't fetch over the network it reads locally instead,
+        and a relative path is that same local read with the leading slash filed
+        off.
         """
         from pydantic import ValidationError
 
@@ -721,7 +727,7 @@ class TestSecurity:
             IngestRequest(source_type="youtube", source_ref=source_ref, original_name="lecture")
 
     def test_a_youtube_url_still_validates(self):
-        """The guard rejects those without also rejecting the legitimate case."""
+        """The guard turns those away without turning away the case it exists for."""
         from backend.api.schemas import IngestRequest
 
         request = IngestRequest(
@@ -740,10 +746,10 @@ class TestArtifactEditing:
         """
         The editor sends the field it changed, not the whole record.
 
-        Everything the pipeline wrote and the editor never shows has to survive
-        an edit that names none of it: what kind of content this is, the
-        instructions it was steered with, and the revision it was refined from.
-        A replacing write loses the lot on the first keystroke saved.
+        An edit that names none of it still has to leave everything the pipeline
+        wrote and the editor never shows: what kind of content this is, the
+        instructions it was steered with, the revision it was refined from. A
+        write that replaces loses all of that the first time somebody saves.
         """
         artifact = database.insert("artifacts", {
             "project_id": project["id"],
@@ -785,14 +791,14 @@ class StubResolver:
 
 class TestYouTubeIngestGuard:
     """
-    The check that stops a `youtube` source fetching something that is not one.
+    The check that stops a `youtube` source fetching something that isn't one.
 
-    `source_type: "youtube"` only ever named the field. yt-dlp handed anything
-    it did not recognise to its generic extractor, downloaded the response
-    whatever it was, and the pipeline stored it, read text out of it and
-    committed it as an artifact the caller owns and can read back: a
-    full-response SSRF reaching cloud instance metadata, localhost and this
-    API's own routes.
+    `source_type: "youtube"` only ever named the field. Anything yt-dlp didn't
+    recognise went to its generic extractor, which downloaded the response
+    whatever it turned out to be. The pipeline then stored it, read text out of it
+    and committed it as an artifact the caller owns and can read back. That is a
+    full-response SSRF, and it reached cloud instance metadata, localhost, and
+    this API's own routes.
     """
 
     @staticmethod
@@ -806,7 +812,7 @@ class TestYouTubeIngestGuard:
         "http://[fd00::1]/admin",
     ])
     def test_an_internal_address_is_refused(self, url):
-        """The proof: the address the exploit reached for is not a YouTube host."""
+        """Neither is a YouTube host, and the first is the cloud metadata service."""
         from backend.pipeline.ingestion import UnsafeSourceError
 
         with pytest.raises(UnsafeSourceError):
@@ -874,7 +880,7 @@ class TestYouTubeIngestGuard:
             )
 
     def test_a_refusal_is_a_permanent_failure(self):
-        """A refused fetch must not be replayed until the attempt limit."""
+        """A refused fetch must not be tried again until the attempt limit runs out."""
         from backend.pipeline.ingestion import UnsafeSourceError
         from backend.services.job_runner import is_transient
 
@@ -915,11 +921,11 @@ class TestYouTubeIngestGuard:
 
     def test_an_upload_declaring_a_youtube_source_is_refused(self, client, database):
         """
-        An upload is a file, so it can never be the source type that is a URL.
+        An upload is a file, so it can never be the one source type that is a URL.
 
-        The route checked membership of `SOURCE_TYPES`, which contains
-        "youtube", then wrote the payload by hand: the job it queued named a
-        path in this server's temp directory as a URL to download.
+        The route checked the type against `SOURCE_TYPES`, and "youtube" is in
+        there. Then it wrote the payload by hand, and the job it queued named a
+        path in this server's temp directory as a URL to go and download.
         """
         project = create_project(client)
 
@@ -939,10 +945,10 @@ class TestStartupGuard:
     What the API refuses to start with.
 
     A download link is unforgeable only while its HMAC key is private, and this
-    repository publishes two candidate keys: the old default in `config.py` and
-    `change-me-in-production` in `.env.example` and `docker-compose.yml`. With
-    one of those in place anybody who has read the project can mint a valid link
-    for any object in the store with no session at all.
+    repository publishes two candidates: the old default from `config.py`, and
+    `change-me-in-production` from `.env.example` and `docker-compose.yml`. With
+    either of those in place, anybody who has read the project can mint a valid
+    link for any object in the store, with no session at all.
     """
 
     @staticmethod
@@ -969,9 +975,10 @@ class TestStartupGuard:
         """
         A fresh clone and `docker compose up` both still work.
 
-        `.env.example` and the compose file supply `change-me-in-production`, so
-        refusing it outright would break the documented way to start the stack.
-        The key is minted instead, and persisted so links survive a restart.
+        `.env.example` and the compose file both hand us `change-me-in-production`,
+        so refusing to boot on it would break the documented way to start the
+        stack. We mint a private key in that case and persist it, which is also
+        what lets an issued link outlive a restart.
         """
         monkeypatch.setenv("SIGNING_SECRET", "change-me-in-production")
         monkeypatch.setenv("BEE_DATA_DIR", str(tmp_path / "fresh"))

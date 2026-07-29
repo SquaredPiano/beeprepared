@@ -50,9 +50,10 @@ def lecture_transcript(paragraphs: int = 40) -> str:
     """
     A transcript long enough to be chunked, carrying one sentence worth finding.
 
-    The repair pass splits at four thousand characters, so the sentence is
-    repeated: exactly one copy per boundary can be cut in half, and the rest
-    prove whether the pass returned the lecture or something it invented.
+    The repair pass splits the text at four thousand characters, so we repeat the
+    sentence all the way through. At most one copy per boundary can be cut in
+    half, and every other copy is there to show whether the pass gave back the
+    lecture or something it made up.
     """
     body = (
         "Today we look at how a replicated log stays consistent when machines fail. "
@@ -101,7 +102,7 @@ def notes_then_quiz(artifact_id: str) -> tuple[list[dict], list[dict]]:
 
 
 def record_flow_events(monkeypatch) -> list[tuple[str, dict]]:
-    """Capture what the engine tells the browser, in the order it is told."""
+    """Capture what the engine tells the browser, in the order it says it."""
     from backend.services.flow import engine as flow_engine
 
     seen: list[tuple[str, dict]] = []
@@ -185,11 +186,11 @@ def scripted_post(monkeypatch, answers: dict) -> list[str]:
     """
     Answer every HTTP POST from `answers`, keyed by a fragment of the host called.
 
-    Patching the transport rather than the transcribers is what makes these
-    tests about the real request and the real response shape. An answer that is
-    an exception is raised, which is how a timeout or a refused connection
-    arrives. The returned list records the order the hosts were called in, which
-    is the only proof of which transcriber was actually used.
+    We patch the transport and leave the transcribers alone, which is what keeps
+    these tests about the real request and the real response shape. If an answer
+    is an exception we raise it, because that's how a timeout or a refused
+    connection turns up. The returned list records which hosts were called and in
+    what order, and that's the only proof of which transcriber did the work.
     """
     called: list[str] = []
 
@@ -271,9 +272,9 @@ class TestTranscriberSelection:
     """
     Which service hears a lecture is a configuration question, not a code path.
 
-    Deepgram is built for speech and a general model is not, so a deployment
-    with a Deepgram key must use it, and a deployment with only an OpenRouter
-    key must still transcribe rather than refuse the upload.
+    Deepgram is built for speech and a general model isn't, so a deployment with
+    a Deepgram key has to use it. A deployment with only an OpenRouter key still
+    has to transcribe, because a rougher transcript beats refusing the upload.
     """
 
     def test_a_deepgram_key_puts_deepgram_in_front_of_the_language_model(self, monkeypatch):
@@ -310,7 +311,7 @@ class TestTranscriberSelection:
         assert [url for url in called if "deepgram" in url] == []
 
     def test_with_neither_key_the_pipeline_names_both_of_them(self, monkeypatch, tmp_path):
-        """A deployment that cannot transcribe has to say what would let it."""
+        """A deployment that can't transcribe has to say what would let it."""
         transcription_keys(monkeypatch)
 
         transcriber = Transcriber()
@@ -367,11 +368,11 @@ class TestDeepgramTranscription:
         self, monkeypatch, tmp_path, answer, retryable
     ):
         """
-        A rejected key must not be retried and a busy Deepgram must be.
+        A rejected key must not be retried, and a busy Deepgram must be.
 
-        Retrying a revoked key spends three attempts to learn the same thing,
-        and giving up on a timeout throws away a lecture that would have
-        transcribed on the next attempt.
+        Retry a revoked key and we spend three attempts learning the same thing.
+        Give up on a timeout and we throw away a lecture that would have
+        transcribed fine on the next attempt.
         """
         assert is_transient(deepgram_failure(monkeypatch, tmp_path, answer)) is retryable
 
@@ -388,9 +389,9 @@ class TestTranscriptionFallback:
     """
     Deepgram going down should cost a warning, not somebody's upload.
 
-    The fallback only means anything if the failure it reports is still the one
-    that explains what happened, because the job runner reads that error to
-    decide whether the job is worth running again.
+    The fallback is only worth having if the failure it reports still explains
+    what actually happened, because the job runner reads that error to decide
+    whether the job is worth another attempt.
     """
 
     def test_a_failing_deepgram_hands_the_recording_to_the_language_model(
@@ -424,10 +425,11 @@ class TestTranscriptionFallback:
         self, monkeypatch, tmp_path
     ):
         """
-        The offline provider is the backup here, and it cannot do audio at all.
+        The offline provider is the backup here, and it can't do audio at all.
 
-        Its refusal would classify as permanent and name nothing, so a timeout
-        that deserved another attempt would end the job for the wrong reason.
+        Its refusal classifies as permanent and names nothing, so if that were
+        the error the job saw, a timeout that deserved another attempt would end
+        the job for the wrong reason.
         """
         transcription_keys(monkeypatch, deepgram=True)
         scripted_post(monkeypatch, {"deepgram": httpx.ReadTimeout("")})
@@ -456,11 +458,12 @@ class RecordingCleaner:
 
 class TestCleaning:
     """
-    A document is not a transcript, and used to be cleaned as though it were.
+    A document is not a transcript, and it used to be cleaned as if it were.
 
-    The transcript rules delete every parenthesised and bracketed span, so a
-    maths or computer-science PDF lost the notation it is made of, silently,
-    before the knowledge core and every artifact under it were built on it.
+    The transcript rules delete every parenthesised and bracketed span. Run them
+    over a maths or computer-science PDF and it quietly loses the notation it is
+    made of, and then the knowledge core and every artifact under it get built on
+    whatever is left.
     """
 
     def test_a_document_keeps_mathematical_and_bracketed_notation(self):
@@ -502,22 +505,22 @@ class TestCleaning:
 
 class TestTranscriptRepairKeepsTheSource:
     """
-    The cleaning pass edits the transcript; it must never author a new one.
+    The cleaning pass edits the transcript; it must never write a new one.
 
-    This is the project's worst bug and its whole class. The offline provider
-    hands a prompt its own input back only when it recognises the prompt as an
-    edit, the cleaning prompt says "summarise", and the recogniser only knew
-    "summarize", so a whole lecture was replaced by a synthetic study document.
-    Nothing raised: the knowledge core and every artifact under it were built on
-    text nobody had ever said.
+    This is the worst bug in the project, and the whole class of bug it belongs
+    to. The offline provider only hands a prompt its own input back when it
+    recognises the prompt as an edit. The cleaning prompt said "summarise", the
+    recogniser only knew "summarize", and so a whole lecture got replaced by a
+    synthetic study document. Nothing raised. The knowledge core and every
+    artifact under it were built on text nobody had ever said.
     """
 
     def test_the_repair_prompt_is_recognised_as_an_edit_by_the_offline_provider(self):
         """
         The cheap half: the prompt and the recogniser pinned to each other.
 
-        Neither can be reworded on its own after this, which is the failure that
-        has no other symptom.
+        Neither one can be reworded on its own now without this failing, and a
+        rewording is exactly the change that has no other symptom.
         """
         from backend.llm.offline import OfflineProvider
         from backend.pipeline.cleaning import REPAIR_PROMPT
@@ -528,8 +531,9 @@ class TestTranscriptRepairKeepsTheSource:
         """
         The whole class: the real cleaner, the real provider, a real transcript.
 
-        Only the output can tell the difference between a repair and a
-        replacement, so this reads the output rather than the recogniser.
+        The output is the only place a repair and a replacement look different, so
+        the output is what this reads. The recogniser could be right and the pass
+        could still hand back a lecture nobody gave.
         """
         from backend.llm.offline import OfflineProvider
 
@@ -581,10 +585,10 @@ class TestGeneration:
         """
         The exam is the only type assembled from batches and typeset by a tool.
 
-        A failed export is logged rather than raised, so the job completing says
-        nothing about whether a booklet came out; the stored export is what has
-        to be looked at. Which format arrives depends on whether pdflatex is
-        installed, so both of its answers are accepted.
+        A failed export is logged, not raised, so the job completing tells us
+        nothing about whether a booklet came out. The stored export is the thing
+        to look at. Which format we get depends on whether pdflatex is installed
+        on the machine, so both answers are accepted here.
         """
         from backend.services.exports import MIME_TYPES
         from backend.services.files import get_file_store
@@ -746,7 +750,7 @@ class TestRetryPolicy:
         "artifact 504 has no content",
     ])
     def test_status_digits_inside_identifiers_do_not_trigger_a_retry(self, identifier):
-        """A bare three-digit match would retry anything containing those digits."""
+        """A plain substring match on the digits would retry anything containing them."""
         assert not is_transient(ValueError(f"Source artifacts not found: {identifier}"))
 
     def test_a_transient_failure_requeues_until_attempts_run_out(self, database, project, monkeypatch):
@@ -790,11 +794,11 @@ class TestQueue:
         self, database, project, monkeypatch
     ):
         """
-        The reaper's other branch, and the one that stops the loop.
+        The reaper's other branch, the one that stops the loop.
 
-        A job that dies the same way every time would otherwise be requeued
-        forever: the reaper hands it back, the next worker dies on it, and the
-        node spins with no error for as long as the process lives.
+        Without it, a job that dies the same way every time gets requeued forever.
+        The reaper hands it back, the next worker dies on it too, and the node on
+        the canvas spins with no error for as long as the process lives.
         """
         from backend.core.config import get_settings
 
@@ -877,7 +881,20 @@ class TestQueue:
 
 class TestFlowConcurrency:
     def test_concurrent_completions_queue_the_next_step_once(self, database, project, knowledge_core):
-        """Eight notifications for one finished step must produce one downstream job."""
+        """
+        Eight notifications for one finished step must produce one downstream job.
+
+        The concurrency here is real and not simulated. Eight OS threads meet at a
+        `threading.Barrier(8)`, so none of them moves until all eight have
+        arrived, and then every one of them reports `g1` finished. Each thread
+        reads `g2` as pending before any of the writers commits, and that window
+        is where the bug lived: against an engine with no transaction around the
+        read-then-write, this fails with `assert 9 == 2`.
+
+        It counts the result twice on purpose. One count is what the engine
+        announced, and a dispatch counter can be fooled. The other is the rows in
+        `jobs`, which is the side effect somebody would actually pay for.
+        """
         engine = FlowEngine(database)
         dispatched: list[str] = []
 
@@ -968,8 +985,8 @@ class RefusesTheFirstCommit:
     """
     Wraps a connection so its first `COMMIT` fails the way a full disk does.
 
-    Only `execute` is interesting; everything else is the real connection, so
-    `in_transaction` still reports what SQLite actually thinks.
+    `execute` is the only method we care about here. Everything else falls through
+    to the real connection, so `in_transaction` still reports what SQLite thinks.
     """
 
     def __init__(self, connection: sqlite3.Connection) -> None:

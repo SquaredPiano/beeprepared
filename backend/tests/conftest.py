@@ -1,4 +1,4 @@
-"""Fixtures giving every test a fresh database, file store and offline model."""
+"""Fixtures that hand every test a fresh database, file store and offline model."""
 
 from __future__ import annotations
 
@@ -45,16 +45,17 @@ SAMPLE_CORE: Dict[str, Any] = {
 @pytest.fixture(autouse=True)
 def isolated_environment(tmp_path, monkeypatch):
     """
-    Point every shared singleton at an empty world.
+    Give every test an empty world to run in.
 
-    Settings, the model provider, the database, the file store, the event bus
-    and the dispatcher are all cached per process by design, so each has to be
-    reset or one test's configuration leaks into the next.
+    Settings, the model provider, the database, the file store, the event bus and
+    the dispatcher are all cached for the life of the process, which is what we
+    want in production. Here it means one test's configuration leaks into the
+    next one unless all six are reset.
 
-    Both API keys are cleared, and that matters more than it looks: `.env` is
-    loaded for tests too, so a developer with real keys would otherwise have the
-    suite call Deepgram and OpenRouter for real and behave differently from the
-    same suite on a machine with none.
+    Clearing both API keys matters more than it looks. We load `.env` in tests
+    too, so on a machine with real keys the suite would call Deepgram and
+    OpenRouter for real, and it would behave differently from the same suite run
+    where there are no keys at all.
     """
     monkeypatch.setenv("BEE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("SIGNING_SECRET", "test-secret")
@@ -102,7 +103,7 @@ def project(database):
 
 @pytest.fixture
 def knowledge_core(database, project):
-    """A knowledge core artifact, as ingest would have produced."""
+    """A knowledge core artifact, the way a finished ingest would have left it."""
     return database.insert("artifacts", {
         "project_id": project["id"],
         "type": "knowledge_core",
@@ -125,10 +126,11 @@ def idle_client(monkeypatch):
     """
     A client whose lifespan starts no workers.
 
-    The pool drains the queue in the background, so anything asserted about a
-    freshly queued job races it: the row's status, and for an upload the staged
-    copy the ingest handler releases as its last act. Turning the pool off makes
-    the precondition a fact rather than a question of scheduling.
+    The pool drains the queue in the background, so a test that asserts anything
+    about a job it just queued is racing it. The row's status is the obvious one,
+    and for an upload there's also the staged copy that the ingest handler
+    releases as its last act. With the pool off, that job is pending because
+    nothing can claim it, not because nothing got round to it yet.
     """
     from fastapi.testclient import TestClient
 

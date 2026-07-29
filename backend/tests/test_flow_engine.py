@@ -46,7 +46,7 @@ class TestCompile:
         assert sorted(plan.steps[0].parents) == ["s1", "s2"]
 
     def test_fan_out_gives_every_child_the_same_parent(self):
-        """One quiz into flashcards, an exam and a cheat sheet - all at one depth."""
+        """One quiz into flashcards, an exam and a cheat sheet, all at the same depth."""
         plan = FlowCompiler().compile(
             [
                 source_node("s1", "a1"),
@@ -139,9 +139,9 @@ class TestValidation:
         """
         The canvas is request data, so its size is the caller's to choose.
 
-        Compilation walks every node and every edge and the run that follows
-        queues a job per generator, so an unbounded graph is an unbounded amount
-        of work bought with one request.
+        Compilation walks every node and every edge, and the run that follows
+        queues one job per generator. With no limit, a single request buys an
+        unbounded amount of work.
         """
         from backend.services.flow.plan import MAX_NODES
 
@@ -232,7 +232,7 @@ class TestScheduling:
     def test_a_step_with_no_usable_input_still_reaches_a_terminal_state(
         self, database, project, knowledge_core
     ):
-        """A parent that finished without an artifact must not strand the run as running."""
+        """A parent that finished with no artifact must not leave the run stuck running."""
         engine = FlowEngine(database)
         engine.start(
             project["id"],
@@ -274,10 +274,10 @@ class TestScheduling:
         """
         A second sequential advance finds no pending step and dispatches nothing.
 
-        This is the `status != "pending"` guard and only that: the two calls run
-        one after the other on one thread, so an engine with no transaction
-        around the read-then-write passes it. The concurrent case, where two
-        advances interleave inside that window, is
+        This pins the `status != "pending"` guard and nothing beyond it. The two
+        calls run one after the other on a single thread, so an engine with no
+        transaction around the read-then-write passes this quite happily. For the
+        concurrent case, where two advances interleave inside that window, see
         `TestFlowConcurrency::test_concurrent_completions_queue_the_next_step_once`
         in backend/tests/test_pipeline.py.
         """
