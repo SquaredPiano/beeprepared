@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional, Type, TypeVar
+from typing import Optional, Protocol, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -12,6 +12,26 @@ Schema = TypeVar("Schema", bound=BaseModel)
 
 class LLMError(RuntimeError):
     """The model could not produce a usable response."""
+
+
+class SpeechToText(Protocol):
+    """
+    Anything that can turn a recording into text.
+
+    Transcription is a different job from writing text, and the two don't have
+    to come from the same vendor. Keeping it in its own protocol lets a speech
+    service stand in without pretending to be a language model, and any
+    `LLMProvider` already satisfies it.
+
+    `supports_audio` is how a transcriber says it can't actually do the work.
+    The pipeline reads it so it can explain why instead of trying anyway.
+    """
+
+    name: str
+    supports_audio: bool
+
+    async def transcribe(self, audio_path: str) -> str:
+        """Return the spoken words in an audio file."""
 
 
 class LLMProvider(ABC):

@@ -15,12 +15,15 @@ from backend.handlers.generate_handler import GenerateHandler
 from backend.handlers.ingest_handler import IngestHandler
 from backend.handlers.sources import SourceResolver
 from backend.llm.base import LLMError
+from backend.llm.deepgram import DeepgramTranscriber
+from backend.llm.factory import FallbackTranscriber, build_transcriber
 from backend.llm.openrouter import OpenRouterProvider
 from backend.llm.schema import extract_json, parse_as
 from backend.models.artifacts import StudyGuideModel
 from backend.models.graph import JobBundle
 from backend.models.jobs import JobModel
 from backend.pipeline.cleaning import TextCleaner
+from backend.pipeline.media import MediaError, Transcriber
 from backend.services.flow import FlowEngine
 from backend.services.job_runner import JobExecutor, is_transient
 
@@ -139,6 +142,80 @@ def exhausted_failure(monkeypatch, transport_error: Exception) -> BaseException:
     return raised.value
 
 
+FAKE_DEEPGRAM_KEY = "not-a-real-deepgram-key"
+
+MODEL_TRANSCRIPT = "the general model heard this"
+
+DEEPGRAM_RESPONSE = {
+    "metadata": {"request_id": "019faff3-c785", "duration": 5.6, "channels": 1},
+    "results": {"channels": [{"alternatives": [{
+        "transcript": LECTURE_SENTENCE,
+        "confidence": 0.9892578,
+        "words": [],
+    }]}]},
+}
+
+
+def transcription_keys(monkeypatch, *, deepgram: bool = False, openrouter: bool = False) -> None:
+    """Configure either transcription key, neither, or both, and reset what reads them."""
+    from backend.core.config import get_settings
+    from backend.llm import factory
+
+    monkeypatch.setenv("DEEPGRAM_KEY", FAKE_DEEPGRAM_KEY if deepgram else "")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key" if openrouter else "")
+    get_settings.cache_clear()
+    factory.reset_provider()
+
+
+def audio_file(tmp_path) -> str:
+    """A file for a transcriber to read. Nothing ever listens to it."""
+    path = tmp_path / "audio.wav"
+    path.write_bytes(b"RIFF----WAVEfake")
+    return str(path)
+
+
+def openrouter_completion(text: str) -> httpx.Response:
+    """The shape OpenRouter answers a transcription request with."""
+    return httpx.Response(
+        200, json={"choices": [{"message": {"content": text}, "finish_reason": "stop"}]}
+    )
+
+
+def scripted_post(monkeypatch, answers: dict) -> list[str]:
+    """
+    Answer every HTTP POST from `answers`, keyed by a fragment of the host called.
+
+    Patching the transport rather than the transcribers is what makes these
+    tests about the real request and the real response shape. An answer that is
+    an exception is raised, which is how a timeout or a refused connection
+    arrives. The returned list records the order the hosts were called in, which
+    is the only proof of which transcriber was actually used.
+    """
+    called: list[str] = []
+
+    async def post(self, url, **kwargs):
+        called.append(str(url))
+        for host, answer in answers.items():
+            if host in str(url):
+                if isinstance(answer, BaseException):
+                    raise answer
+                return answer
+        raise AssertionError(f"nothing scripted for {url}")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    return called
+
+
+def deepgram_failure(monkeypatch, tmp_path, answer) -> BaseException:
+    """Drive Deepgram against a scripted failure and return what reached the caller."""
+    transcription_keys(monkeypatch, deepgram=True)
+    scripted_post(monkeypatch, {"deepgram": answer})
+
+    with pytest.raises(Exception) as raised:
+        asyncio.run(DeepgramTranscriber().transcribe(audio_file(tmp_path)))
+    return raised.value
+
+
 class TestResponseParsing:
     def test_a_code_fence_inside_the_document_survives(self):
         """The fence pattern used to match inside the body and return its contents."""
@@ -188,6 +265,178 @@ class TestProviderFailureClassification:
             asyncio.run(OpenRouterProvider().complete_as("go", StudyGuideModel))
 
         assert not is_transient(raised.value)
+
+
+class TestTranscriberSelection:
+    """
+    Which service hears a lecture is a configuration question, not a code path.
+
+    Deepgram is built for speech and a general model is not, so a deployment
+    with a Deepgram key must use it, and a deployment with only an OpenRouter
+    key must still transcribe rather than refuse the upload.
+    """
+
+    def test_a_deepgram_key_puts_deepgram_in_front_of_the_language_model(self, monkeypatch):
+        transcription_keys(monkeypatch, deepgram=True, openrouter=True)
+
+        transcriber = build_transcriber()
+
+        assert isinstance(transcriber, FallbackTranscriber)
+        assert transcriber.name == "deepgram then openrouter"
+
+    def test_a_recording_goes_to_deepgram_and_not_to_the_language_model(
+        self, monkeypatch, tmp_path
+    ):
+        transcription_keys(monkeypatch, deepgram=True, openrouter=True)
+        called = scripted_post(monkeypatch, {
+            "deepgram": httpx.Response(200, json=DEEPGRAM_RESPONSE),
+            "openrouter": openrouter_completion(MODEL_TRANSCRIPT),
+        })
+
+        transcript = asyncio.run(build_transcriber().transcribe(audio_file(tmp_path)))
+
+        assert transcript == LECTURE_SENTENCE
+        assert [url for url in called if "openrouter" in url] == []
+
+    def test_without_a_deepgram_key_the_language_model_transcribes(self, monkeypatch, tmp_path):
+        transcription_keys(monkeypatch, openrouter=True)
+        called = scripted_post(monkeypatch, {"openrouter": openrouter_completion(MODEL_TRANSCRIPT)})
+
+        transcriber = build_transcriber()
+        transcript = asyncio.run(transcriber.transcribe(audio_file(tmp_path)))
+
+        assert isinstance(transcriber, OpenRouterProvider)
+        assert transcript == MODEL_TRANSCRIPT
+        assert [url for url in called if "deepgram" in url] == []
+
+    def test_with_neither_key_the_pipeline_names_both_of_them(self, monkeypatch, tmp_path):
+        """A deployment that cannot transcribe has to say what would let it."""
+        transcription_keys(monkeypatch)
+
+        transcriber = Transcriber()
+        with pytest.raises(MediaError) as raised:
+            asyncio.run(transcriber.transcribe(audio_file(tmp_path)))
+
+        assert transcriber.available is False
+        assert "DEEPGRAM_KEY" in str(raised.value)
+        assert "OPENROUTER_API_KEY" in str(raised.value)
+
+
+class TestDeepgramTranscription:
+    """The response shape and the failure classification, against a faked transport."""
+
+    def test_the_transcript_is_read_out_of_the_live_response_shape(self, monkeypatch, tmp_path):
+        """`DEEPGRAM_RESPONSE` is a real reply from the live endpoint, trimmed."""
+        transcription_keys(monkeypatch, deepgram=True)
+        scripted_post(monkeypatch, {"deepgram": httpx.Response(200, json=DEEPGRAM_RESPONSE)})
+
+        transcript = asyncio.run(DeepgramTranscriber().transcribe(audio_file(tmp_path)))
+
+        assert transcript == LECTURE_SENTENCE
+
+    @pytest.mark.parametrize("payload", [
+        {"results": {"channels": []}},
+        {"results": {"channels": [{"alternatives": []}]}},
+        {"metadata": {"request_id": "019faff3-c785"}},
+    ])
+    def test_a_reply_missing_the_transcript_is_an_error_not_an_empty_lecture(
+        self, monkeypatch, tmp_path, payload
+    ):
+        """Returning "" here would ingest a lecture nobody said a word in."""
+        failure = deepgram_failure(monkeypatch, tmp_path, httpx.Response(200, json=payload))
+
+        assert isinstance(failure, LLMError)
+        assert "unexpected shape" in str(failure)
+
+    def test_an_empty_transcript_is_refused(self, monkeypatch, tmp_path):
+        empty = {"results": {"channels": [{"alternatives": [{"transcript": "  "}]}]}}
+
+        failure = deepgram_failure(monkeypatch, tmp_path, httpx.Response(200, json=empty))
+
+        assert "empty transcript" in str(failure)
+
+    @pytest.mark.parametrize("answer, retryable", [
+        (httpx.Response(401, text='{"err_code":"INVALID_AUTH","err_msg":"Invalid credentials."}'), False),
+        (httpx.Response(400, text='{"err_code":"Bad Request","err_msg":"failed to process audio"}'), False),
+        (httpx.Response(500, text="internal error"), True),
+        (httpx.Response(503, text="upstream is having a moment"), True),
+        (httpx.ReadTimeout(""), True),
+        (httpx.ConnectError("[Errno 61] Connection refused"), True),
+    ])
+    def test_a_failure_is_classified_the_way_the_retry_policy_needs(
+        self, monkeypatch, tmp_path, answer, retryable
+    ):
+        """
+        A rejected key must not be retried and a busy Deepgram must be.
+
+        Retrying a revoked key spends three attempts to learn the same thing,
+        and giving up on a timeout throws away a lecture that would have
+        transcribed on the next attempt.
+        """
+        assert is_transient(deepgram_failure(monkeypatch, tmp_path, answer)) is retryable
+
+    def test_a_refusal_never_quotes_the_key(self, monkeypatch, tmp_path):
+        """An error message is read by people and pasted into issues."""
+        rejected = httpx.Response(401, text='{"err_code":"INVALID_AUTH"}')
+
+        failure = deepgram_failure(monkeypatch, tmp_path, rejected)
+
+        assert FAKE_DEEPGRAM_KEY not in str(failure)
+
+
+class TestTranscriptionFallback:
+    """
+    Deepgram going down should cost a warning, not somebody's upload.
+
+    The fallback only means anything if the failure it reports is still the one
+    that explains what happened, because the job runner reads that error to
+    decide whether the job is worth running again.
+    """
+
+    def test_a_failing_deepgram_hands_the_recording_to_the_language_model(
+        self, monkeypatch, tmp_path
+    ):
+        transcription_keys(monkeypatch, deepgram=True, openrouter=True)
+        called = scripted_post(monkeypatch, {
+            "deepgram": httpx.Response(503, text="upstream is having a moment"),
+            "openrouter": openrouter_completion(MODEL_TRANSCRIPT),
+        })
+
+        transcript = asyncio.run(build_transcriber().transcribe(audio_file(tmp_path)))
+
+        assert transcript == MODEL_TRANSCRIPT
+        assert [url for url in called if "deepgram" in url], "Deepgram was skipped, not tried"
+
+    def test_a_cancelled_job_is_not_a_reason_to_try_the_backup(self, monkeypatch, tmp_path):
+        """Cancellation is the job being torn down, not a transcriber having a bad day."""
+        transcription_keys(monkeypatch, deepgram=True, openrouter=True)
+        called = scripted_post(monkeypatch, {
+            "deepgram": asyncio.CancelledError(),
+            "openrouter": openrouter_completion(MODEL_TRANSCRIPT),
+        })
+
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(build_transcriber().transcribe(audio_file(tmp_path)))
+
+        assert [url for url in called if "openrouter" in url] == []
+
+    def test_with_no_second_transcriber_the_deepgram_failure_is_what_reaches_the_job(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        The offline provider is the backup here, and it cannot do audio at all.
+
+        Its refusal would classify as permanent and name nothing, so a timeout
+        that deserved another attempt would end the job for the wrong reason.
+        """
+        transcription_keys(monkeypatch, deepgram=True)
+        scripted_post(monkeypatch, {"deepgram": httpx.ReadTimeout("")})
+
+        with pytest.raises(httpx.ReadTimeout) as raised:
+            asyncio.run(build_transcriber().transcribe(audio_file(tmp_path)))
+
+        assert is_transient(raised.value)
+        assert "cannot transcribe" not in str(raised.value)
 
 
 class RecordingCleaner:

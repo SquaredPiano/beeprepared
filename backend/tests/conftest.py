@@ -50,12 +50,18 @@ def isolated_environment(tmp_path, monkeypatch):
     Settings, the model provider, the database, the file store, the event bus
     and the dispatcher are all cached per process by design, so each has to be
     reset or one test's configuration leaks into the next.
+
+    Both API keys are cleared, and that matters more than it looks: `.env` is
+    loaded for tests too, so a developer with real keys would otherwise have the
+    suite call Deepgram and OpenRouter for real and behave differently from the
+    same suite on a machine with none.
     """
     monkeypatch.setenv("BEE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("SIGNING_SECRET", "test-secret")
     monkeypatch.setenv("WORKER_CONCURRENCY", "2")
     monkeypatch.setenv("CELERY_ENABLED", "false")
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    monkeypatch.setenv("DEEPGRAM_KEY", "")
     monkeypatch.setenv("REDIS_URL", "")
 
     _reset_singletons()

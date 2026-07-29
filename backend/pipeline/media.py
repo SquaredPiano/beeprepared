@@ -10,8 +10,8 @@ from typing import Optional
 
 import ffmpeg
 
-from backend.llm.base import LLMProvider
-from backend.llm.factory import get_provider
+from backend.llm.base import SpeechToText
+from backend.llm.factory import build_transcriber
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +45,19 @@ class Transcriber:
     """
     Turns recordings into text.
 
-    Media is normalised first so the model always receives the same encoding,
-    whatever the user uploaded.
+    Media is normalised first so the speech service always receives the same
+    encoding, whatever the user uploaded.
+
+    Which service that is comes from `build_transcriber`, so this class never
+    has to know whether the words came from Deepgram or from a language model.
     """
 
-    def __init__(self, provider: Optional[LLMProvider] = None) -> None:
-        self._provider = provider or get_provider()
+    def __init__(self, speech: Optional[SpeechToText] = None) -> None:
+        self._speech = speech or build_transcriber()
 
     @property
     def available(self) -> bool:
-        return self._provider.supports_audio
+        return self._speech.supports_audio
 
     async def transcribe(self, media_path: str) -> str:
         """
@@ -65,15 +68,15 @@ class Transcriber:
         """
         if not self.available:
             raise MediaError(
-                "Transcription needs a language model that accepts audio. "
-                "Set OPENROUTER_API_KEY to enable it."
+                "Transcription needs a speech service or a language model that accepts "
+                "audio. Set DEEPGRAM_KEY or OPENROUTER_API_KEY to enable it."
             )
 
         with tempfile.TemporaryDirectory() as workspace:
             wav_path = await asyncio.to_thread(
                 to_wav, media_path, os.path.join(workspace, "audio.wav")
             )
-            transcript = await self._provider.transcribe(wav_path)
+            transcript = await self._speech.transcribe(wav_path)
 
         if not transcript.strip():
             raise MediaError("The recording produced an empty transcript")

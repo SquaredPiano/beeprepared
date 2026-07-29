@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from backend.api.routes import artifacts, chat, files, flows, jobs, projects, ws
 from backend.core.config import PUBLISHED_SECRETS, Settings, get_settings
-from backend.llm.factory import get_provider
+from backend.llm.factory import build_transcriber, get_provider
 from backend.models.artifacts import GENERATED_TYPES, SOURCE_TYPES
 from backend.services import events
 from backend.services.database import get_database
@@ -40,13 +40,13 @@ settings = get_settings()
 
 def require_unforgeable_links(settings: Settings) -> None:
     """
-    Refuse to serve with a signing key that anyone can read out of the repository.
+    Refuse to start with a signing key anyone can read out of the repository.
 
-    Every property the signed-link scheme relies on is worth nothing if the key
-    is public: a stranger with no session could mint a valid, unexpired link for
-    any object in the store. `get_settings` mints a private key when none is
-    configured, so this should never fire; it is the enforcement point that says
-    so out loud, and it still catches a `Settings` assembled by hand.
+    The whole signed-link scheme is worth nothing if the key is public. A stranger
+    with no session at all could mint a valid, unexpired link for any object in
+    the store. `get_settings` already generates a private key when none is
+    configured, so in practice this never fires. It's here to state the rule out
+    loud, and it does still catch a `Settings` somebody assembled by hand.
     """
     if not settings.signing_secret or settings.signing_secret in PUBLISHED_SECRETS:
         raise RuntimeError(
@@ -163,7 +163,7 @@ for router in (projects, jobs, artifacts, flows, files, chat, ws):
 
 @app.get("/health", tags=["meta"])
 def health():
-    """Liveness, plus what this instance resolved its dependencies to."""
+    """Say we're up, and what this instance resolved each dependency to."""
     return {
         "status": "healthy",
         "version": app.version,
@@ -177,7 +177,13 @@ def health():
 
 @app.get("/api/capabilities", tags=["meta"])
 def capabilities():
-    """What this deployment can produce. The canvas builds its palette from this."""
+    """
+    What this deployment can produce. The canvas builds its palette from this.
+
+    Transcription is asked of the transcriber, not of the language model. They
+    are not always the same thing: with a Deepgram key and no OpenRouter one,
+    the language model cannot listen but the deployment still can.
+    """
     provider = get_provider()
     return {
         "artifact_types": sorted(GENERATED_TYPES),
@@ -187,7 +193,7 @@ def capabilities():
             "refine": True,
             "assistant": True,
             "realtime": True,
-            "transcription": provider.supports_audio,
+            "transcription": build_transcriber().supports_audio,
             "offline_model": provider.name == "offline",
         },
     }

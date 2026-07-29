@@ -128,6 +128,10 @@ class Settings:
     llm_timeout_seconds: int = 180
     llm_max_retries: int = 3
 
+    deepgram_key: str = ""
+    deepgram_model: str = "nova-2"
+    deepgram_timeout_seconds: int = 600
+
     data_dir: Path = field(default_factory=lambda: BACKEND_DIR / ".storage")
     signing_secret: str = ""
 
@@ -146,6 +150,17 @@ class Settings:
     @property
     def has_llm_key(self) -> bool:
         return bool(self.openrouter_api_key)
+
+    @property
+    def has_deepgram_key(self) -> bool:
+        """
+        Whether recordings can go to Deepgram.
+
+        Deepgram only transcribes, so this is separate from `has_llm_key`: a
+        deployment can have either key, both, or neither, and each combination
+        has to work.
+        """
+        return bool(self.deepgram_key)
 
     @property
     def has_redis(self) -> bool:
@@ -173,6 +188,9 @@ def get_settings() -> Settings:
         llm_max_output_tokens=_number("LLM_MAX_OUTPUT_TOKENS", 16384),
         llm_timeout_seconds=_number("LLM_TIMEOUT_SECONDS", 180),
         llm_max_retries=_number("LLM_MAX_RETRIES", 3),
+        deepgram_key=_text("DEEPGRAM_KEY"),
+        deepgram_model=_text("DEEPGRAM_MODEL", "nova-2"),
+        deepgram_timeout_seconds=_number("DEEPGRAM_TIMEOUT_SECONDS", 600),
         data_dir=data_dir,
         signing_secret=_signing_secret(data_dir),
         redis_url=_text("REDIS_URL"),
