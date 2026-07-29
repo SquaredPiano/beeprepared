@@ -36,9 +36,10 @@ class IngestRequest(BaseModel):
     """
     Where an ingest job is to get its source.
 
-    The two references are different kinds of thing and never both: `source_ref`
-    is a URL the pipeline fetches, and `staged_key` names an upload already
-    sitting in the file store, which is where the upload endpoint puts one.
+    There are two ways to name a source and a job uses one of them, never both.
+    `source_ref` is a URL for the pipeline to fetch. `staged_key` names an upload
+    that's already waiting in the file store, which is where the upload endpoint
+    leaves one.
     """
 
     source_type: str
@@ -56,10 +57,12 @@ class IngestRequest(BaseModel):
     @model_validator(mode="after")
     def exactly_one_reference(self) -> "IngestRequest":
         """
-        A job that names both says nothing about which one it means.
+        Insist on exactly one of the two source references.
 
-        One that names neither has nothing to read, and would be accepted here
-        only to fail in a worker minutes later.
+        A job that names both tells us nothing about which one it meant. One that
+        names neither has nothing to read at all, and if we accept it here it
+        just fails inside a worker some minutes later, where nobody is watching
+        the response.
         """
         if bool(self.source_ref) == bool(self.staged_key):
             raise ValueError(
@@ -73,17 +76,18 @@ class IngestRequest(BaseModel):
         """
         Keep the downloader on the network and everything else in the store.
 
-        Given a bare path yt-dlp will happily read a local file, which would turn
-        a YouTube ingest into an arbitrary file read. This is a cheap early
-        rejection, not the guard: it says nothing about where the URL points, and
-        an http(s) URL naming an internal address is an SSRF. `YouTubeUrlGuard`
-        in `backend/pipeline/ingestion.py` authorises the host, immediately
-        before the call that fetches it.
+        Give yt-dlp a bare path and it will happily read a local file for you, so
+        a YouTube ingest becomes a way to read files off the server. Demanding
+        `http://` or `https://` is a cheap early no, and it isn't the real guard.
+        It says nothing about where the URL points, and an http(s) URL aimed at an
+        internal address is an SSRF. The host is authorised by `YouTubeUrlGuard`
+        in `backend/pipeline/ingestion.py`, right before the call that fetches it.
 
-        No other source type may name a `source_ref` at all. It used to be a
-        filesystem path for those, which made any ingest job a read of any file
-        the server could open; an upload is named by the key it was staged under
-        instead, and that key is checked against the project the job belongs to.
+        Every other source type is refused a `source_ref` outright. For those it
+        used to be a filesystem path, which turned any ingest job into a read of
+        any file the server could open, with no downloader involved at all. Those
+        sources are named by the key their upload was staged under, and that key
+        gets checked against the project the job belongs to.
         """
         if self.source_type == "youtube":
             if not (self.source_ref or "").startswith(("http://", "https://")):
@@ -116,7 +120,7 @@ class GenerateRequest(BaseModel):
         return self
 
     def sources(self) -> List[str]:
-        """Every source id, accepting the single-source shorthand."""
+        """Every source id, whether the caller sent the list or the single-id shorthand."""
         return self.source_artifact_ids or ([self.source_artifact_id] if self.source_artifact_id else [])
 
 
@@ -182,8 +186,8 @@ class FlowRequest(BaseModel):
     """
     The graph to compile.
 
-    Nodes and edges are optional; when omitted the project's saved canvas is
-    used instead.
+    Nodes and edges are both optional. Leave them out and we compile whichever
+    canvas the project has saved.
     """
 
     nodes: Optional[List[Dict[str, Any]]] = None

@@ -27,9 +27,9 @@ class RefineHandler(JobHandler):
     """
     Regenerates an artifact with the user's request and the current version in view.
 
-    Refinement appends a new artifact linked back to the old one rather than
-    editing in place, so every revision stays visible and nothing already
-    exported changes underneath the user.
+    A refinement adds a new artifact and links it back to the one it came from.
+    We never edit in place. That keeps every revision visible in the graph, and
+    it means an export the user already downloaded doesn't change under them.
     """
 
     def __init__(
@@ -79,11 +79,11 @@ class RefineHandler(JobHandler):
 
     def _revision_context(self, artifact: Dict[str, Any]) -> KnowledgeCore:
         """
-        Build the core to revise from.
+        Build the core we're going to revise from.
 
-        The current artifact is folded in so the model revises this version;
-        without it, "make it harder" produces a different artifact rather than a
-        harder version of this one.
+        We fold the current artifact into it so the model can see what it's
+        revising. Leave that out and "make it harder" gets you a different quiz,
+        not a harder version of the one the user was looking at.
         """
         base = self._resolver.to_core(artifact)
         current = self._flattener.flatten(artifact)

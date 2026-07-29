@@ -10,7 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 def as_uuid(value: Any) -> UUID:
-    """Parse an artifact identifier, rejecting anything malformed."""
+    """
+    Parse an artifact id, and refuse anything that isn't one.
+
+    Ids reach us as strings out of JSON. An earlier version parsed them loosely
+    enough that a malformed id didn't raise here. It quietly became a lookup for
+    an artifact that never existed.
+    """
     if isinstance(value, UUID):
         return value
     try:
@@ -20,7 +26,7 @@ def as_uuid(value: Any) -> UUID:
 
 
 class ArtifactPayload(BaseModel):
-    """A node in the knowledge graph, before it is written."""
+    """A node in the knowledge graph, before it's been written."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -31,7 +37,14 @@ class ArtifactPayload(BaseModel):
 
 
 class EdgePayload(BaseModel):
-    """A provenance link: `child` was derived from `parent`."""
+    """
+    A provenance link, saying `child` was derived from `parent`.
+
+    A child can have more than one. An artifact built from three lectures has
+    three of these, so what the edges describe is a DAG and not a tree. A
+    knowledge core has none at all, because it wasn't derived from anything that
+    was already in the graph.
+    """
 
     parent_artifact_id: UUID
     child_artifact_id: UUID
@@ -43,8 +56,9 @@ class JobBundle(BaseModel):
     """
     Everything one job produced.
 
-    Handlers build this and never touch the database; the runner commits it in a
-    single transaction, so a handler that fails midway leaves no partial graph.
+    A handler builds one of these and never touches the database itself. The
+    runner commits the whole bundle in a single transaction, so a handler that
+    dies midway through leaves no half-built graph behind.
     """
 
     job_id: UUID

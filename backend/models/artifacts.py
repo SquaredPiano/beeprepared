@@ -1,4 +1,10 @@
-"""The shape of every study artifact the generator can produce."""
+"""
+The shape of every study artifact the generator can produce.
+
+There are eight of them, and they're Pydantic models on purpose. Whatever the
+model hands back is validated against one of these first, so a malformed
+artifact never gets as far as the database.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +14,7 @@ from pydantic import BaseModel, Field
 
 
 class ExamSpec(BaseModel):
-    """The assessment contract an exam is written against."""
+    """The brief an exam gets written against."""
 
     discipline: Literal["Writing", "Philosophy", "Math", "Physics", "CS", "General"]
     exam_style: str = Field(description="Analytic, problem-solving, creative, and so on")
@@ -62,7 +68,7 @@ class FlashcardModel(BaseModel):
 
 
 class NotesModel(BaseModel):
-    """Study notes held as Markdown."""
+    """Study notes, kept as Markdown."""
 
     title: str
     format: str = "markdown"
@@ -99,7 +105,7 @@ class CheatSheetSection(BaseModel):
 
 
 class CheatSheetModel(BaseModel):
-    """A dense single-page reference, optimised for scanning."""
+    """A dense single-page reference, meant to be scanned and not read."""
 
     title: str
     sections: List[CheatSheetSection]
@@ -124,10 +130,11 @@ class MindMapRoot(BaseModel):
 
 class MindMapModel(BaseModel):
     """
-    A concept map fixed at three levels.
+    A concept map fixed at three levels deep.
 
-    Depth is expressed with distinct types rather than a self-referencing node,
-    because a recursive schema gives the model no bound to stop at.
+    Each level gets its own type: root, branch, leaf. One self-referencing node
+    type would have been shorter, but a recursive schema gives the model no bound
+    to stop at, so it just keeps nesting.
     """
 
     title: str

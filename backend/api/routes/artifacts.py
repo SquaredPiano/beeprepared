@@ -36,10 +36,11 @@ def get_lineage(
     database: Database = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    What this artifact came from and what was built on it.
+    What this artifact came from, and what got built on top of it.
 
-    Both sides are lists: with multi-input generation an artifact genuinely has
-    several parents.
+    Both sides come back as lists. Generation can take several inputs at once, so
+    an artifact really does have more than one parent sometimes, and a single
+    field here would have to pick one of them and lose the others.
     """
     artifact = require_artifact(artifact_id, user_id, database)
 
@@ -63,10 +64,15 @@ def update_artifact(
     """
     Save user edits.
 
-    Content is merged rather than replaced, so a client sending only `data` does
-    not discard the attached export metadata. The export block itself is written
-    by the renderer and kept out of the client's reach: it names a storage key,
-    and a caller that could rewrite it could point a download at any stored file.
+    Content is merged into what's already stored, not swapped for it, so a client
+    that sends only `data` doesn't throw away the export metadata attached to the
+    artifact.
+
+    The `binary` block is the part a client never gets to write. The renderer owns
+    it, and it holds the storage key that the download endpoint signs a link for.
+    A caller who could rewrite that key could point `/download` at any file in the
+    store and have the server sign a valid link to it. So whatever came in under
+    `binary` is dropped here and the value from the existing row goes back.
     """
     artifact = require_artifact(artifact_id, user_id, database)
 

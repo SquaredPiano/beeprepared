@@ -31,12 +31,12 @@ class UnsafeSourceError(IngestionError):
     """
     A source URL was refused before anything was fetched.
 
-    Separate from its parent so a refusal reads as a decision rather than a
-    download that went wrong, and permanent for the same reason both are:
-    `is_transient` in the job runner classifies by exception type and by the
-    words in the message, and neither this class nor the messages it carries
-    look like a busy upstream. A refused job therefore fails once instead of
-    replaying the same request until the attempt limit.
+    This gets its own class so a refusal reads as a decision we made, not a
+    download that went wrong. It also has to be permanent. `is_transient` in the
+    job runner decides what to retry from the exception type and the words in
+    the message, and nothing here looks like a busy upstream, so a refused job
+    fails once and stays failed. Otherwise we'd replay the same blocked request
+    until the job ran out of attempts.
     """
 
 
@@ -51,10 +51,10 @@ class StoredSource:
 
 
 class HostResolver:
-    """Every address a hostname currently points at."""
+    """Looks up every address a hostname currently points at."""
 
     def addresses(self, host: str) -> List[str]:
-        """The resolved addresses, refusing the host outright if it has none."""
+        """Return every address this host resolves to, refusing it if there are none."""
         try:
             records = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
         except socket.gaierror as error:
@@ -70,20 +70,20 @@ class YouTubeUrlGuard:
     """
     Refuses any URL that is not a public YouTube address.
 
-    `source_type: "youtube"` is a label the caller chose, not a constraint on
-    where the fetch goes: yt-dlp hands an unrecognised URL to its generic
-    extractor, which downloads whatever the far end returns, and the ingest
-    pipeline then stores those bytes, extracts text from them and commits them
-    as an artifact the caller can read back. Without this check the field is a
-    full-response SSRF against anything the server can reach, so the guard sits
-    here, immediately before the call that makes the request, rather than only
-    at the HTTP door where one route already bypassed the request model once.
+    `source_type: "youtube"` is just a label the caller picked. It doesn't
+    constrain where the fetch actually goes. Hand yt-dlp a URL it doesn't
+    recognise and its generic extractor downloads whatever the far end returns,
+    and then we store those bytes, pull text out of them, and commit the result
+    as an artifact the caller can read back. So without this check the field is
+    a full-response SSRF against anything the server can reach. That's why the
+    guard sits here, one line before the call that makes the request, and not
+    only at the HTTP door. A route bypassed the request model there once already.
 
-    A host must equal an allowed name or be a proper subdomain of one, because a
-    substring test would accept `youtube.com.evil.tld`. Every resolved address
-    is then checked and one disallowed answer is enough to refuse, because a
-    permitted name can still point inward and a resolver may return several
-    addresses of which only one is internal.
+    We accept a host that equals an allowed name or is a proper subdomain of
+    one. A substring test would happily let `youtube.com.evil.tld` through. Then
+    we check every address the host resolved to, and one disallowed answer is
+    enough to refuse the lot, because an allowed name can still point inward and
+    a resolver can hand back several addresses with only one of them internal.
     """
 
     ALLOWED_HOSTS = frozenset({"youtube.com", "youtu.be", "youtube-nocookie.com"})
@@ -119,7 +119,12 @@ class YouTubeUrlGuard:
 
     @staticmethod
     def _host(url: str) -> str:
-        """The hostname to authorise, normalised so no spelling of it slips past."""
+        """
+        Return the hostname we have to authorise.
+
+        We lowercase it and trim the surrounding space and any trailing dot, so
+        `YouTube.com.` and `youtube.com` can't come out as two different hosts.
+        """
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
             raise UnsafeSourceError(
@@ -142,10 +147,12 @@ class YouTubeUrlGuard:
     @staticmethod
     def _address(text: str) -> IPAddress:
         """
-        A resolved answer as an address object, unwrapped and fail-closed.
+        Turn one resolved answer into an address object we can test.
 
-        An IPv4-mapped IPv6 answer is checked as the IPv4 address it stands for,
-        and an answer that will not parse at all is refused rather than allowed.
+        When the answer is an IPv4-mapped IPv6 address we test the IPv4 address
+        it stands for, so `::ffff:127.0.0.1` still gets caught as loopback. If it
+        won't parse at all we refuse it. Failing closed is the only safe
+        direction here.
         """
         try:
             address: IPAddress = ipaddress.ip_address(text.split("%")[0])
@@ -167,7 +174,7 @@ class IngestionService:
         self._guard = guard or YouTubeUrlGuard()
 
     def store_upload(self, file_path: str, project_id: str, original_name: str, source_type: str) -> StoredSource:
-        """File an already-downloaded upload under its project."""
+        """Put a file that's already on local disk into the store, under its project."""
         suffix = Path(original_name).suffix or Path(file_path).suffix
         key = f"{project_id}/sources/{uuid.uuid4()}{suffix}"
 
@@ -216,22 +223,23 @@ class IngestionService:
     @staticmethod
     def _download_limit_bytes() -> int:
         """
-        The ceiling a downloaded source gets, which is the one an upload gets.
+        Cap a download at the same size we cap an upload at.
 
         A download is the other way into the file store, and the upload route's
-        cap never applied to it: with no `max_filesize` yt-dlp writes whatever
-        the far end sends until the disk or the job timeout stops it.
+        limit never covered it. With no `max_filesize` set, yt-dlp writes
+        whatever the far end sends until the disk fills up or the job times out.
         """
         return get_settings().upload_max_mb * 1024 * 1024
 
     @staticmethod
     def _downloaded_path(downloader: Any, info: Any, workspace: Path) -> Path:
         """
-        The file yt-dlp actually left on disk.
+        Find the file yt-dlp actually left on disk.
 
-        The name built from the output template is a prediction: format merging
-        and post-processing rewrite the extension, so the path yt-dlp reports
-        wins and the workspace itself is the last resort.
+        The name we get out of the output template is only a guess, because
+        format merging and post-processing rewrite the extension. So we trust the
+        paths yt-dlp reports first, and if none of them are really there we fall
+        back to whatever turned up in the workspace.
         """
         if not isinstance(info, dict):
             raise IngestionError("yt-dlp returned no metadata for this video")

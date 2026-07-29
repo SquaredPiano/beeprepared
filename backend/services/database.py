@@ -120,11 +120,12 @@ def _new_id() -> str:
 
 class Database:
     """
-    The single persistence boundary for the whole backend.
+    Everything in the backend that touches storage comes through here.
 
-    One connection per thread, since SQLite connections are not thread-safe.
-    Writers are serialised behind a lock and take the write lock up front, which
-    is what makes `claim_job` safe when several workers poll the same queue.
+    Each thread gets its own connection, because a SQLite connection isn't safe
+    to share across threads. Writers queue up behind a single lock, and they ask
+    SQLite for the write lock before they read anything. That second part is what
+    makes `claim_job` safe when several workers are polling the same queue.
     """
 
     def __init__(self, path: Optional[Path] = None) -> None:
@@ -153,19 +154,23 @@ class Database:
     @contextmanager
     def _transaction(self):
         """
-        Hold the write lock for one atomic unit of work.
+        Run a group of writes as a single transaction.
 
-        Nesting joins the transaction already open on this thread instead of
-        issuing a second `BEGIN`, which SQLite rejects. That is what lets a
-        caller wrap several writes that each transact on their own.
+        If this thread already has one open we join it rather than starting
+        another, because SQLite refuses a nested `BEGIN`. That's what lets a
+        caller wrap up several smaller writes that each open a transaction of
+        their own.
 
-        Rollback is on `BaseException`, not `Exception`: a cancellation or an
-        interrupt that escaped with the transaction still open would leave the
-        connection unusable for every later write on this thread.
+        We roll back on `BaseException`, not `Exception`. The reason is
+        `asyncio.CancelledError`, which is a `BaseException` and so slips
+        straight through an `except Exception`. One of those escaping with a
+        transaction still open used to leave the connection stuck mid-write, and
+        then every later write on that thread failed too.
 
-        The `COMMIT` is inside the `try` for the same reason. A commit can fail
-        on its own - a full disk, an I/O error, a busy timeout expiring - and
-        would otherwise leave the transaction open behind it.
+        The `COMMIT` sits inside the `try` for much the same reason. Committing
+        can fail on its own account, on a full disk or an I/O error or a busy
+        timeout running out. Outside the `try` we'd walk away from that with the
+        transaction still open.
         """
         with self._write_lock:
             connection = self._connection
@@ -184,11 +189,13 @@ class Database:
     @staticmethod
     def _abandon(connection: sqlite3.Connection) -> None:
         """
-        Return a failed transaction's connection to autocommit.
+        Put a connection back into autocommit after a transaction has gone wrong.
 
-        Best effort by design: this runs while another error is on its way to
-        the caller, and that error is the one worth seeing. SQLite closes the
-        transaction itself for some failures, so there may be nothing to undo.
+        This is best effort on purpose. It runs while some other error is already
+        on its way up to the caller, and that error is the one worth seeing, so a
+        `ROLLBACK` that fails gets logged and nothing more. Sometimes there's
+        nothing to undo at all, because SQLite closes the transaction itself on
+        certain failures.
         """
         if not connection.in_transaction:
             return
@@ -200,7 +207,7 @@ class Database:
 
     @contextmanager
     def transaction(self):
-        """Group several operations so they commit or roll back together."""
+        """Let a caller group several writes so they all land or none of them do."""
         with self._transaction():
             yield
 
@@ -212,7 +219,7 @@ class Database:
         order: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Read rows, translating PostgREST-style filters such as `("id", "eq.123")`."""
+        """Read rows. Filters come in PostgREST style, like `("id", "eq.123")`."""
         where, params = self._where(filters)
         sql = f"SELECT * FROM {table}{where}"
 
@@ -231,7 +238,7 @@ class Database:
         return [{name: row.get(name) for name in wanted} for row in rows]
 
     def insert(self, table: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Insert one row and return it as stored."""
+        """Insert one row, then read it back and return it as it was stored."""
         row = self._with_defaults(table, dict(data))
         encoded = self._encode(table, row)
         placeholders = ",".join("?" for _ in encoded)
@@ -244,7 +251,7 @@ class Database:
         return self.select(table, [("id", f"eq.{row['id']}")])
 
     def update(self, table: str, filters: Filters, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Patch matching rows and return them as stored."""
+        """Patch every matching row, then hand them back as they now stand."""
         filters = list(filters)
         payload = {key: value for key, value in data.items() if key in self._columns(table)}
         if table in {"projects", "flow_runs", "artifacts"}:
@@ -264,7 +271,7 @@ class Database:
         return self.select(table, filters)
 
     def delete(self, table: str, filters: Filters) -> List[Dict[str, Any]]:
-        """Delete matching rows and return what was removed."""
+        """Delete matching rows. Returns what was there, read just before the delete."""
         filters = list(filters)
         removed = self.select(table, filters)
         where, params = self._where(filters)
@@ -275,10 +282,14 @@ class Database:
 
     def claim_job(self, job_id: Optional[str] = None) -> Optional[JobModel]:
         """
-        Move one pending job to `running` and return it.
+        Take the next pending job off the queue and mark it running.
 
-        `BEGIN IMMEDIATE` takes the write lock before the read, so two workers
-        racing on the same queue cannot both claim the same row.
+        Pass a `job_id` to claim that one row, or nothing to take the oldest job
+        waiting.
+
+        We ask SQLite for the write lock up front with `BEGIN IMMEDIATE`. Without
+        it, two workers can both read the same pending row and both decide it's
+        theirs, and then we pay for the same model call twice.
         """
         with self._transaction() as connection:
             query = (
@@ -299,7 +310,15 @@ class Database:
         return self._to_job(self._decode("jobs", claimed))
 
     def commit_bundle(self, bundle: JobBundle) -> None:
-        """Write a job's artifacts, edges and terminal status in one transaction."""
+        """
+        Write a job's artifacts, its edges and its finished status all at once.
+
+        It's one transaction, so either the whole bundle lands or none of it does
+        and nothing partial is left behind. If the row has already reached a
+        terminal status we raise instead of writing anything, because that means
+        another worker finished this job first and its result is the one that
+        counts.
+        """
         timestamp = _now()
 
         with self._transaction() as connection:
@@ -340,12 +359,18 @@ class Database:
 
     def fail_job(self, job_id: Any, error: str, *, retryable: bool = False) -> str:
         """
-        Record a failure, requeuing the job while it still has attempts left.
+        Record that a job failed, and requeue it if it still has attempts left.
 
-        Returns the outcome: `pending` when requeued, `failed` when recorded,
-        `missing` when the row is gone, otherwise the terminal status the job
-        already holds. A job reclaimed by the reaper can be running twice, and
-        the loser's failure must not overwrite the winner's committed result.
+        The return value says what we did: `pending` if we put it back on the
+        queue, `failed` if we wrote the failure down for good, `missing` if the
+        row has gone, and otherwise the terminal status the job was already
+        sitting in.
+
+        That last case is the one to know about. The reaper can hand a job back to
+        the queue while the original worker is still grinding away on it, so two
+        workers really can be running the same job. If the slow one then fails, we
+        won't let it stamp `failed` over the result the other one has already
+        committed.
         """
         max_attempts = get_settings().job_max_attempts
 
@@ -372,7 +397,7 @@ class Database:
             return "failed"
 
     def cancel_job(self, job_id: Any) -> bool:
-        """Cancel a job that has not finished. Returns whether anything changed."""
+        """Cancel a job that hasn't finished yet. Tells you if it changed anything."""
         with self._transaction() as connection:
             row = connection.execute(
                 "SELECT status FROM jobs WHERE id=?", (str(job_id),)
@@ -388,9 +413,12 @@ class Database:
 
     def reap_stale_jobs(self, older_than_seconds: int) -> List[str]:
         """
-        Requeue jobs left `running` by a worker that died.
+        Pick up jobs that a dead worker left sitting in `running`.
 
-        Without this the row is never claimable again and the node spins forever.
+        Nothing else will ever touch those rows, since `claim_job` only looks at
+        pending ones. So without the reaper the job is simply stuck, and the node
+        on the canvas spins forever with no error to show the user. Jobs that have
+        run out of attempts get marked failed here instead of requeued.
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)).isoformat()
         max_attempts = get_settings().job_max_attempts
@@ -437,14 +465,14 @@ class Database:
         return self._first("artifacts", artifact_id)
 
     def get_artifacts(self, artifact_ids: List[Any]) -> List[Dict[str, Any]]:
-        """Fetch many artifacts in one query."""
+        """Fetch a whole batch of artifacts in a single query."""
         if not artifact_ids:
             return []
         joined = ",".join(str(value) for value in artifact_ids)
         return self.select("artifacts", [("id", f"in.({joined})")])
 
     def get_parent_edges(self, child_artifact_id: Any) -> List[Dict[str, Any]]:
-        """Every edge pointing at this artifact. An artifact may have many parents."""
+        """Every edge pointing at this artifact. One artifact can have several parents."""
         return self.select("artifact_edges", [("child_artifact_id", f"eq.{child_artifact_id}")])
 
     def get_child_edges(self, parent_artifact_id: Any) -> List[Dict[str, Any]]:

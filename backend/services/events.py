@@ -42,10 +42,11 @@ def make_event(event_type: str, project_id: str, data: Optional[Dict[str, Any]] 
 
 class EventBus(ABC):
     """
-    Fans project events out to whoever is listening.
+    Fans a project's events out to whoever happens to be listening.
 
-    Publishing is callable from any thread because workers are not async;
-    subscribing is an async iterator because WebSocket handlers are.
+    Publishing has to work from any thread, because the worker code that calls it
+    isn't async. Subscribing is an async iterator, because the WebSocket handlers
+    on the other end are.
     """
 
     driver: str = "unknown"
@@ -61,10 +62,11 @@ class EventBus(ABC):
 
 class InProcessEventBus(EventBus):
     """
-    Delivers events through asyncio queues within one process.
+    Delivers events through asyncio queues inside a single process.
 
-    Publishers may be worker threads, so delivery hops onto the loop that owns
-    the queues rather than touching them directly.
+    A publisher is often a worker thread, and an asyncio queue isn't safe to touch
+    from outside the loop that owns it. So rather than putting the event on the
+    queue ourselves, we hand that job over to the loop.
     """
 
     driver = "memory"
@@ -177,7 +179,7 @@ _lock = threading.Lock()
 
 
 def build_bus() -> EventBus:
-    """Use Redis when it is reachable, otherwise stay in process."""
+    """Use Redis if we can reach it, and fall back to in-process if we can't."""
     settings = get_settings()
     if settings.has_redis:
         try:

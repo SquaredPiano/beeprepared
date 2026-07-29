@@ -1,4 +1,4 @@
-"""Runs a compiled canvas plan, one wave of independent steps at a time."""
+"""Runs a compiled canvas plan, a wave of independent steps at a time."""
 
 from __future__ import annotations
 
@@ -26,24 +26,25 @@ FINISHED_STATUSES = frozenset({"completed", "failed", "skipped"})
 
 class EventOutbox:
     """
-    Holds flow events until the transaction that produced them has committed.
+    Sits on flow events until the transaction that produced them has committed.
 
-    Publishing from inside an open transaction announces a node the database
-    has not stored yet: if the commit fails, or anything in the block raises,
-    the write rolls back but the browser keeps the green node it was already
-    shown. Delivery is also a blocking network round trip on the Redis bus, and
-    waiting on it while holding the write lock stalls every other writer.
+    Publish from inside an open transaction and you've announced a node the
+    database hasn't stored yet. If the commit fails, or anything later in the
+    block raises, the write rolls back and the user is left looking at a green
+    node that never ran. There's a second reason to wait: delivery is a blocking
+    round trip to Redis, and sitting on that call while we hold the write lock
+    holds up every other writer.
     """
 
     def __init__(self) -> None:
         self._pending: List[Tuple[str, str, Dict[str, Any]]] = []
 
     def record(self, project_id: str, event_type: str, data: Dict[str, Any]) -> None:
-        """Note an event to publish once the row it describes exists."""
+        """Hold on to an event until the row it talks about is really there."""
         self._pending.append((project_id, event_type, data))
 
     def flush(self) -> None:
-        """Publish what was recorded, in the order it happened."""
+        """Send everything we were holding, in the order it happened."""
         for project_id, event_type, data in self._pending:
             publish(project_id, event_type, data)
         self._pending.clear()
@@ -51,11 +52,11 @@ class EventOutbox:
 
 class FlowEngine:
     """
-    Schedules the steps of a flow as their inputs become available.
+    Dispatches the steps of a flow as their inputs turn up.
 
-    The engine keeps nothing in memory between calls: the job that unblocks a
-    step may finish in a different process from the one that started the run, so
-    all progress lives in the `flow_runs` row.
+    We keep nothing in memory between calls. The job that unblocks a step can
+    finish in a different process from the one that started the run, so all the
+    progress lives in the `flow_runs` row and we read it back every time.
     """
 
     def __init__(
@@ -74,7 +75,7 @@ class FlowEngine:
         *,
         dispatch: Optional[Dispatch] = None,
     ) -> Dict[str, Any]:
-        """Compile the graph, record the run, and dispatch its first wave."""
+        """Compile the graph, write the run down, then kick off the first wave."""
         plan = self._compiler.compile(nodes, edges)
 
         states: Dict[str, Dict[str, Any]] = {
@@ -104,14 +105,16 @@ class FlowEngine:
 
     def advance(self, flow_run_id: str, *, dispatch: Optional[Dispatch] = None) -> Dict[str, Any]:
         """
-        Dispatch every step whose inputs are now satisfied.
+        Queue up every step whose inputs have arrived.
 
-        Idempotent: reading a step's state, creating its job row and marking it
-        running happen inside one transaction, so a repeated or concurrent
-        completion notification cannot start the same step twice.
+        Calling this twice is safe. Reading a step's state, inserting its job row
+        and marking it running all happen inside one transaction, so a repeated
+        completion notice, or two of them landing at once, can't start the same
+        step twice.
 
-        Events, dispatch and the row handed back to the caller all wait for the
-        commit, so nobody is told about progress the database rolled back.
+        Events, the dispatch calls and the row we hand back all wait for the
+        commit. That way nobody hears about progress the database went on to roll
+        back.
         """
         outbox = EventOutbox()
 
@@ -123,7 +126,12 @@ class FlowEngine:
         return self.get(flow_run_id) or {}
 
     def _schedule(self, flow_run_id: str, outbox: EventOutbox) -> List[str]:
-        """Queue the ready steps and return their job ids. Caller holds the transaction."""
+        """
+        Queue the steps that are ready and return their job ids.
+
+        The caller opens the transaction, not us, because the read of
+        `node_states` and every write that follows from it have to land together.
+        """
         run = self.get(flow_run_id)
         if not run or run["status"] != "running":
             return []
@@ -176,7 +184,7 @@ class FlowEngine:
 
     @staticmethod
     def _hand_off(job_ids: List[str], dispatch: Optional[Dispatch]) -> None:
-        """Tell the workers about jobs only once their rows are committed."""
+        """Tell the workers about the jobs, now that their rows are committed."""
         if not dispatch:
             return
         for job_id in job_ids:
@@ -192,15 +200,20 @@ class FlowEngine:
         dispatch: Optional[Dispatch] = None,
     ) -> Dict[str, Any]:
         """
-        Record a step's outcome and schedule whatever it unblocked.
+        Write down what a step produced, then schedule whatever it unblocked.
 
-        The read of `node_states`, the write back and the scheduling that
-        follows share one transaction. Two parents of a fan-in step finishing at
-        once would otherwise each overwrite the other's completion, and the step
-        below them would wait on a parent the row no longer remembers.
+        The read of `node_states`, the change we make to it, the write back and
+        the scheduling that follows all sit inside one transaction. Two things
+        break if they don't. When both parents of a fan-in step finish at the same
+        moment, each write clobbers the other's completion, and the step below
+        them waits forever on a parent the row no longer remembers. Overlapping
+        callers can also each see the same step as pending and each queue it. We
+        measured that one before the transaction went in: eight concurrent
+        completions produced nine dispatched jobs.
 
-        Events, dispatch and the row handed back to the caller all wait for the
-        commit, so nobody is told about progress the database rolled back.
+        Events, the dispatch calls and the row we hand back all wait for the
+        commit. Before the events moved out here, a rollback could leave the
+        browser showing a node as finished that the database said had never run.
         """
         outbox = EventOutbox()
 
@@ -290,7 +303,12 @@ class FlowEngine:
 
     @staticmethod
     def _skip_downstream(node_id: str, plan: FlowPlan, states: Dict[str, Dict[str, Any]]) -> None:
-        """Mark everything below a failed node as skipped rather than leaving it pending."""
+        """
+        Mark everything below a failed node as skipped.
+
+        If we left those steps pending they'd never run and never finish, and the
+        run itself would sit at "running" forever waiting on them.
+        """
         for blocked in plan.descendants_of(node_id):
             if states.get(blocked, {}).get("status") == "pending":
                 states[blocked] = {

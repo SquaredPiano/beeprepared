@@ -75,8 +75,9 @@ class KnowledgeCore(BaseModel):
     """
     The structured understanding of one body of source material.
 
-    Every generated artifact reads from this rather than from the raw text,
-    which is what keeps a project's quiz, notes and exam consistent.
+    Every generated artifact reads from this and never from the raw text. That's
+    what keeps a project's quiz, its notes and its exam all saying the same
+    things about the same material.
     """
 
     title: str
@@ -93,8 +94,9 @@ class KnowledgeExtractor:
     """
     Builds a `KnowledgeCore` from cleaned text.
 
-    Long documents are split, extracted concurrently and merged, because a
-    single request over a whole transcript loses detail towards the end.
+    A long document gets split up, and we extract each piece at the same time and
+    merge the results. One request over a whole transcript loses detail towards
+    the end.
     """
 
     def __init__(self, provider: Optional[LLMProvider] = None) -> None:
@@ -136,7 +138,14 @@ class KnowledgeExtractor:
 
     @staticmethod
     def merge(cores: List[KnowledgeCore]) -> KnowledgeCore:
-        """Combine partial cores, de-duplicating each collection on its natural key."""
+        """
+        Fold partial cores into one core.
+
+        Every list drops duplicates on whatever identifies an entry, so a concept
+        goes by its name and a definition goes by its term. We compare those
+        lowercased and stripped, so spacing or capitalisation can't let the same
+        entry through twice.
+        """
         if len(cores) == 1:
             return cores[0]
 

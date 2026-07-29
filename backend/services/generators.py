@@ -1,4 +1,4 @@
-"""Turns a knowledge core into a typed study artifact."""
+"""Turns a knowledge core into one typed study artifact."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ MIN_EXAM_QUESTIONS = 10
 
 
 class GenerationError(RuntimeError):
-    """A generator could not produce a usable artifact."""
+    """Raised when a generator couldn't come back with anything usable."""
 
 
 class QuestionBatch(BaseModel):
-    """One batch of exam questions of a single type."""
+    """One batch of exam questions, all of the same type."""
 
     questions: List[ExamQuestion]
 
@@ -43,10 +43,12 @@ class QuestionBatch(BaseModel):
 @dataclass(frozen=True)
 class GeneratorSpec:
     """
-    Everything that distinguishes one artifact type from another.
+    Everything that makes one artifact type different from another.
 
-    Adding a type is a new entry here, not a new method plus a new branch in the
-    handler plus a new validation rule.
+    That's the whole point of the table below. A new kind of artifact is one more
+    entry in `SPECS`: there's no new method to write, no new branch to add to the
+    handler, and no validation rule living somewhere else that you have to
+    remember to update.
     """
 
     prompt: str
@@ -56,7 +58,12 @@ class GeneratorSpec:
     minimum_characters: int = 0
 
     def validate(self, model: BaseModel) -> None:
-        """Reject artifacts that parse but would not help anyone."""
+        """
+        Throw out an artifact that parsed cleanly but is too thin to use.
+
+        A quiz with two questions is perfectly good JSON. It still isn't a quiz,
+        and the user would rather see an error than open that and find out.
+        """
         data = model.model_dump()
 
         if self.minimum_characters:
@@ -208,7 +215,13 @@ EXAM_BATCHES = (("MCQ", 15, 3), ("Short Answer", 5, 5), ("Problem Set", 3, 10))
 
 
 class ArtifactGenerator:
-    """Generates each artifact type from its spec."""
+    """
+    Builds each artifact type from its spec.
+
+    The exam is the honest exception and gets a method of its own. It needs two
+    model calls, one to settle the assessment contract and then one per batch of
+    questions, and that doesn't fit in a table row.
+    """
 
     def __init__(self, provider: Optional[LLMProvider] = None) -> None:
         self._provider = provider or get_provider()
@@ -219,7 +232,7 @@ class ArtifactGenerator:
         core: KnowledgeCore,
         instructions: Optional[str] = None,
     ) -> BaseModel:
-        """Produce and validate an artifact of `target_type`."""
+        """Produce an artifact of `target_type`, and check it's worth keeping."""
         if target_type == "exam":
             return await self._exam(core, instructions)
 
@@ -241,18 +254,22 @@ class ArtifactGenerator:
 
     async def _exam(self, core: KnowledgeCore, instructions: Optional[str]) -> FinalExamModel:
         """
-        Build an exam in two stages.
+        Build an exam in two passes.
 
-        The model writes an assessment contract first, then writes each question
-        batch against it. The batches are independent, so they run concurrently.
+        First we ask the model for an assessment contract: the discipline, the
+        style of exam, what's worth testing, how to award partial credit. Then
+        every question batch is written against that contract. The three batches
+        don't depend on each other, so `asyncio.gather` runs them all at once.
 
-        A batch that fails is dropped and the exam is built from the rest. A
-        batch that was cancelled is not a failure: it means teardown, so the
-        cancellation is re-raised rather than absorbed into a partial exam.
+        A batch that fails gets dropped and we build the exam from the rest. A
+        batch that was cancelled is a different matter. Cancellation means
+        something is tearing us down, and quietly turning that into a shorter
+        exam would hide it, so we re-raise.
 
-        The classification is on `BaseException` because that is what `gather`
-        captures, and `CancelledError` is one: an `Exception` check lets a
-        cancelled batch reach `extend` as if it were a list of questions.
+        We sort the results on `BaseException`, not `Exception`, because `gather`
+        can hand back things that aren't `Exception` subclasses, `CancelledError`
+        among them. Anything narrower and one of those slips through to `extend`,
+        which treats it as a list of questions.
         """
         context = core.model_dump_json(indent=2)
         spec = await self._exam_spec(context, instructions)
@@ -331,7 +348,12 @@ Rules:
 
     @staticmethod
     def _steer(prompt: str, instructions: Optional[str]) -> str:
-        """Append the user's request so it takes precedence over the defaults."""
+        """
+        Bolt the user's own instructions onto the end of a prompt.
+
+        They go last, and they're labelled as outranking what came before, so
+        where the user contradicts one of our rules the user wins.
+        """
         if not instructions or not instructions.strip():
             return prompt
         return (

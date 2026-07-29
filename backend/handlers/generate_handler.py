@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 class GenerateHandler(JobHandler):
     """
-    Resolves sources, merges them into one context, generates, then exports.
+    Resolves the sources, merges them into one context, generates, then exports.
 
-    Every source becomes a `derived_from` edge, so a node with three inputs
-    records three parents and the graph the user drew is the graph stored.
+    Every source turns into its own `derived_from` edge. An artifact built from
+    three lectures gets three parent edges, because provenance here is a DAG and
+    not a tree. The graph the user drew is the graph we store.
     """
 
     def __init__(
@@ -74,7 +75,7 @@ class GenerateHandler(JobHandler):
         return self.bundle(job, source_ids, payload.target_type, model, payload.instructions)
 
     async def build_context(self, cores: List[KnowledgeCore]) -> KnowledgeCore:
-        """Collapse several cores into the one the generator reads."""
+        """Collapse however many cores we have into the one the generator reads."""
         if not cores:
             raise ValueError("No knowledge cores to generate from")
         if len(cores) == 1:
@@ -106,7 +107,7 @@ class GenerateHandler(JobHandler):
         model: BaseModel,
         instructions: Optional[str] = None,
     ) -> JobBundle:
-        """Assemble the artifact, its export and one edge per source."""
+        """Put together the artifact, its export, and one edge back to each source."""
         artifact_id = uuid.uuid4()
 
         content: Dict[str, Any] = {
@@ -149,10 +150,10 @@ class GenerateHandler(JobHandler):
     @staticmethod
     def _concatenate(cores: List[KnowledgeCore]) -> KnowledgeCore:
         """
-        Join chained sources rather than summarising them.
+        Glue chained sources together without summarising them.
 
-        Chained cores carry their whole payload in `summary`, so compressing
-        them would discard the very content the user wired in.
+        A chained core keeps its whole payload in `summary`. Compress that and we
+        throw away the exact content the user wired into the canvas.
         """
         logger.info("Concatenating %d chained sources", len(cores))
         return KnowledgeCore(
@@ -164,5 +165,5 @@ class GenerateHandler(JobHandler):
 
     @staticmethod
     def _unique(values: List[str]) -> List[str]:
-        """The same sources in the order they were wired, each counted once."""
+        """The sources in the order they were wired up, with duplicates dropped."""
         return list(dict.fromkeys(str(value) for value in values))

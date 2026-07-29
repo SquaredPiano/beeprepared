@@ -24,25 +24,27 @@ FORBIDDEN_MARKUP = ("$", "\\(", "\\)", "\\[", "\\]")
 
 
 class CoreValidationError(ValueError):
-    """A knowledge core violated the contract every artifact depends on."""
+    """A knowledge core broke the contract every artifact below it depends on."""
 
 
 class KnowledgeCoreValidator:
     """
     Checks a core before it becomes the root of a project's graph.
 
-    Only the fields every generator reads are required. A short recording may
-    genuinely contain no worked examples, and rejecting the whole core over an
-    empty optional list would discard an otherwise usable extraction.
+    We only insist on the fields every generator reads. A ten-minute recording
+    might genuinely have no worked examples in it, and throwing out a usable
+    extraction over one empty optional list costs the user their upload for
+    nothing.
 
-    Markup is rejected everywhere: the core is plain text by contract, and stray
-    LaTeX here corrupts every artifact derived from it.
+    Markup gets rejected wherever it shows up. The core is plain text by
+    contract, so one stray piece of LaTeX in here leaks into every artifact
+    built on top of it.
     """
 
     REQUIRED_FIELDS = ("title", "summary", "concepts", "key_facts")
 
     def validate(self, core: KnowledgeCore) -> None:
-        """Raise if the core is unusable or contains markup."""
+        """Raise if the core is unusable, or if there's markup anywhere in it."""
         self._require_content(core)
         self._require_plain_text(core)
 
@@ -104,18 +106,18 @@ class KnowledgeCoreValidator:
 
 class IngestHandler(JobHandler):
     """
-    Stores a source, extracts its text, cleans it, and distils a knowledge core.
+    Stores a source, pulls its text out, cleans it, and distils a knowledge core.
 
-    Ingest produces exactly two artifacts and no edges. The core is the root of
-    the project's graph, and provenance back to the source file is carried by
-    `created_by_job_id` rather than by an edge, because the core was not derived
-    from anything already in the graph.
+    Ingest makes exactly two artifacts and no edges. The core is the root of the
+    project's graph. Provenance back to the source file rides on
+    `created_by_job_id` and not on an edge, because the core wasn't derived from
+    anything that was already in the graph.
 
-    Ingest is also the end of the staged upload's life. The upload endpoint
-    stages a copy in the file store so a large recording never has to be held in
-    memory and so any process sharing the data volume can run the job, and this
-    is the last reader of it; leaving it behind would duplicate every ingested
-    file for as long as the machine stays up.
+    This is also where a staged upload's life ends. The upload endpoint puts a
+    copy in the file store, which keeps a big recording out of memory and lets
+    any process on the data volume run the job. Ingest is the last thing to read
+    that copy, so ingest is what releases it. Leave it there and every file the
+    user ingests is stored twice for as long as the machine is up.
     """
 
     def __init__(
@@ -173,13 +175,13 @@ class IngestHandler(JobHandler):
 
     def _staged_upload_path(self, payload: IngestPayload, project_id: str) -> Optional[Path]:
         """
-        Where this job's staged upload is, or nothing when it has none to read.
+        Find this job's staged upload, or return nothing if it has none to read.
 
-        The payload names the upload by storage key, which addresses the same
-        bytes in every process that can reach the data volume and is checked
-        against the project the job belongs to. A filesystem path would be
-        neither: it means nothing in another container, and when a caller
-        supplies one it is a read of any file the server can open.
+        The payload names the upload by storage key. A key resolves to the same
+        bytes in every process that can reach the data volume, and we check it
+        against the project the job belongs to. A filesystem path does neither.
+        It means nothing in another container, and a caller who gets to supply
+        one can point it at any file the server can open.
         """
         if payload.source_type == "youtube":
             return None
@@ -199,10 +201,10 @@ class IngestHandler(JobHandler):
         staged: Optional[Path],
     ) -> StoredSource:
         """
-        Put a durable copy of the source in the file store.
+        Put a durable copy of the source into the file store.
 
-        Deliberately first: until this returns, the staged upload is the only
-        copy there is.
+        This runs first for a reason. Until it comes back, the staged upload is
+        the only copy of the file that exists.
         """
         if staged is not None:
             return self._ingestion.store_upload(
@@ -216,15 +218,16 @@ class IngestHandler(JobHandler):
 
     async def _clean(self, text: str, source_type: str) -> str:
         """
-        Send the text to the only cleaning rules its source can survive.
+        Pick the cleaning rules this text's source can actually survive.
 
-        The transcript rules delete every parenthesised and bracketed span,
-        which is what `(laughs)` and `[inaudible]` deserve and what `f(x)`,
-        `[0,1]`, `O(n log n)` and a bracketed citation do not. Running them over
-        a document failed silently: no error, no warning, just a knowledge core
-        and every artifact under it built on mangled text. Anything not known to
-        have been transcribed is treated as a document, so a source type added
-        later is conservative until someone decides otherwise.
+        The transcript rules delete every parenthesised and bracketed span.
+        That's the right call for `(laughs)` and `[inaudible]`, and the wrong
+        call for `f(x)`, `[0,1]`, `O(n log n)` and anything with a bracketed
+        citation in it. Point them at a document and nothing complains. You get
+        a knowledge core, and every artifact under it, quietly built on mangled
+        text. So anything we don't know was transcribed is treated as a
+        document, which keeps a source type someone adds later on the safe side
+        until they decide otherwise.
         """
         if source_type in TRANSCRIBED_SOURCE_TYPES:
             return await self._cleaner.clean_transcript(text)
@@ -232,11 +235,12 @@ class IngestHandler(JobHandler):
 
     async def _read(self, source: StoredSource, staged: Optional[Path]):
         """
-        Read the source's text, from the staged upload while there still is one.
+        Read the source's text, out of the staged upload while there still is one.
 
-        `extract_stored` copies the object back out of the store to read it, and
-        a staged upload is already a local file holding exactly those bytes. A
-        downloaded source has no staged copy, so it is read from the store.
+        `extract_stored` has to copy the object back out of the store before it
+        can read it, and a staged upload is already a local file holding exactly
+        those bytes. A downloaded source never had a staged copy, so that one
+        gets read from the store.
         """
         if staged is not None:
             return await self._extraction.extract(str(staged))
@@ -246,17 +250,17 @@ class IngestHandler(JobHandler):
         """
         Free the staging slot now that the source has a durable copy and a core.
 
-        Only on the success path. The staged upload is the only copy of what the
-        caller sent, so releasing it after a failure made every retryable ingest
-        permanent: the next attempt found nothing to read and failed for a reason
-        that had nothing to do with why the first one did. A job that exhausts
-        its attempts leaves one file in the project's staging folder behind,
-        which is the cheaper of the two costs.
+        This only runs when the job succeeded. The staged upload is the only copy
+        of what the caller sent us, so deleting it on failure turned every
+        transient failure into a permanent one. The retry found nothing to read
+        and died for a reason that had nothing to do with why the first attempt
+        died. A job that runs out of attempts does leave one file sitting in the
+        project's staging folder, and that's the cheaper of the two costs.
 
-        Nothing else is ever deleted here. A staged key names a slot this
-        project's upload endpoint wrote, `UploadStaging` refuses any other shape,
-        and source material a caller supplied themselves is not addressable this
-        way at all.
+        Nothing else ever gets deleted here. A staged key names a slot this
+        project's own upload endpoint wrote, `UploadStaging` refuses a key of any
+        other shape, and source material the caller supplied themselves can't be
+        addressed this way at all.
         """
         if payload.staged_key:
             self._staging.discard(payload.staged_key, project_id)

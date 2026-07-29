@@ -1,4 +1,4 @@
-"""Resolves the artifacts feeding a generator into knowledge cores."""
+"""Turns the artifacts feeding a generator into the knowledge cores it reads."""
 
 from __future__ import annotations
 
@@ -20,14 +20,14 @@ ALLOWED_TARGETS: Dict[str, frozenset] = {
 
 
 class SourceResolutionError(ValueError):
-    """A source artifact could not be reduced to a knowledge core."""
+    """We couldn't get a knowledge core out of a source artifact."""
 
 
 class ArtifactFlattener:
-    """Renders a generated artifact back into plain text so it can be chained."""
+    """Turns a generated artifact back into plain text so it can be chained."""
 
     def flatten(self, artifact: Dict[str, Any]) -> Optional[str]:
-        """Return a text view of the artifact's content, or None if it has none."""
+        """The artifact's content as text, or None when there's nothing to render."""
         renderers = {
             "notes": self._body,
             "study_guide": self._body,
@@ -122,11 +122,12 @@ class ArtifactFlattener:
 
 class SourceResolver:
     """
-    Reduces every artifact feeding a generator to a knowledge core.
+    Reduces every artifact feeding a generator down to a knowledge core.
 
-    A generated artifact resolves to its own content rather than its ancestor's,
-    so chaining notes into a quiz reads the notes instead of quietly
-    regenerating from the original lecture.
+    A generated artifact resolves to its own content, not its ancestor's. Chain
+    notes into a quiz and you get a quiz about the notes. Resolve to the ancestor
+    and we'd quietly regenerate from the original lecture, and everything the
+    user did to those notes would count for nothing.
     """
 
     def __init__(self, database: Database, flattener: Optional[ArtifactFlattener] = None) -> None:
@@ -134,7 +135,7 @@ class SourceResolver:
         self._flattener = flattener or ArtifactFlattener()
 
     def resolve(self, artifact_ids: List[str], target_type: str) -> List[KnowledgeCore]:
-        """Fetch every source in one query and turn each into a knowledge core."""
+        """Fetch all the sources in one query, then turn each one into a core."""
         artifacts = {
             str(artifact["id"]): artifact
             for artifact in self._database.get_artifacts(artifact_ids)
@@ -150,7 +151,7 @@ class SourceResolver:
         return [self.to_core(artifacts[artifact_id]) for artifact_id in artifact_ids]
 
     def to_core(self, artifact: Dict[str, Any]) -> KnowledgeCore:
-        """Reduce a single artifact to the core that should drive generation."""
+        """Work out which core should drive generation for one artifact."""
         source_type = artifact.get("type")
         content = artifact.get("content") or {}
 
@@ -191,7 +192,7 @@ class SourceResolver:
 
     @staticmethod
     def _synthetic(title: str, text: str) -> KnowledgeCore:
-        """Wrap chained text as a core so the generator has one uniform input."""
+        """Wrap chained text in a core, so the generator only sees one input shape."""
         return KnowledgeCore(
             title=f"Source: {title}",
             summary=text,

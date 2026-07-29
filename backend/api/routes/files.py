@@ -26,8 +26,11 @@ def serve_file(
     """
     Serve a stored object.
 
-    The signature is the credential: these links go to image tags, iframes and
-    download managers that cannot send a bearer token, and they expire.
+    The signature is the credential here. These links end up in an `<img>` tag,
+    in an iframe previewing a PDF, and in the browser's own download manager, and
+    none of those can send a bearer token. Once the credential lives in the URL it
+    gets logged, pasted into chat and left in browser history, so the link expires
+    to put a limit on what a leaked one is worth.
     """
     if not store.verify(key, expires, signature):
         raise HTTPException(status_code=403, detail="This link is invalid or has expired")

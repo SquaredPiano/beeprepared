@@ -1,1 +1,1 @@
-"""Job handlers: pure functions from a job to the work it produced."""
+"""Job handlers: each one takes a job and hands back the work it produced."""

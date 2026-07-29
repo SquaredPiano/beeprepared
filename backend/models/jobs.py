@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobType(str, Enum):
-    """The kinds of work the queue can execute."""
+    """The kinds of work the queue knows how to run."""
 
     INGEST = "ingest"
     GENERATE = "generate"
@@ -37,11 +37,12 @@ class IngestPayload(BaseModel):
     """
     Turn a raw source file into a knowledge core.
 
-    A source arrives one of two ways and the field it is under says which:
-    `source_ref` is a URL to fetch, `staged_key` names an upload already in the
-    file store. Naming an upload by a storage key rather than by a path is what
-    lets the process that accepted it and the process that ingests it be
-    different containers, sharing only the volume the store lives on.
+    A source arrives one of two ways, and the field it's under tells you which.
+    `source_ref` is a URL for us to fetch. `staged_key` names an upload that's
+    already sitting in the file store. We name that upload by storage key and not
+    by path, because that's what lets the container that accepted the upload and
+    the container that ingests it be two different containers. All they have to
+    share is the volume the store lives on.
     """
 
     source_type: str
@@ -51,7 +52,7 @@ class IngestPayload(BaseModel):
 
 
 class GeneratePayload(BaseModel):
-    """Turn one or more artifacts into a new artifact."""
+    """Turn one artifact, or several, into a new one."""
 
     target_type: str
     source_artifact_ids: List[str] = Field(default_factory=list)
@@ -69,7 +70,7 @@ class RefinePayload(BaseModel):
 
 
 class JobModel(BaseModel):
-    """A row from the job queue."""
+    """One row out of the job queue."""
 
     model_config = ConfigDict(use_enum_values=False)
 

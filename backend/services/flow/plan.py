@@ -1,4 +1,4 @@
-"""Compiles a canvas graph into a validated, ordered execution plan."""
+"""Turns the graph a user drew on the canvas into an ordered plan we can run."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ MAX_NODES = 100
 
 
 class FlowValidationError(ValueError):
-    """A canvas graph cannot be turned into a runnable plan."""
+    """Raised when a canvas graph can't be turned into something runnable."""
 
 
 @dataclass
 class FlowStep:
-    """One generator node, and what has to finish before it can run."""
+    """One generator node, plus the list of things that have to finish first."""
 
     node_id: str
     target_type: str
@@ -51,21 +51,26 @@ class FlowStep:
 
 @dataclass
 class FlowPlan:
-    """A validated execution plan for one canvas."""
+    """One canvas, checked over and ready to run."""
 
     steps: List[FlowStep]
     seed_artifacts: Dict[str, str]
 
     @property
     def waves(self) -> List[List[FlowStep]]:
-        """Steps grouped by depth. Everything in a wave can run at once."""
+        """
+        Steps bucketed by depth.
+
+        Everything in a wave has all of its parents in earlier waves, so we can
+        fire off a whole wave at the same time.
+        """
         grouped: Dict[int, List[FlowStep]] = {}
         for step in self.steps:
             grouped.setdefault(step.depth, []).append(step)
         return [grouped[depth] for depth in sorted(grouped)]
 
     def descendants_of(self, node_id: str) -> Set[str]:
-        """Every step reachable from `node_id`."""
+        """Every step downstream of `node_id`, following the edges as far as they go."""
         children: Dict[str, List[str]] = {}
         for step in self.steps:
             for parent in step.parents:
@@ -96,14 +101,16 @@ class FlowPlan:
 
 class FlowCompiler:
     """
-    Turns React Flow nodes and edges into a `FlowPlan`.
+    Turns the nodes and edges React Flow hands us into a `FlowPlan`.
 
-    Every rejection names the offending node, so the canvas can point at the
-    problem before any work is dispatched.
+    Whenever we reject a graph we name the node that's wrong, so the canvas can
+    highlight it. All of this happens before a single job is queued, which is
+    the point. The user finds out their graph is broken right away, and we don't
+    pay for half a run first.
     """
 
     def compile(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> FlowPlan:
-        """Validate the graph and return its execution plan."""
+        """Check the graph over and hand back the plan for running it."""
         if not nodes:
             raise FlowValidationError("The canvas is empty. Add a source and a generator to run.")
         if len(nodes) > MAX_NODES:
@@ -202,6 +209,25 @@ class FlowCompiler:
         outgoing: Dict[str, List[str]],
         by_id: Dict[str, Dict[str, Any]],
     ) -> tuple[List[str], Dict[str, int]]:
+        """
+        Order the runnable nodes so every parent comes before its children.
+
+        This is Kahn's algorithm. A node's indegree is the number of parents it's
+        still waiting on, and we only count parents that are themselves going to
+        run, because a node nobody is going to execute will never arrive and the
+        count would never come down. We start with everything sitting at zero and
+        knock a parent off each child as we pop it.
+
+        Depth is the wave number. It's a `max` over the parents, so a node with
+        one parent in wave 1 and another in wave 3 lands in wave 4, after the
+        later of the two.
+
+        Cycle detection falls out of this for free. If the queue empties before
+        we've visited every node, whatever is left over is in a loop: its counter
+        can never reach zero, because something ahead of it is waiting on it in
+        turn. So we don't need a separate pass to look for cycles, and we can
+        name the nodes involved from what's left.
+        """
         indegree = {
             node_id: len([p for p in incoming[node_id] if p in runnable])
             for node_id in runnable

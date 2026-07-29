@@ -59,7 +59,7 @@ class Intent(BaseModel):
 
 
 class AssistantContext:
-    """Assembles what the model needs to see to answer or revise."""
+    """Gathers up what the model needs to see before it answers or revises."""
 
     def __init__(self, database: Database, flattener: Optional[ArtifactFlattener] = None) -> None:
         self._database = database
@@ -105,7 +105,15 @@ async def send_message(
     database: Database = Depends(get_db),
     provider: LLMProvider = Depends(get_provider),
 ) -> ChatResponse:
-    """Answer a message, or queue a refinement of the artifact in view."""
+    """
+    Answer a message, or queue a refinement of the artifact in view.
+
+    `artifact_id` arrives from the client, so it goes through
+    `require_project_artifact` before the assistant sees any of it. The artifact
+    is flattened into the model's context and the reply is grounded in that, so an
+    unchecked id here would be a way to read someone else's material back out
+    through the answer.
+    """
     require_project(request.project_id, user_id, database)
     artifact = (
         require_project_artifact(request.artifact_id, request.project_id, user_id, database)

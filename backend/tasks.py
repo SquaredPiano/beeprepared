@@ -20,9 +20,9 @@ def _run(coroutine: Coroutine) -> Any:
     """
     Run a coroutine to completion from Celery's synchronous worker.
 
-    The loop is torn down with its executor, because the pipeline offloads
-    ffmpeg and document parsing to worker threads and a loop that is closed
-    without them leaves those threads behind on every task.
+    We shut the loop's executor down along with the loop itself. The pipeline
+    hands ffmpeg and document parsing off to worker threads, and closing the loop
+    without waiting on those threads leaks a few of them on every single task.
     """
     loop = asyncio.new_event_loop()
     try:
@@ -49,7 +49,8 @@ def drain_queue() -> Dict[str, int]:
     """
     Enqueue pending jobs that no Celery task is carrying.
 
-    Jobs are rows first and messages second, so this recovers anything written
+    A job becomes a database row before it becomes a message, so the row can sit
+    there with nothing on the queue for it. This picks up whatever got written
     while the broker or the workers were down.
     """
     pending = get_database().pending_job_ids()
@@ -63,7 +64,13 @@ def drain_queue() -> Dict[str, int]:
 
 @celery_app.task(name="beeprepared.reap_stale_jobs")
 def reap_stale_jobs() -> Dict[str, int]:
-    """Return jobs stranded by a dead worker to the queue."""
+    """
+    Hand jobs back to the queue after the worker running them died.
+
+    A worker killed mid-job leaves its row sitting at `running` forever, and
+    `claim_job` only ever looks at pending rows, so nothing will pick that job up
+    again. The node it belongs to just spins, and nothing raises to say why.
+    """
     reaped = get_database().reap_stale_jobs(get_settings().stale_job_seconds)
     for job_id in reaped:
         run_job.delay(job_id)

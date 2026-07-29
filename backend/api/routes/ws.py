@@ -33,8 +33,12 @@ async def project_events(
     """
     Stream events for one project.
 
-    The token arrives as a query parameter because browsers cannot set headers
-    on a WebSocket handshake, and it is checked before the socket is accepted.
+    The token rides in as a query parameter because the browser's `WebSocket`
+    constructor gives you no way to set a header on the handshake. It's passed to
+    `resolve_user`, which ignores it, so the check that actually bites here is the
+    one on the project. Both run before we accept the socket, which is the part
+    that matters: a caller who doesn't own the project gets a close code and never
+    holds an open connection.
     """
     database = get_database()
 
@@ -94,12 +98,13 @@ async def _read_client(websocket: WebSocket, database: Database, project_id: str
     """
     Consume inbound frames.
 
-    Reading is what makes a dropped connection detectable, and it lets a client
-    ask for a fresh snapshot after waking from sleep.
+    Something has to read, because reading is what makes a dropped connection
+    detectable. It also gives the client a way to ask for a fresh snapshot once
+    the laptop wakes up.
 
-    A disconnect returns rather than raising: nothing retrieves this task's
-    result, so raising the ordinary end of a connection would leave asyncio
-    logging an unretrieved exception for every socket that closes.
+    A disconnect returns quietly here and doesn't raise. Nothing ever retrieves
+    this task's result, so raising on the perfectly normal end of a connection
+    would have asyncio logging an unretrieved exception every time a socket closes.
     """
     try:
         while True:

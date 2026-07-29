@@ -1,4 +1,4 @@
-"""Typesets an exam as a LaTeX document and compiles it to PDF."""
+"""Typesets an exam as a LaTeX document, then compiles that to a PDF."""
 
 from __future__ import annotations
 
@@ -21,10 +21,11 @@ COMPILE_TIMEOUT_SECONDS = 120
 
 class ExamPdfRenderer:
     """
-    Produces an exam booklet with a cover page, questions and a solution key.
+    Produces an exam booklet: cover page, then the questions, then a solution key.
 
-    Question text is passed through untouched because the model writes LaTeX for
-    mathematics, and escaping it would break every formula.
+    Question text goes through to LaTeX untouched. We ask the model to write its
+    mathematics as LaTeX, so if we escaped the text every formula would come out
+    on the page as literal backslashes.
     """
 
     def __init__(self, output_dir: Path) -> None:
@@ -36,7 +37,13 @@ class ExamPdfRenderer:
         return which("pdflatex") is not None
 
     def render(self, exam: FinalExamModel, filename: str) -> Optional[Path]:
-        """Write the exam and return the PDF path, or the .tex path if LaTeX is absent."""
+        """
+        Write the exam out and return the path to what we produced.
+
+        Normally that's the PDF. If pdflatex isn't installed, or the compile
+        doesn't produce anything, you get the .tex source back, which the user can
+        still download and build somewhere else.
+        """
         document = self._build(exam)
         stem = self.output_dir / filename
 

@@ -1,4 +1,4 @@
-"""Content-addressed file storage with expiring, signed download links."""
+"""File storage on local disk, with signed download links that expire."""
 
 from __future__ import annotations
 
@@ -19,15 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 class StorageError(RuntimeError):
-    """A file could not be written, read, or addressed."""
+    """A file couldn't be written, read, or addressed."""
 
 
 class FileStore:
     """
-    Stores uploads and rendered exports beneath a single root directory.
+    Keeps uploads and rendered exports under one root directory.
 
-    Download links are HMAC-signed over the key and expiry together, so a link
-    cannot be extended or repointed by editing the query string.
+    Download links get an HMAC signature covering the key and the expiry
+    together. Signing both is the whole point. Push the expiry further out, or
+    swap the key for somebody else's, and the signature you were handed no longer
+    matches what you're asking for, so the link is refused.
     """
 
     def __init__(self, root: Optional[Path] = None, secret: Optional[str] = None) -> None:
@@ -54,7 +56,7 @@ class FileStore:
         return key
 
     def copy_to(self, key: str, destination: str) -> str:
-        """Copy a stored object out to a local path."""
+        """Copy a stored object back out to a local path."""
         source = self.resolve(key)
         if not source.exists():
             raise StorageError(f"Object not found: {key}")
@@ -63,7 +65,7 @@ class FileStore:
         return destination
 
     def delete(self, key: str) -> None:
-        """Remove a stored object. A missing object is not an error."""
+        """Remove a stored object. It's not an error if there was nothing there."""
         self.resolve(key).unlink(missing_ok=True)
 
     def exists(self, key: str) -> bool:
@@ -73,7 +75,7 @@ class FileStore:
         return self.resolve(key).stat().st_size
 
     def resolve(self, key: str) -> Path:
-        """Map a key to a path, refusing anything that escapes the store root."""
+        """Turn a key into a real path, refusing anything that climbs out of the root."""
         cleaned = key.strip().lstrip("/")
         if not cleaned:
             raise StorageError("Empty storage key")
@@ -84,7 +86,7 @@ class FileStore:
         return candidate
 
     def open_path(self, key: str) -> Path:
-        """The path of a stored object, raising if it is not there."""
+        """Path of a stored object. Raises if there's nothing at that key."""
         path = self.resolve(key)
         if not path.exists():
             raise StorageError(f"Object not found: {key}")
@@ -98,7 +100,7 @@ class FileStore:
         inline: bool = False,
         expires_in: int = 3600,
     ) -> str:
-        """A time-limited URL the browser can fetch directly."""
+        """Build a URL the browser can fetch on its own, good until it expires."""
         expiry = int(time.time()) + expires_in
         disposition = "inline" if inline else "attachment"
         return (
@@ -111,7 +113,12 @@ class FileStore:
         return hmac.new(self._secret, f"{key}:{expiry}".encode(), hashlib.sha256).hexdigest()
 
     def verify(self, key: str, expiry: int, signature: str) -> bool:
-        """True when the signature matches and the link has not expired."""
+        """
+        True if the signature matches and the link hasn't expired yet.
+
+        The comparison is constant-time, so someone holding a bad signature can't
+        time their way towards a good one a byte at a time.
+        """
         if expiry < int(time.time()):
             return False
         return hmac.compare_digest(self.sign(key, expiry), signature)

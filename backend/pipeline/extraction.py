@@ -26,7 +26,7 @@ class ExtractionError(RuntimeError):
 
 @dataclass
 class Extracted:
-    """The text of a source, plus what was learned about it on the way through."""
+    """The text we got out of a source, plus what we learned about it on the way."""
 
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -41,10 +41,12 @@ class DocumentReader:
 
     def read(self, path: Path) -> Extracted:
         """
-        Return the text of a document, naming the file when it cannot be read.
+        Return the text of a document, naming the file if we can't read it.
 
-        Every parser signals a corrupt or mislabelled file in its own vocabulary,
-        and those exceptions reach the user as the reason their job failed.
+        Each parser has its own vocabulary for complaining about a corrupt or
+        mislabelled file, and whatever it raises is what the user sees as the
+        reason their job failed. So we catch it and say which file it was and
+        which format we tried to read it as.
         """
         readers: Dict[str, Callable[[Path], Extracted]] = {
             ".pdf": self._pdf,
@@ -123,9 +125,10 @@ class DocumentReader:
 
 class ExtractionService:
     """
-    Routes a source file to the reader that understands it.
+    Sends a source file to the reader that understands it.
 
-    Documents are read directly; recordings go through transcription first.
+    A document gets read straight off disk. A recording has to be transcribed
+    first.
     """
 
     def __init__(
@@ -142,8 +145,9 @@ class ExtractionService:
         """
         Read a local file and return its text.
 
-        Document parsing runs off the event loop, because a large PDF holds it
-        for seconds and the local worker pool shares its loop with the API.
+        We push document parsing onto a thread. A big PDF will hold the event
+        loop for seconds, and in local mode the worker pool shares that loop with
+        the API, so every request would sit there waiting behind one upload.
         """
         path = Path(file_path)
         if not path.exists():
@@ -167,7 +171,7 @@ class ExtractionService:
         return result
 
     async def extract_stored(self, key: str) -> Extracted:
-        """Read a file out of the store, extract it, then drop the local copy."""
+        """Pull a file out of the store, extract it, then drop the local copy."""
         with tempfile.TemporaryDirectory() as workspace:
             local = Path(workspace) / Path(key).name
             await asyncio.to_thread(self._store.copy_to, key, str(local))

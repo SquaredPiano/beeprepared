@@ -1,4 +1,4 @@
-"""Turns generated artifacts into downloadable files."""
+"""Turns generated artifacts into files a user can download."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ EXAM_ARTEFACTS = (".pdf", ".tex", ".aux", ".log")
 
 @dataclass(frozen=True)
 class Export:
-    """Where a rendered file lives and what it is."""
+    """Where a rendered file ended up, and what kind of file it is."""
 
     format: str
     storage_key: str
@@ -49,11 +49,12 @@ class Export:
 
 class ExportService:
     """
-    Renders an artifact to its natural file format, when it has one.
+    Renders an artifact to a file, for the types that have a natural file form.
 
-    Rendering never fails a job: an artifact is defined by its content and the
-    file is a convenience, so a missing LaTeX install costs the download rather
-    than the whole generation.
+    A failure in here never fails the job. The artifact is its content, and the
+    file is a convenience on top of that. So if a render blows up, or the file
+    store won't take the upload, the user loses a download and still keeps
+    everything that was actually generated.
     """
 
     def __init__(
@@ -73,7 +74,13 @@ class ExportService:
         project_id: uuid.UUID,
         artifact_id: uuid.UUID,
     ) -> Optional[Export]:
-        """Render `model` and return where it was stored, or None if it has no file form."""
+        """
+        Render `model` and say where it was stored.
+
+        None comes back when this type has no file form, when there was nothing
+        to write, or when the render fell over. That last one gets logged on the
+        way past.
+        """
         try:
             if artifact_type == "exam":
                 return self._export_exam(model, project_id, artifact_id)
@@ -87,11 +94,12 @@ class ExportService:
 
     def _export_exam(self, exam, project_id: uuid.UUID, artifact_id: uuid.UUID) -> Optional[Export]:
         """
-        Render into the scratch directory and clear every intermediate afterwards.
+        Render the exam in the scratch directory, then sweep up after it.
 
-        The cleanup covers rendering itself, not just storage: a LaTeX run that
-        dies partway still leaves its source and logs behind, and nothing else
-        ever revisits that directory.
+        The `finally` wraps the render and not just the upload, because a pdflatex
+        run that dies halfway through still leaves its .tex, .aux and .log lying
+        around. Nothing else ever goes back to that directory, so whatever we
+        don't delete here just sits there.
         """
         stem = self._exam.output_dir / f"exam_{artifact_id}"
 

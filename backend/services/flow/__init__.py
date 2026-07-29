@@ -1,4 +1,4 @@
-"""Compiles and executes the canvas graph."""
+"""Compiling the canvas graph, and running what comes out."""
 
 from backend.services.flow.engine import FlowEngine
 from backend.services.flow.plan import (

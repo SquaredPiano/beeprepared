@@ -20,10 +20,11 @@ router = APIRouter(prefix="/api/projects", tags=["flows"])
 
 def _graph(project: Dict[str, Any], request: FlowRequest) -> Tuple[List[dict], List[dict]]:
     """
-    The graph to compile: whatever the client sent, else the saved canvas.
+    The graph to compile, taken from the request when the client sent one.
 
-    Autosave is debounced, so the canvas on screen is routinely ahead of what is
-    stored and running the stale copy would ignore the last node connected.
+    Autosave is debounced, so the canvas on screen is routinely a little ahead of
+    the copy we have stored. Compile the stored one and the user watches the node
+    they just connected get left out of the run.
     """
     if request.nodes is not None:
         return request.nodes, request.edges or []
@@ -39,13 +40,19 @@ def _require_owned_seeds(
     database: Database,
 ) -> None:
     """
-    Assert every artifact the canvas seeds the run with sits in this project.
+    Check that every artifact the canvas seeds the run with sits in this project.
 
-    The nodes are client-supplied, so a seed id is a request to read a stored
-    artifact. Handlers resolve those ids without an ownership check, which makes
-    this the last point where naming somebody else's artifact can be refused.
-    The whole request fails rather than the offending node being dropped: a flow
-    that quietly ran without one of its inputs is worse than one that refused.
+    The nodes come from the client, so a seed id is really a request to go and read
+    some stored artifact. `SourceResolver` fetches those ids by id alone and never
+    asks who owns them, which makes this the last place a flow naming someone
+    else's artifact can be refused. Fixing the same hole in `create_job` did
+    nothing for this route, because the canvas is a second door to the same code,
+    and the saved canvas is a third one: `canvas_state` is caller-written through
+    `PATCH`.
+
+    A single bad seed fails the whole request. We don't drop the offending node and
+    carry on, because a flow that quietly ran without one of its inputs still hands
+    back confident-looking output, just built from the wrong material.
     """
     for node_id, artifact_id in plan.seed_artifacts.items():
         try:
@@ -64,7 +71,7 @@ def validate_flow(
     user_id: str = Depends(get_current_user),
     database: Database = Depends(get_db),
 ) -> FlowPlanResponse:
-    """Compile the graph and report the plan, or why it will not run."""
+    """Compile the graph and report the plan, or say why it won't run."""
     project = require_project(project_id, user_id, database)
     nodes, edges = _graph(project, request)
 
@@ -134,8 +141,9 @@ def get_flow_run(
     """
     The current state of a flow run.
 
-    Live updates arrive over the WebSocket; this lets a reconnecting client
-    resynchronise without replaying the event stream.
+    Live updates come over the WebSocket. This endpoint is for the client that has
+    just reconnected: it can read where the run stands now and carry on from there,
+    without us replaying every event it slept through.
     """
     require_project(project_id, user_id, database)
 

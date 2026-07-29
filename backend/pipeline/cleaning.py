@@ -52,24 +52,24 @@ MARKDOWN_MARKS = (
 
 class TextCleaner:
     """
-    Cleans text with the rules the source it came from can survive.
+    Cleans text with the rules its source can survive.
 
-    Transcribed speech is prose and nothing else, so it can afford the
-    destructive rules: parentheses and brackets there hold `(laughs)` and
-    `[inaudible]`, line breaks hold nothing, and a model pass is worth its risk
-    because transcription really does produce broken grammar.
+    Transcribed speech is prose and nothing else, so it can take the destructive
+    rules. Parentheses and brackets there hold things like `(laughs)` and
+    `[inaudible]`. Line breaks hold nothing. And a model pass earns its risk,
+    because transcription genuinely does produce broken grammar.
 
-    A document is not prose alone. Parentheses and brackets carry meaning
-    (`f(x)`, `[0,1]`, `O(n log n)`, bracketed citations), a colon follows words
-    like `NOTE` and numbers like `3:14`, and the page and slide markers the
-    readers insert are structure the material is navigated by. Documents
-    therefore get whitespace normalisation and nothing that can delete a
-    character the author typed.
+    A document is not only prose. Its parentheses and brackets carry meaning:
+    `f(x)`, `[0,1]`, `O(n log n)`, bracketed citations. A colon follows words
+    like `NOTE` and numbers like `3:14`. The page and slide markers the readers
+    insert are the structure people navigate the material by. So a document gets
+    whitespace normalisation and nothing that can delete a character the author
+    typed.
 
-    `clean` is the conservative path and holds the plain name on purpose: a
-    caller that does not know which kind of source it is holding must not be
-    able to destroy notation by accident, so the transcript rules have to be
-    asked for by name.
+    `clean` is the safe path, and it holds the plain name on purpose. A caller
+    that doesn't know which kind of source it's holding shouldn't be able to
+    wreck notation by accident, so you have to ask for the transcript rules by
+    name.
     """
 
     def __init__(self, provider: Optional[LLMProvider] = None) -> None:
@@ -77,13 +77,13 @@ class TextCleaner:
 
     async def clean(self, text: str) -> str:
         """
-        Return the cleaned form of text that was read out of a document.
+        Return the cleaned form of text that came out of a document.
 
-        Awaitable but modelless, and deliberately so. The repair pass rewrites
-        prose and rejoins its chunks as one line, which would flatten the page
-        markers and let a model reword mathematics it was never asked to touch.
-        A typed document has no transcription errors to repair, so the whole
-        risk would buy nothing.
+        This is awaitable but it never calls a model, and that's deliberate. The
+        repair pass rewrites prose and rejoins its chunks as a single line, so it
+        would flatten the page markers and let a model reword mathematics nobody
+        asked it to touch. A typed document has no transcription errors to repair
+        anyway, so we'd be taking that risk and getting nothing for it.
         """
         return self.strip_document_noise(text)
 
@@ -99,11 +99,12 @@ class TextCleaner:
         """
         Normalise whitespace and drop characters that carry no text at all.
 
-        Everything a reader emitted deliberately survives: notation, brackets,
-        punctuation and the `--- Page N ---` and `--- Slide N ---` markers,
-        which is why line breaks are preserved rather than collapsed. Only
-        extraction artefacts go: form feeds, soft hyphens, zero-width spaces,
-        ragged spacing and the run of blank lines a page break leaves behind.
+        Anything a reader put there on purpose survives: notation, brackets,
+        punctuation, and the `--- Page N ---` and `--- Slide N ---` markers. That
+        last one is why we keep the line breaks and don't collapse them. What goes
+        is the debris extraction leaves behind, so form feeds, soft hyphens,
+        zero-width spaces, ragged spacing, and the pile of blank lines you get
+        where a page ended.
         """
         if not text:
             return ""
@@ -117,12 +118,13 @@ class TextCleaner:
     @staticmethod
     def strip_transcript_noise(text: str) -> str:
         """
-        Delete every parenthesised and bracketed span, plus timestamps, shouted
-        speaker labels and fillers, then flatten the layout.
+        Strip the noise out of transcribed speech, then flatten the layout.
 
-        Safe only on transcribed speech. The same four rules that remove
-        `(laughs)`, `[inaudible]`, `SPEAKER:` and `12:34` will remove `f(x)`,
-        `[0,1]`, `NOTE:` and `3:14`, so a document must never reach them.
+        Out goes every parenthesised and bracketed span, along with timestamps,
+        shouted speaker labels and fillers. Only run this on speech. The same four
+        rules that remove `(laughs)`, `[inaudible]`, `SPEAKER:` and `12:34` will
+        also remove `f(x)`, `[0,1]`, `NOTE:` and `3:14`, so a document must never
+        reach them.
         """
         if not text:
             return ""
@@ -137,11 +139,12 @@ class TextCleaner:
 
     async def _repair(self, text: str) -> str:
         """
-        Rewrite every chunk concurrently, keeping the original where one fails.
+        Rewrite every chunk at once, keeping the original text where one fails.
 
-        `gather` reports failures as values rather than raising, and a cancelled
-        chunk arrives as a `BaseException` that `Exception` would not catch,
-        which would put an exception object into the joined text.
+        `gather` hands failures back to us as values here, so we have to check
+        each result ourselves. We check for `BaseException` and not `Exception`,
+        because a cancelled chunk comes back as something `Exception` misses, and
+        then we'd join the exception object into the text as if it were prose.
         """
         chunks = self._chunks(text)
         logger.info("Repairing %d chunk(s) of transcript", len(chunks))

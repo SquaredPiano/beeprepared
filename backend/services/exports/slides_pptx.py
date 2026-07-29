@@ -1,4 +1,4 @@
-"""Renders a slide deck as a PowerPoint file."""
+"""Renders a slide deck out as a PowerPoint file."""
 
 from __future__ import annotations
 
@@ -28,14 +28,14 @@ WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
 
 class DeckError(ValueError):
-    """A deck was missing content that rendering requires."""
+    """Raised when a deck is missing something we need to render it."""
 
 
 class SlidesPptxRenderer:
-    """Builds a 16:9 deck with a title slide and one slide per entry."""
+    """Builds a 16:9 deck: a title slide, then one slide for each entry."""
 
     def render(self, deck: SlidesModel, destination: Path) -> Path:
-        """Write `deck` to `destination` and return that path."""
+        """Write `deck` out to `destination`, and hand that path back."""
         self._validate(deck)
         logger.info("Rendering %d slides", len(deck.slides))
 

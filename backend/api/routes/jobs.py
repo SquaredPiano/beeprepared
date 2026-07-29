@@ -44,8 +44,15 @@ def create_job(
     """
     Queue a job.
 
-    The row is written before dispatch, so a broker outage delays the work
-    rather than losing it.
+    Every artifact id in the payload goes through `require_project_artifact`
+    before the row is written. Owning the project isn't enough by itself. This
+    route used to check the project and stop there, so you could queue a generate
+    naming ids out of someone else's project, and the handler would read their
+    content and write it into a new artifact in yours. That's a cross-tenant
+    read, laundered through the generator.
+
+    Writing the row comes before dispatch, so a broker outage delays the work
+    without losing it.
     """
     require_project(request.project_id, user_id, database)
 
@@ -125,7 +132,7 @@ def cancel_job(
     user_id: str = Depends(get_current_user),
     database: Database = Depends(get_db),
 ) -> Dict[str, str]:
-    """Cancel a job that has not finished."""
+    """Cancel a job that hasn't finished yet."""
     job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
@@ -140,7 +147,7 @@ def cancel_job(
 
 
 def _source_ids(payload: BaseModel) -> List[str]:
-    """Every artifact this job will read, so ownership can be checked before it is queued."""
+    """Every artifact this job will read, so we can check ownership before queueing it."""
     if isinstance(payload, GenerateRequest):
         return payload.sources()
     if isinstance(payload, RefineRequest):
@@ -149,7 +156,7 @@ def _source_ids(payload: BaseModel) -> List[str]:
 
 
 def _normalise(payload: BaseModel) -> Dict[str, Any]:
-    """Store generate payloads in their multi-source form, whichever was sent."""
+    """Store a generate payload in its multi-source form, whichever shape arrived."""
     if isinstance(payload, GenerateRequest):
         stored = payload.model_dump(exclude_none=True, exclude={"source_artifact_id"})
         stored["source_artifact_ids"] = payload.sources()
@@ -163,11 +170,12 @@ def _find_in_flight_duplicate(
     payload: GenerateRequest,
 ) -> Optional[Dict[str, Any]]:
     """
-    Find a running job that already does exactly this work.
+    Find a job already in flight that does exactly this work.
 
-    Only in-flight jobs count. Returning a completed one would make regenerate
-    hand back the old artifact, and a steered request is never a duplicate
-    because different instructions are different work.
+    Only `pending` and `running` jobs count. Hand back a completed one and the
+    regenerate button quietly returns the artifact the user already had, which
+    looks like a broken button while the logs claim success. A steered request is
+    never a duplicate either, because different instructions are different work.
     """
     if payload.instructions:
         return None

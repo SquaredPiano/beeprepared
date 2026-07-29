@@ -1,4 +1,4 @@
-"""Combines several knowledge cores into one context for generation."""
+"""Boils several knowledge cores down into one context to generate from."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ Rules:
 
 
 class CoreSummary(BaseModel):
-    """A single source compressed to a fixed budget."""
+    """One source squeezed down to a fixed budget."""
 
     source_title: str
     key_concepts: List[str]
@@ -55,7 +55,7 @@ class CoreSummary(BaseModel):
 
 
 class CombinedContext(BaseModel):
-    """What several sources say, taken together."""
+    """What all the sources say, once you put them together."""
 
     source_count: int
     source_titles: List[str]
@@ -69,12 +69,13 @@ class CombinedContext(BaseModel):
 
 class CoreMerger:
     """
-    Compresses each source, then synthesises the summaries.
+    Compresses each source on its own, then merges the summaries together.
 
-    Concatenating full sources does not scale: the combined text overruns the
-    context window and the model attends mostly to whichever came first. Beyond
-    a few sources the synthesis runs pairwise up a tree, so the prompt stays a
-    bounded size however many sources are wired in.
+    It's a map and then a reduce. Pasting the full sources end to end doesn't
+    scale. The combined text runs past the context window, and what does fit gets
+    read mostly for whichever source happened to come first. Past three sources
+    the merge goes pairwise up a tree, so a node fed by twenty lectures sends a
+    prompt about the same size as a node fed by three.
     """
 
     def __init__(self, provider: Optional[LLMProvider] = None) -> None:
@@ -82,14 +83,15 @@ class CoreMerger:
 
     async def merge(self, cores: List[KnowledgeCore]) -> CombinedContext:
         """
-        Reduce many knowledge cores to one context.
+        Reduce any number of knowledge cores to a single context.
 
-        `summarise` absorbs its own failures, so the only thing `gather` can
-        hand back here is a cancelled child. Falling through to a structural
-        summary would turn that teardown into a plausible-looking result, so it
-        is re-raised instead. Cancelling the whole `merge` already propagates on
-        its own; this covers a child cancelled by itself, which is what a
-        per-call timeout inside `summarise` would produce.
+        `summarise` swallows its own failures, so the only bad thing `gather` can
+        hand back here is a child that got cancelled. If we fell through to a
+        structural summary on one of those, we'd turn a teardown into a result
+        that looks perfectly plausible, so we re-raise it. Cancelling the whole
+        `merge` already propagates on its own. What this covers is a child that
+        was cancelled by itself, which is what a per-call timeout inside
+        `summarise` would look like.
         """
         if not cores:
             raise ValueError("merge needs at least one knowledge core")
@@ -116,7 +118,13 @@ class CoreMerger:
         return await self.synthesise(level)
 
     async def summarise(self, core: KnowledgeCore) -> CoreSummary:
-        """Compress one core to a bounded summary."""
+        """
+        Compress one core down to a summary of bounded size.
+
+        If the model call falls over we build the summary from the core's own
+        fields, because a blunt summary still beats dropping that source out of
+        the merge altogether.
+        """
         try:
             summary = await self._provider.complete_as(
                 SUMMARISE_PROMPT, CoreSummary, context=core.model_dump_json()
@@ -128,7 +136,7 @@ class CoreMerger:
             return self._structural_summary(core)
 
     async def synthesise(self, summaries: List[CoreSummary]) -> CombinedContext:
-        """Combine summaries into one context, labelling any contradictions."""
+        """Merge summaries into one context, and label the places they disagree."""
         if not summaries:
             raise ValueError("synthesise needs at least one summary")
 

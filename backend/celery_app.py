@@ -38,9 +38,9 @@ celery_app.conf.update(
 
 def broker_available() -> bool:
     """
-    Whether the broker is configured and answering.
+    True when the broker is configured and answering.
 
-    Checked before enqueuing so work is never dropped into a queue that has no
+    We check before enqueuing anything, so work never lands in a queue with no
     worker draining it.
     """
     if not settings.has_redis or not settings.celery_enabled:

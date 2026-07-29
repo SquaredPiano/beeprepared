@@ -17,10 +17,11 @@ _lock = threading.Lock()
 
 def dispatch_mode() -> str:
     """
-    Whether jobs run in Celery workers or in this process.
+    Says where jobs actually run, in Celery workers or in this process.
 
-    Decided once: Celery when the broker answers, otherwise the in-process pool,
-    so a clone with no Redis still processes work.
+    We work it out once and remember the answer. If the broker answers we use
+    Celery, and if it doesn't we fall back to the in-process pool, so someone who
+    clones this repo without Redis still gets their jobs run.
     """
     global _mode
     if _mode is None:
@@ -35,11 +36,11 @@ def dispatch_mode() -> str:
 
 def enqueue(job_id: str) -> str:
     """
-    Send a job to the workers and report how it was dispatched.
+    Send a job off to the workers, and say how it went out.
 
-    In local mode this is a no-op: the pool is already polling and will pick the
-    row up. Either way the row is committed first, so a broker outage delays the
-    work rather than losing it.
+    In local mode there's nothing to do here. The pool is already polling and it
+    will find the row by itself. Either way the row is committed before we're
+    called, so if the broker is down the work turns up late rather than never.
     """
     if dispatch_mode() == LOCAL:
         return LOCAL

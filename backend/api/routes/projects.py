@@ -127,16 +127,16 @@ async def upload_source(
     """
     Accept a file and queue it for ingestion.
 
-    The upload streams to disk rather than being read into memory, so a large
-    lecture recording does not become an equally large resident process, and it
-    is staged in the file store rather than in this process's temp directory:
-    the job may be run by a Celery worker in another container, and the data
-    volume the store sits on is the only thing that container shares with this
-    one.
+    The bytes stream to disk as they arrive, so a 600 MB lecture recording
+    doesn't become 600 MB of resident memory. From there they go into the file
+    store, not into this process's temp directory. The job may well be run by a
+    Celery worker in another container, and the data volume under the store is
+    the only thing that container and this one share, so anything left in our
+    temp directory is a file the worker cannot open.
 
-    A `youtube` source is fetched from a URL by the ingest pipeline and is not
-    something anybody uploads, so it is refused before a byte is read. Accepting
-    one queued a job that named a file on this server and then handed that file
+    Nobody uploads a `youtube` source. Those are fetched from a URL by the ingest
+    pipeline, so the type is refused here before a byte is read. Accepting one
+    used to queue a job that named a file on this server, and that file then went
     to the downloader.
     """
     require_project(project_id, user_id, database)
@@ -178,14 +178,15 @@ def _ingest_payload(source_type: str, staged_key: str, filename: Optional[str]) 
     """
     Build the job payload through the model the other ingest door already uses.
 
-    Hand-writing the dictionary here is what let this route contradict
-    `IngestRequest`: the rules about what a source may be lived in that model,
-    and an upload never went through it. Sharing the model makes the invariant
-    structural rather than something two routes have to remember separately.
+    This route used to hand-write the dictionary, which is how it came to
+    contradict `IngestRequest`. Every rule about what a source may be lived in
+    that model, and an upload never went near it. Now one place states the rule
+    and both doors go through it, so neither route has to remember anything.
 
-    The dump drops what is unset, so the stored payload names the staged key and
-    nothing else. `GET /api/jobs` hands that payload back to the caller, and a
-    payload that also carried a filesystem path would be disclosing one.
+    `exclude_none` drops whatever was never set, so the stored payload carries
+    the staged key and no filesystem path. That matters because `GET /api/jobs`
+    hands the payload straight back to the caller, and a path in there would tell
+    them where files sit on the server.
     """
     try:
         request = IngestRequest(
@@ -207,11 +208,11 @@ async def _stage_upload(
     """
     Stream an upload onto the shared data volume, enforcing the limit as it goes.
 
-    The bytes go through a temporary file so the request never holds the whole
-    upload in memory, and that file belongs to this process alone: it is copied
-    into the store, which every process that could run the ingest job can read,
-    and dropped when the block closes, on the way out of a rejection as much as
-    on success.
+    The bytes land in a temporary file first, so the request never holds the whole
+    upload in memory. That file belongs to this process alone. We copy it into the
+    store, which every process that could run the ingest job can read, and closing
+    the `with` block drops our copy. That happens on the way out of a rejection
+    just as much as on success, so an upload over the limit leaves nothing behind.
     """
     limit = get_settings().upload_max_mb * 1024 * 1024
     written = 0

@@ -56,14 +56,17 @@ TRANSIENT_STATUS = re.compile(r"\b(?:http|status|code)\s*[:=]?\s*(408|409|425|42
 
 def is_transient(error: BaseException) -> bool:
     """
-    Whether a failure is worth retrying.
+    Decide whether a failure is worth another attempt.
 
-    A busy upstream will succeed on the next attempt; a malformed payload will
-    fail identically while spending tokens.
+    An upstream that was busy will probably work on the next try. A malformed
+    payload will fail in exactly the same way and spend more tokens doing it, so
+    retrying it buys us nothing.
 
-    Status codes are matched only where they are labelled as one. A bare
-    three-digit match would classify any message that happened to contain those
-    digits, including artifact identifiers, as retryable.
+    Note that we only read a status code where the message actually labels it as
+    one, as in `status: 429` or `HTTP 502`. Matching a bare three-digit number was
+    too loose. An error quoting an artifact id with 429 in it got retried as if
+    we'd been rate limited, and so did anything along the lines of "artifact 504
+    has no content".
     """
     if isinstance(error, TRANSIENT_EXCEPTIONS):
         return True
@@ -76,10 +79,11 @@ def is_transient(error: BaseException) -> bool:
 
 class JobExecutor:
     """
-    Runs one job: claim, execute, commit, notify.
+    Runs a single job, from claiming it through to committing and notifying.
 
-    This is the only place a job becomes committed state, which is what lets
-    handlers stay pure and keeps a failure from writing a partial graph.
+    This is the one place where a job's work turns into committed state. That's
+    what lets the handlers stay pure. They work out a bundle and hand it over, so
+    when one dies partway through there's no half-written graph to clean up.
     """
 
     HANDLERS: Dict[str, Callable[[], JobHandler]] = {
@@ -100,12 +104,13 @@ class JobExecutor:
 
     def handler_for(self, job_type: str) -> JobHandler:
         """
-        Build one handler per type and reuse it; construction opens clients.
+        Build a handler for this job type once, then keep handing the same one back.
 
-        The instance returned is shared by every job this executor runs, and one
-        executor serves the whole worker pool. Callers get a handler to read, not
-        one to write to: anything per job comes from `with_progress`, which
-        copies rather than mutates.
+        Constructing one opens clients, and we'd rather not do that for every job.
+        The catch is that the instance you get is shared by every job this executor
+        runs, and one executor serves the whole worker pool. So treat it as
+        read-only. Anything that has to differ per job comes from `with_progress`,
+        which gives you a copy and leaves the shared instance alone.
         """
         if job_type not in self._handlers:
             build = self.HANDLERS.get(job_type)
@@ -116,9 +121,12 @@ class JobExecutor:
 
     async def execute(self, job: JobModel) -> bool:
         """
-        Run a job to completion. Returns whether it committed.
+        Run a job the whole way through, and report back whether it committed.
 
-        Never raises: a failed job is an outcome, and the worker loop stays up.
+        This never raises. A job failing is a normal outcome around here, not a
+        crash, and the worker loop that called us has to stay up for the next one.
+        Cancellation is the one thing we let through, so that shutting the pool
+        down doesn't get quietly swallowed.
         """
         project_id = str(job.project_id)
         job_type = job.type.value
@@ -156,7 +164,7 @@ class JobExecutor:
             return False
 
     async def run_job(self, job_id: str) -> bool:
-        """Claim a specific job and execute it."""
+        """Claim one specific job and run it. Returns False if it wasn't there to claim."""
         job = self._database.claim_job(job_id)
         if job is None:
             logger.info("Job %s was not claimable; another worker has it", job_id)
@@ -164,7 +172,12 @@ class JobExecutor:
         return await self.execute(job)
 
     async def run_next(self) -> bool:
-        """Claim whatever is at the head of the queue and execute it."""
+        """
+        Take whatever is at the head of the queue and run it.
+
+        True means there was something to run, not that it succeeded. The worker
+        loop uses this to tell a busy queue from an idle one.
+        """
         job = self._database.claim_job()
         if job is None:
             return False
@@ -204,16 +217,18 @@ class JobExecutor:
 
     def _redispatch(self, job_id: Any) -> None:
         """
-        Hand a requeued job back to the workers.
+        Push a job we've just requeued back out to the workers.
 
-        `fail_job` has already committed the row as `pending`, which is the order
-        every dispatch in this codebase follows. Without this the retry waits for
-        whatever sweeps the queue next, and under Celery that is only the
-        periodic drain: take the beat schedule away and the job never runs again.
+        By the time we get here `fail_job` has already committed the row as
+        `pending`. Commit first, dispatch second, which is the order every dispatch
+        in this codebase follows. Skip this call and the retry just sits there
+        until something else sweeps the queue, and under Celery the only thing that
+        sweeps it is the periodic drain. Take the beat schedule away and the job
+        never runs again.
 
-        A dispatcher that raises is logged rather than propagated, because this
-        runs inside the handler for a job that has already failed and `execute`
-        promises not to raise.
+        If the dispatcher itself throws, we log it and stop there. We're already in
+        the failure path for a job that went wrong, and `execute` has promised its
+        caller it won't raise.
         """
         try:
             self._dispatch(str(job_id))
@@ -244,10 +259,11 @@ class JobExecutor:
 
 class WorkerPool:
     """
-    Drains the queue inside the API process when Celery is not running.
+    Works the queue inside the API process when there's no Celery to do it.
 
-    A reaper runs alongside the workers, because a process killed mid-job leaves
-    its row `running` forever and the node would spin with no error.
+    A reaper task runs alongside the workers. If this process gets killed mid-job,
+    the row it was working on stays `running` for good, and the node on the canvas
+    would sit there spinning with nothing to show the user.
     """
 
     IDLE_BACKOFF_START = 0.5
